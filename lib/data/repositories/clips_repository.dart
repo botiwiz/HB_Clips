@@ -167,6 +167,52 @@ class ClipsRepository {
     );
   }
 
+  Future<void> sendToBack(String id, String boardId) async {
+    final query = _db.selectOnly(_db.clips)
+      ..addColumns([_db.clips.zIndex.min()])
+      ..where(
+        _db.clips.boardId.equals(boardId) & _db.clips.isBinned.equals(false),
+      );
+    final row = await query.getSingleOrNull();
+    final minZ = row?.read(_db.clips.zIndex.min()) ?? 0;
+    await (_db.update(_db.clips)..where((c) => c.id.equals(id))).write(
+      ClipsCompanion(zIndex: Value(minZ - 1), updatedAt: Value(DateTime.now())),
+    );
+  }
+
+  Future<List<ClipRow>> _orderedActiveRows(String boardId) {
+    final query = _db.select(_db.clips)
+      ..where((c) => c.boardId.equals(boardId) & c.isBinned.equals(false))
+      ..orderBy([(c) => OrderingTerm.asc(c.zIndex)]);
+    return query.get();
+  }
+
+  Future<void> _swapZIndex(ClipRow a, ClipRow b) async {
+    final now = DateTime.now();
+    await (_db.update(_db.clips)..where((c) => c.id.equals(a.id))).write(
+      ClipsCompanion(zIndex: Value(b.zIndex), updatedAt: Value(now)),
+    );
+    await (_db.update(_db.clips)..where((c) => c.id.equals(b.id))).write(
+      ClipsCompanion(zIndex: Value(a.zIndex), updatedAt: Value(now)),
+    );
+  }
+
+  /// Swaps z-order with the clip immediately behind this one, if any.
+  Future<void> sendBackward(String id, String boardId) async {
+    final rows = await _orderedActiveRows(boardId);
+    final index = rows.indexWhere((r) => r.id == id);
+    if (index <= 0) return;
+    await _swapZIndex(rows[index], rows[index - 1]);
+  }
+
+  /// Swaps z-order with the clip immediately in front of this one, if any.
+  Future<void> bringForward(String id, String boardId) async {
+    final rows = await _orderedActiveRows(boardId);
+    final index = rows.indexWhere((r) => r.id == id);
+    if (index == -1 || index >= rows.length - 1) return;
+    await _swapZIndex(rows[index], rows[index + 1]);
+  }
+
   Future<void> binClip(String id) {
     return (_db.update(_db.clips)..where((c) => c.id.equals(id))).write(
       ClipsCompanion(

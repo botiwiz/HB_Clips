@@ -1,5 +1,6 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/constants.dart';
@@ -7,8 +8,11 @@ import '../../../core/theme/app_theme.dart';
 import '../../../data/models/clip.dart';
 import '../../../data/providers.dart';
 import '../controllers/board_controller.dart';
+import '../geometry/selection_geometry.dart';
 import 'bin_drop_target.dart';
 import 'clip_widget.dart';
+import 'marquee_overlay.dart';
+import 'selection_handles.dart';
 
 /// The infinite pan/zoom board. Deliberately hand-rolled with a raw
 /// [Listener] instead of `InteractiveViewer` + per-clip `GestureDetector`s:
@@ -16,9 +20,14 @@ import 'clip_widget.dart';
 /// clip's drag recognizer and the canvas's pan/scale recognizer, and Flutter's
 /// gesture arena resolves that contest by touch-slop timing, not by "which
 /// widget is on top" - unreliable for exactly the interactions this board
-/// needs (pan empty space vs. drag a clip vs, later, marquee-select).
-/// Handling pointer events directly and hit-testing the clip list ourselves
-/// makes canvas-pan-vs-clip-drag deterministic instead of arena-dependent.
+/// needs (pan empty space vs. drag/resize/rotate a clip vs. marquee-select).
+/// Handling pointer events directly and hit-testing the clip list (and now
+/// its resize/rotate handles) ourselves keeps every one of those gestures
+/// deterministic instead of arena-dependent.
+///
+/// Gesture priority per pointer-down, most specific first: (1) a handle on
+/// the sole selected clip, (2) a clip body (rotation-aware), (3) empty
+/// canvas - Shift-held starts a marquee, otherwise pans.
 class BoardCanvas extends ConsumerStatefulWidget {
   const BoardCanvas({super.key});
 
@@ -27,12 +36,38 @@ class BoardCanvas extends ConsumerStatefulWidget {
 }
 
 class _BoardCanvasState extends ConsumerState<BoardCanvas> {
-  String? _dragTargetId;
-  Offset? _dragPointerOffsetInClip;
+  final FocusNode _focusNode = FocusNode(debugLabel: 'BoardCanvas');
+
+  // Resize/rotate handle drag.
+  HandleKind? _activeHandle;
+  BoardClip? _handleStartClip;
+
+  // Group move drag.
+  Map<String, Offset>? _groupDragStartPositions;
+  String? _groupDragPrimaryId;
+  bool _groupDragMoved = false;
+  String? _pendingCollapseId;
+
+  // Shared by handle-drag, group-drag and rotate: board-space pointer
+  // position at gesture start.
+  Offset? _gestureStartPointerBoard;
+
+  // Marquee select.
+  Offset? _marqueeStartBoard;
+  bool _marqueeMoved = false;
+
+  // Canvas pan.
   Offset? _panPointerStart;
   Offset? _panOffsetStart;
   bool _didPanMove = false;
+
   Size _canvasSize = Size.zero;
+
+  @override
+  void dispose() {
+    _focusNode.dispose();
+    super.dispose();
+  }
 
   Offset _screenToBoard(Offset screenPoint, BoardViewState view) {
     return (screenPoint - view.panOffset) / view.scale;
@@ -52,33 +87,107 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas> {
   BoardClip? _hitTestClip(List<BoardClip> clips, Offset boardPoint) {
     final sorted = [...clips]..sort((a, b) => b.zIndex.compareTo(a.zIndex));
     for (final clip in sorted) {
-      final rect = Rect.fromLTWH(clip.x, clip.y, clip.width, clip.height);
-      if (rect.contains(boardPoint)) return clip;
+      if (ClipGeometry.pointInClip(boardPoint, clip)) return clip;
     }
     return null;
   }
 
+  bool get _multiSelectModifierHeld =>
+      HardwareKeyboard.instance.isShiftPressed ||
+      HardwareKeyboard.instance.isControlPressed ||
+      HardwareKeyboard.instance.isMetaPressed;
+
   void _handlePointerDown(PointerDownEvent event) {
+    _focusNode.requestFocus();
     final view = ref.read(boardViewProvider);
+    final selection = ref.read(selectedClipIdsProvider);
     final clips = ref.read(activeClipsProvider).valueOrNull ?? [];
     final boardPos = _screenToBoard(event.localPosition, view);
-    final hit = _hitTestClip(clips, boardPos);
 
     _didPanMove = false;
+    _marqueeMoved = false;
+    _groupDragMoved = false;
+
+    // 1. A handle on the sole selected clip takes priority over everything.
+    if (selection.length == 1) {
+      final selectedClip = ClipGeometry.findById(clips, selection.first);
+      if (selectedClip != null) {
+        final handle = ClipGeometry.hitTestHandle(
+          selectedClip,
+          view,
+          event.localPosition,
+        );
+        if (handle != null) {
+          _activeHandle = handle;
+          _handleStartClip = selectedClip;
+          _gestureStartPointerBoard = boardPos;
+          ref.read(groupDragProvider.notifier).state = {
+            selectedClip.id: DraggingClip(
+              id: selectedClip.id,
+              x: selectedClip.x,
+              y: selectedClip.y,
+              width: selectedClip.width,
+              height: selectedClip.height,
+              rotation: selectedClip.rotation,
+            ),
+          };
+          return;
+        }
+      }
+    }
+
+    // 2. Clip body hit-test.
+    final hit = _hitTestClip(clips, boardPos);
     if (hit != null) {
-      ref.read(selectedClipIdProvider.notifier).state = hit.id;
+      if (_multiSelectModifierHeld) {
+        final newSelection = {...selection};
+        if (!newSelection.remove(hit.id)) newSelection.add(hit.id);
+        ref.read(selectedClipIdsProvider.notifier).state = newSelection;
+        return;
+      }
+
+      final Set<String> activeSelection;
+      if (selection.contains(hit.id) && selection.length > 1) {
+        activeSelection = selection;
+        _pendingCollapseId = hit.id;
+      } else {
+        activeSelection = {hit.id};
+        ref.read(selectedClipIdsProvider.notifier).state = activeSelection;
+        _pendingCollapseId = null;
+      }
+
       ref.read(clipsRepositoryProvider).bringToFront(hit.id, kLocalBoardId);
-      _dragTargetId = hit.id;
-      _dragPointerOffsetInClip = boardPos - Offset(hit.x, hit.y);
-      ref.read(draggingClipProvider.notifier).state = DraggingClip(
-        id: hit.id,
-        x: hit.x,
-        y: hit.y,
-        width: hit.width,
-        height: hit.height,
+
+      final startPositions = <String, Offset>{};
+      final dragMap = <String, DraggingClip>{};
+      for (final id in activeSelection) {
+        final c = ClipGeometry.findById(clips, id);
+        if (c == null) continue;
+        startPositions[id] = Offset(c.x, c.y);
+        dragMap[id] = DraggingClip(
+          id: id,
+          x: c.x,
+          y: c.y,
+          width: c.width,
+          height: c.height,
+          rotation: c.rotation,
+        );
+      }
+      _groupDragStartPositions = startPositions;
+      _groupDragPrimaryId = hit.id;
+      _gestureStartPointerBoard = boardPos;
+      ref.read(groupDragProvider.notifier).state = dragMap;
+      return;
+    }
+
+    // 3. Empty canvas: Shift starts a marquee, otherwise pan (unchanged).
+    if (HardwareKeyboard.instance.isShiftPressed) {
+      _marqueeStartBoard = boardPos;
+      ref.read(marqueeRectProvider.notifier).state = Rect.fromPoints(
+        boardPos,
+        boardPos,
       );
     } else {
-      _dragTargetId = null;
       _panPointerStart = event.localPosition;
       _panOffsetStart = view.panOffset;
     }
@@ -86,26 +195,86 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas> {
 
   void _handlePointerMove(PointerMoveEvent event) {
     final view = ref.read(boardViewProvider);
-    if (_dragTargetId != null) {
-      final boardPos = _screenToBoard(event.localPosition, view);
-      final newTopLeft = boardPos - _dragPointerOffsetInClip!;
-      final current = ref.read(draggingClipProvider);
-      if (current == null) return;
-      ref.read(draggingClipProvider.notifier).state = current.copyWith(
-        x: newTopLeft.dx,
-        y: newTopLeft.dy,
-      );
+    final boardPos = _screenToBoard(event.localPosition, view);
 
-      final center = Offset(
-        newTopLeft.dx + current.width / 2,
-        newTopLeft.dy + current.height / 2,
-      );
-      final centerScreen = _boardToScreen(center, view);
-      final overBin = _binRectScreen.inflate(16).contains(centerScreen);
-      if (ref.read(isDraggingOverBinProvider) != overBin) {
-        ref.read(isDraggingOverBinProvider.notifier).state = overBin;
+    if (_activeHandle != null && _handleStartClip != null) {
+      final id = _handleStartClip!.id;
+      final current = ref.read(groupDragProvider)?[id];
+      if (current == null) return;
+      if (_activeHandle == HandleKind.rotate) {
+        final newRotation = ClipGeometry.rotate(
+          rotation0: _handleStartClip!.rotation,
+          center: ClipGeometry.clipCenter(_handleStartClip!),
+          startPointerBoard: _gestureStartPointerBoard!,
+          currentPointerBoard: boardPos,
+        );
+        ref.read(groupDragProvider.notifier).state = {
+          id: current.copyWith(rotation: newRotation),
+        };
+      } else {
+        final result = ClipGeometry.resize(
+          startClip: _handleStartClip!,
+          corner: _activeHandle!,
+          pointerBoard: boardPos,
+        );
+        ref.read(groupDragProvider.notifier).state = {
+          id: current.copyWith(
+            x: result.x,
+            y: result.y,
+            width: result.width,
+            height: result.height,
+          ),
+        };
       }
-    } else if (_panPointerStart != null) {
+      return;
+    }
+
+    if (_groupDragStartPositions != null) {
+      final delta = boardPos - _gestureStartPointerBoard!;
+      if (delta.distance > 2) _groupDragMoved = true;
+      final newPositions = ClipGeometry.applyGroupDelta(
+        _groupDragStartPositions!,
+        delta,
+      );
+      final currentMap = ref.read(groupDragProvider);
+      if (currentMap == null) return;
+      final updated = <String, DraggingClip>{
+        for (final entry in currentMap.entries)
+          entry.key: newPositions.containsKey(entry.key)
+              ? entry.value.copyWith(
+                  x: newPositions[entry.key]!.dx,
+                  y: newPositions[entry.key]!.dy,
+                )
+              : entry.value,
+      };
+      ref.read(groupDragProvider.notifier).state = updated;
+
+      final primary = updated[_groupDragPrimaryId];
+      if (primary != null) {
+        final center = Offset(
+          primary.x + primary.width / 2,
+          primary.y + primary.height / 2,
+        );
+        final centerScreen = _boardToScreen(center, view);
+        final overBin = _binRectScreen.inflate(16).contains(centerScreen);
+        if (ref.read(isDraggingOverBinProvider) != overBin) {
+          ref.read(isDraggingOverBinProvider.notifier).state = overBin;
+        }
+      }
+      return;
+    }
+
+    if (_marqueeStartBoard != null) {
+      final delta = boardPos - _marqueeStartBoard!;
+      if (delta.distance > 2) _marqueeMoved = true;
+      ref.read(marqueeRectProvider.notifier).state = Rect.fromPoints(
+        _marqueeStartBoard!,
+        boardPos,
+      );
+      return;
+    }
+
+    if (_panPointerStart != null) {
       final delta = event.localPosition - _panPointerStart!;
       if (delta.distance > 2) _didPanMove = true;
       ref.read(boardViewProvider.notifier).setPan(_panOffsetStart! + delta);
@@ -113,23 +282,78 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas> {
   }
 
   void _handlePointerUp(PointerUpEvent event) {
-    if (_dragTargetId != null) {
-      final id = _dragTargetId!;
-      final dragging = ref.read(draggingClipProvider);
-      final overBin = ref.read(isDraggingOverBinProvider);
-      final repo = ref.read(clipsRepositoryProvider);
-      if (overBin) {
-        repo.binClip(id);
-        ref.read(selectedClipIdProvider.notifier).state = null;
-      } else if (dragging != null) {
-        repo.updateTransform(id, x: dragging.x, y: dragging.y);
+    final repo = ref.read(clipsRepositoryProvider);
+
+    if (_activeHandle != null && _handleStartClip != null) {
+      final id = _handleStartClip!.id;
+      final drag = ref.read(groupDragProvider)?[id];
+      if (drag != null) {
+        repo.updateTransform(
+          id,
+          x: drag.x,
+          y: drag.y,
+          width: drag.width,
+          height: drag.height,
+          rotation: drag.rotation,
+        );
       }
-      ref.read(draggingClipProvider.notifier).state = null;
+      ref.read(groupDragProvider.notifier).state = null;
+      _activeHandle = null;
+      _handleStartClip = null;
+      _gestureStartPointerBoard = null;
+      return;
+    }
+
+    if (_groupDragStartPositions != null) {
+      final dragMap = ref.read(groupDragProvider);
+      final overBin = ref.read(isDraggingOverBinProvider);
+      if (_groupDragMoved && dragMap != null) {
+        if (overBin) {
+          for (final id in dragMap.keys) {
+            repo.binClip(id);
+          }
+          ref.read(selectedClipIdsProvider.notifier).state = {};
+        } else {
+          for (final entry in dragMap.entries) {
+            repo.updateTransform(entry.key, x: entry.value.x, y: entry.value.y);
+          }
+        }
+      } else if (!_groupDragMoved && _pendingCollapseId != null) {
+        ref.read(selectedClipIdsProvider.notifier).state = {
+          _pendingCollapseId!,
+        };
+      }
+      ref.read(groupDragProvider.notifier).state = null;
       ref.read(isDraggingOverBinProvider.notifier).state = false;
-      _dragTargetId = null;
-    } else {
+      _groupDragStartPositions = null;
+      _groupDragPrimaryId = null;
+      _pendingCollapseId = null;
+      _groupDragMoved = false;
+      _gestureStartPointerBoard = null;
+      return;
+    }
+
+    if (_marqueeStartBoard != null) {
+      if (_marqueeMoved) {
+        final rect = ref.read(marqueeRectProvider);
+        final clips = ref.read(activeClipsProvider).valueOrNull ?? [];
+        if (rect != null) {
+          final hits = clips
+              .where((c) => ClipGeometry.marqueeIntersects(rect, c))
+              .map((c) => c.id)
+              .toSet();
+          ref.read(selectedClipIdsProvider.notifier).state = hits;
+        }
+      }
+      ref.read(marqueeRectProvider.notifier).state = null;
+      _marqueeStartBoard = null;
+      _marqueeMoved = false;
+      return;
+    }
+
+    if (_panPointerStart != null) {
       if (!_didPanMove) {
-        ref.read(selectedClipIdProvider.notifier).state = null;
+        ref.read(selectedClipIdsProvider.notifier).state = {};
       }
       _panPointerStart = null;
     }
@@ -148,8 +372,8 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas> {
   Widget build(BuildContext context) {
     final clipsAsync = ref.watch(activeClipsProvider);
     final view = ref.watch(boardViewProvider);
-    final dragging = ref.watch(draggingClipProvider);
-    final selectedId = ref.watch(selectedClipIdProvider);
+    final dragging = ref.watch(groupDragProvider);
+    final selection = ref.watch(selectedClipIdsProvider);
     final overBin = ref.watch(isDraggingOverBinProvider);
 
     final clips = clipsAsync.valueOrNull ?? [];
@@ -158,29 +382,32 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas> {
     return LayoutBuilder(
       builder: (context, constraints) {
         _canvasSize = constraints.biggest;
-        return Listener(
-          onPointerDown: _handlePointerDown,
-          onPointerMove: _handlePointerMove,
-          onPointerUp: _handlePointerUp,
-          onPointerSignal: _handlePointerSignal,
-          child: Container(
-            color: AppTheme.boardBackground,
-            width: double.infinity,
-            height: double.infinity,
-            child: Stack(
-              clipBehavior: Clip.hardEdge,
-              children: [
-                for (final clip in sorted)
-                  _positionedClip(clip, dragging, selectedId, view),
-                Positioned(
-                  right: 24,
-                  bottom: 24,
-                  child: BinDropTarget(
-                    highlighted: overBin,
-                    onTap: () {},
+        return Focus(
+          focusNode: _focusNode,
+          autofocus: true,
+          child: Listener(
+            onPointerDown: _handlePointerDown,
+            onPointerMove: _handlePointerMove,
+            onPointerUp: _handlePointerUp,
+            onPointerSignal: _handlePointerSignal,
+            child: Container(
+              color: AppTheme.boardBackground,
+              width: double.infinity,
+              height: double.infinity,
+              child: Stack(
+                clipBehavior: Clip.hardEdge,
+                children: [
+                  for (final clip in sorted)
+                    _positionedClip(clip, dragging, selection, view),
+                  const MarqueeOverlay(),
+                  const SelectionHandles(),
+                  Positioned(
+                    right: 24,
+                    bottom: 24,
+                    child: BinDropTarget(highlighted: overBin, onTap: () {}),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         );
@@ -190,22 +417,32 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas> {
 
   Widget _positionedClip(
     BoardClip clip,
-    DraggingClip? dragging,
-    String? selectedId,
+    Map<String, DraggingClip>? dragging,
+    Set<String> selection,
     BoardViewState view,
   ) {
-    final isDragging = dragging?.id == clip.id;
-    final x = isDragging ? dragging!.x : clip.x;
-    final y = isDragging ? dragging!.y : clip.y;
+    final drag = dragging?[clip.id];
+    final x = drag?.x ?? clip.x;
+    final y = drag?.y ?? clip.y;
+    final width = drag?.width ?? clip.width;
+    final height = drag?.height ?? clip.height;
+    final rotation = drag?.rotation ?? clip.rotation;
     final topLeft = _boardToScreen(Offset(x, y), view);
 
     return Positioned(
       left: topLeft.dx,
       top: topLeft.dy,
-      width: clip.width * view.scale,
-      height: clip.height * view.scale,
+      width: width * view.scale,
+      height: height * view.scale,
       child: IgnorePointer(
-        child: ClipWidget(clip: clip, selected: clip.id == selectedId),
+        child: Transform.rotate(
+          angle: rotation,
+          alignment: Alignment.center,
+          child: ClipWidget(
+            clip: clip,
+            selected: selection.contains(clip.id),
+          ),
+        ),
       ),
     );
   }

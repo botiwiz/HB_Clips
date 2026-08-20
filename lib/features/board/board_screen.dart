@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -14,10 +15,16 @@ import '../../data/repositories/clips_repository.dart';
 import '../about/about_screen.dart';
 import '../bin/bin_screen.dart';
 import 'controllers/board_controller.dart';
+import 'geometry/selection_geometry.dart';
+import 'services/clipboard_paste_service.dart';
 import 'widgets/board_canvas.dart';
 import 'widgets/clip_counter_badge.dart';
 
 const _uuid = Uuid();
+
+/// Nudge distances (board-space pixels) for arrow-key movement.
+const double _nudgeStep = 4;
+const double _nudgeStepFast = 20;
 
 class BoardScreen extends ConsumerWidget {
   const BoardScreen({super.key});
@@ -135,14 +142,87 @@ class BoardScreen extends ConsumerWidget {
         );
   }
 
+  void _selectAll(WidgetRef ref) {
+    final clips = ref.read(activeClipsProvider).valueOrNull ?? [];
+    ref.read(selectedClipIdsProvider.notifier).state = clips
+        .map((c) => c.id)
+        .toSet();
+  }
+
+  void _binSelected(WidgetRef ref) {
+    final selection = ref.read(selectedClipIdsProvider);
+    if (selection.isEmpty) return;
+    final repo = ref.read(clipsRepositoryProvider);
+    for (final id in selection) {
+      repo.binClip(id);
+    }
+    ref.read(selectedClipIdsProvider.notifier).state = {};
+  }
+
+  void _nudgeSelection(WidgetRef ref, Offset delta) {
+    final selection = ref.read(selectedClipIdsProvider);
+    if (selection.isEmpty) return;
+    final clips = ref.read(activeClipsProvider).valueOrNull ?? [];
+    final repo = ref.read(clipsRepositoryProvider);
+    for (final id in selection) {
+      final clip = ClipGeometry.findById(clips, id);
+      if (clip == null) continue;
+      repo.updateTransform(id, x: clip.x + delta.dx, y: clip.y + delta.dy);
+    }
+  }
+
+  void _applyZOrder(
+    WidgetRef ref,
+    Future<void> Function(ClipsRepository repo, String id, String boardId) action,
+  ) {
+    final selection = ref.read(selectedClipIdsProvider);
+    if (selection.isEmpty) return;
+    final repo = ref.read(clipsRepositoryProvider);
+    for (final id in selection) {
+      action(repo, id, kLocalBoardId);
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final selection = ref.watch(selectedClipIdsProvider);
+    final hasSelection = selection.isNotEmpty;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('HB_Clips'),
         actions: [
           const ClipCounterBadge(),
           const SizedBox(width: 12),
+          if (hasSelection) ...[
+            IconButton(
+              tooltip: 'Bring to front',
+              icon: const Icon(Icons.flip_to_front_outlined),
+              onPressed: () => _applyZOrder(
+                ref,
+                (repo, id, boardId) => repo.bringToFront(id, boardId),
+              ),
+            ),
+            IconButton(
+              tooltip: 'Send to back',
+              icon: const Icon(Icons.flip_to_back_outlined),
+              onPressed: () => _applyZOrder(
+                ref,
+                (repo, id, boardId) => repo.sendToBack(id, boardId),
+              ),
+            ),
+            IconButton(
+              tooltip: 'Bin selected',
+              icon: const Icon(Icons.delete_sweep_outlined),
+              onPressed: () => _binSelected(ref),
+            ),
+            const SizedBox(width: 12),
+          ],
+          IconButton(
+            tooltip: 'Paste image (Ctrl+V)',
+            icon: const Icon(Icons.content_paste_outlined),
+            onPressed: () => pasteImageFromClipboard(context, ref),
+          ),
           IconButton(
             tooltip: 'Add text note',
             icon: const Icon(Icons.note_add_outlined),
@@ -170,7 +250,39 @@ class BoardScreen extends ConsumerWidget {
           const SizedBox(width: 8),
         ],
       ),
-      body: const BoardCanvas(),
+      body: CallbackShortcuts(
+        bindings: {
+          const SingleActivator(LogicalKeyboardKey.delete): () =>
+              _binSelected(ref),
+          const SingleActivator(LogicalKeyboardKey.backspace): () =>
+              _binSelected(ref),
+          const SingleActivator(LogicalKeyboardKey.keyA, control: true): () =>
+              _selectAll(ref),
+          const SingleActivator(LogicalKeyboardKey.keyA, meta: true): () =>
+              _selectAll(ref),
+          const SingleActivator(LogicalKeyboardKey.keyV, control: true): () =>
+              pasteImageFromClipboard(context, ref),
+          const SingleActivator(LogicalKeyboardKey.keyV, meta: true): () =>
+              pasteImageFromClipboard(context, ref),
+          const SingleActivator(LogicalKeyboardKey.arrowLeft): () =>
+              _nudgeSelection(ref, const Offset(-_nudgeStep, 0)),
+          const SingleActivator(LogicalKeyboardKey.arrowRight): () =>
+              _nudgeSelection(ref, const Offset(_nudgeStep, 0)),
+          const SingleActivator(LogicalKeyboardKey.arrowUp): () =>
+              _nudgeSelection(ref, const Offset(0, -_nudgeStep)),
+          const SingleActivator(LogicalKeyboardKey.arrowDown): () =>
+              _nudgeSelection(ref, const Offset(0, _nudgeStep)),
+          const SingleActivator(LogicalKeyboardKey.arrowLeft, shift: true):
+              () => _nudgeSelection(ref, const Offset(-_nudgeStepFast, 0)),
+          const SingleActivator(LogicalKeyboardKey.arrowRight, shift: true):
+              () => _nudgeSelection(ref, const Offset(_nudgeStepFast, 0)),
+          const SingleActivator(LogicalKeyboardKey.arrowUp, shift: true): () =>
+              _nudgeSelection(ref, const Offset(0, -_nudgeStepFast)),
+          const SingleActivator(LogicalKeyboardKey.arrowDown, shift: true):
+              () => _nudgeSelection(ref, const Offset(0, _nudgeStepFast)),
+        },
+        child: const BoardCanvas(),
+      ),
     );
   }
 }
