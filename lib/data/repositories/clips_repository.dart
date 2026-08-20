@@ -1,0 +1,199 @@
+import 'package:drift/drift.dart';
+
+import '../../core/constants.dart';
+import '../local/database.dart';
+import '../models/clip.dart';
+
+/// Thrown when adding an image clip would exceed [kMaxImageClips]. Binned
+/// images still count toward the cap - only a permanent delete frees a slot.
+class ClipCapExceededException implements Exception {
+  final int limit;
+  const ClipCapExceededException(this.limit);
+
+  @override
+  String toString() => 'Image clip limit of $limit reached';
+}
+
+/// Local-first read/write API for clips. Every mutation writes straight to
+/// Drift so the UI never blocks on network - there is no network yet
+/// (Phase 6 adds the sync outbox on top of these same methods).
+class ClipsRepository {
+  final AppDatabase _db;
+
+  ClipsRepository(this._db);
+
+  Stream<List<BoardClip>> watchActiveClips(String boardId) {
+    final query = _db.select(_db.clips)
+      ..where((c) => c.boardId.equals(boardId) & c.isBinned.equals(false))
+      ..orderBy([(c) => OrderingTerm.asc(c.zIndex)]);
+    return query.watch().map((rows) => rows.map(BoardClip.fromRow).toList());
+  }
+
+  Stream<List<BoardClip>> watchBinnedClips(String boardId) {
+    final query = _db.select(_db.clips)
+      ..where((c) => c.boardId.equals(boardId) & c.isBinned.equals(true))
+      ..orderBy([(c) => OrderingTerm.desc(c.binnedAt)]);
+    return query.watch().map((rows) => rows.map(BoardClip.fromRow).toList());
+  }
+
+  /// Number of image slots left out of [kMaxImageClips]. Binned-but-not-yet-
+  /// deleted images still count; text notes never do.
+  Stream<int> watchImageSlotsRemaining(String boardId) {
+    final query = _db.selectOnly(_db.clips)
+      ..addColumns([_db.clips.id.count()])
+      ..where(_db.clips.boardId.equals(boardId) & _db.clips.type.equals('image'));
+    return query.watchSingle().map((row) {
+      final used = row.read(_db.clips.id.count()) ?? 0;
+      final remaining = kMaxImageClips - used;
+      return remaining < 0 ? 0 : remaining;
+    });
+  }
+
+  Future<int> _currentImageCount(String boardId) async {
+    final query = _db.selectOnly(_db.clips)
+      ..addColumns([_db.clips.id.count()])
+      ..where(_db.clips.boardId.equals(boardId) & _db.clips.type.equals('image'));
+    final row = await query.getSingle();
+    return row.read(_db.clips.id.count()) ?? 0;
+  }
+
+  Future<int> _nextZIndex(String boardId) async {
+    final query = _db.selectOnly(_db.clips)
+      ..addColumns([_db.clips.zIndex.max()])
+      ..where(_db.clips.boardId.equals(boardId));
+    final row = await query.getSingleOrNull();
+    final maxZ = row?.read(_db.clips.zIndex.max());
+    return (maxZ ?? 0) + 1;
+  }
+
+  /// Adds an image clip pointing at an already-imported local file.
+  /// Throws [ClipCapExceededException] if the 30-image cap is reached.
+  Future<BoardClip> addImageClip({
+    required String id,
+    required String boardId,
+    required String localFilePath,
+    required double x,
+    required double y,
+    double width = kDefaultClipWidth,
+    double height = kDefaultClipHeight,
+  }) async {
+    final currentCount = await _currentImageCount(boardId);
+    if (currentCount >= kMaxImageClips) {
+      throw const ClipCapExceededException(kMaxImageClips);
+    }
+    final zIndex = await _nextZIndex(boardId);
+    final row = await _insertClip(
+      ClipsCompanion.insert(
+        id: id,
+        boardId: boardId,
+        type: 'image',
+        x: Value(x),
+        y: Value(y),
+        width: Value(width),
+        height: Value(height),
+        zIndex: Value(zIndex),
+        localFilePath: Value(localFilePath),
+      ),
+    );
+    return row;
+  }
+
+  Future<BoardClip> addTextNote({
+    required String id,
+    required String boardId,
+    required String textContent,
+    required double x,
+    required double y,
+    double width = kDefaultTextNoteWidth,
+    double height = kDefaultTextNoteHeight,
+  }) async {
+    final zIndex = await _nextZIndex(boardId);
+    return _insertClip(
+      ClipsCompanion.insert(
+        id: id,
+        boardId: boardId,
+        type: 'text',
+        x: Value(x),
+        y: Value(y),
+        width: Value(width),
+        height: Value(height),
+        zIndex: Value(zIndex),
+        textContent: Value(textContent),
+      ),
+    );
+  }
+
+  Future<BoardClip> _insertClip(ClipsCompanion companion) async {
+    await _db.into(_db.clips).insert(companion);
+    final row = await (_db.select(
+      _db.clips,
+    )..where((c) => c.id.equals(companion.id.value))).getSingle();
+    return BoardClip.fromRow(row);
+  }
+
+  Future<void> updateTransform(
+    String id, {
+    double? x,
+    double? y,
+    double? width,
+    double? height,
+    double? rotation,
+  }) {
+    return (_db.update(_db.clips)..where((c) => c.id.equals(id))).write(
+      ClipsCompanion(
+        x: x != null ? Value(x) : const Value.absent(),
+        y: y != null ? Value(y) : const Value.absent(),
+        width: width != null ? Value(width) : const Value.absent(),
+        height: height != null ? Value(height) : const Value.absent(),
+        rotation: rotation != null ? Value(rotation) : const Value.absent(),
+        updatedAt: Value(DateTime.now()),
+      ),
+    );
+  }
+
+  Future<void> updateTextContent(String id, String textContent) {
+    return (_db.update(_db.clips)..where((c) => c.id.equals(id))).write(
+      ClipsCompanion(
+        textContent: Value(textContent),
+        updatedAt: Value(DateTime.now()),
+      ),
+    );
+  }
+
+  Future<void> bringToFront(String id, String boardId) async {
+    final zIndex = await _nextZIndex(boardId);
+    await (_db.update(_db.clips)..where((c) => c.id.equals(id))).write(
+      ClipsCompanion(zIndex: Value(zIndex), updatedAt: Value(DateTime.now())),
+    );
+  }
+
+  Future<void> binClip(String id) {
+    return (_db.update(_db.clips)..where((c) => c.id.equals(id))).write(
+      ClipsCompanion(
+        isBinned: const Value(true),
+        binnedAt: Value(DateTime.now()),
+        updatedAt: Value(DateTime.now()),
+      ),
+    );
+  }
+
+  Future<void> restoreClip(String id) {
+    return (_db.update(_db.clips)..where((c) => c.id.equals(id))).write(
+      ClipsCompanion(
+        isBinned: const Value(false),
+        binnedAt: const Value(null),
+        updatedAt: Value(DateTime.now()),
+      ),
+    );
+  }
+
+  Future<void> deleteForever(String id) {
+    return (_db.delete(_db.clips)..where((c) => c.id.equals(id))).go();
+  }
+
+  Future<void> emptyBin(String boardId) {
+    return (_db.delete(
+      _db.clips,
+    )..where((c) => c.boardId.equals(boardId) & c.isBinned.equals(true))).go();
+  }
+}
