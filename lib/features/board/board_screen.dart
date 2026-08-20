@@ -13,6 +13,8 @@ import '../../core/theme/app_theme.dart';
 import '../../data/providers.dart';
 import '../../data/repositories/clips_repository.dart';
 import '../about/about_screen.dart';
+import '../annotation/controllers/annotation_controller.dart';
+import '../annotation/draw_toolbar.dart';
 import '../bin/bin_screen.dart';
 import 'controllers/board_controller.dart';
 import 'geometry/selection_geometry.dart';
@@ -171,6 +173,14 @@ class BoardScreen extends ConsumerWidget {
     }
   }
 
+  void _toggleDrawMode(WidgetRef ref) {
+    final next = !ref.read(isDrawModeProvider);
+    ref.read(isDrawModeProvider.notifier).state = next;
+    if (next) {
+      ref.read(selectedClipIdsProvider.notifier).state = {};
+    }
+  }
+
   void _applyZOrder(
     WidgetRef ref,
     Future<void> Function(ClipsRepository repo, String id, String boardId) action,
@@ -187,14 +197,29 @@ class BoardScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final selection = ref.watch(selectedClipIdsProvider);
     final hasSelection = selection.isNotEmpty;
+    final isDrawMode = ref.watch(isDrawModeProvider);
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('HB_Clips'),
+        bottom: isDrawMode
+            ? const PreferredSize(
+                preferredSize: Size.fromHeight(48),
+                child: DrawToolbar(),
+              )
+            : null,
         actions: [
           const ClipCounterBadge(),
           const SizedBox(width: 12),
-          if (hasSelection) ...[
+          IconButton(
+            tooltip: isDrawMode ? 'Exit draw mode' : 'Draw / annotate',
+            icon: Icon(
+              isDrawMode ? Icons.edit : Icons.edit_outlined,
+              color: isDrawMode ? AppTheme.accent : null,
+            ),
+            onPressed: () => _toggleDrawMode(ref),
+          ),
+          if (!isDrawMode && hasSelection) ...[
             IconButton(
               tooltip: 'Bring to front',
               icon: const Icon(Icons.flip_to_front_outlined),

@@ -2,17 +2,24 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../../core/constants.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../data/models/clip.dart';
+import '../../../data/models/stroke.dart';
 import '../../../data/providers.dart';
+import '../../annotation/controllers/annotation_controller.dart';
+import '../../annotation/drawing_overlay.dart';
+import '../../annotation/stroke_painter.dart';
 import '../controllers/board_controller.dart';
 import '../geometry/selection_geometry.dart';
 import 'bin_drop_target.dart';
 import 'clip_widget.dart';
 import 'marquee_overlay.dart';
 import 'selection_handles.dart';
+
+const _uuid = Uuid();
 
 /// The infinite pan/zoom board. Deliberately hand-rolled with a raw
 /// [Listener] instead of `InteractiveViewer` + per-clip `GestureDetector`s:
@@ -61,6 +68,11 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas> {
   Offset? _panOffsetStart;
   bool _didPanMove = false;
 
+  // Draw mode: the clip (if any) under the pointer when a stroke gesture
+  // started - the whole stroke stays attached to it, per-clip strokes are
+  // stored in that clip's local frame.
+  BoardClip? _drawingClip;
+
   Size _canvasSize = Size.zero;
 
   @override
@@ -99,6 +111,10 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas> {
 
   void _handlePointerDown(PointerDownEvent event) {
     _focusNode.requestFocus();
+    if (ref.read(isDrawModeProvider)) {
+      _handleDrawPointerDown(event);
+      return;
+    }
     final view = ref.read(boardViewProvider);
     final selection = ref.read(selectedClipIdsProvider);
     final clips = ref.read(activeClipsProvider).valueOrNull ?? [];
@@ -194,6 +210,10 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas> {
   }
 
   void _handlePointerMove(PointerMoveEvent event) {
+    if (ref.read(isDrawModeProvider)) {
+      _handleDrawPointerMove(event);
+      return;
+    }
     final view = ref.read(boardViewProvider);
     final boardPos = _screenToBoard(event.localPosition, view);
 
@@ -282,6 +302,10 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas> {
   }
 
   void _handlePointerUp(PointerUpEvent event) {
+    if (ref.read(isDrawModeProvider)) {
+      _handleDrawPointerUp(event);
+      return;
+    }
     final repo = ref.read(clipsRepositoryProvider);
 
     if (_activeHandle != null && _handleStartClip != null) {
@@ -368,6 +392,65 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas> {
     }
   }
 
+  void _handleDrawPointerDown(PointerDownEvent event) {
+    final view = ref.read(boardViewProvider);
+    final boardPos = _screenToBoard(event.localPosition, view);
+    final clips = ref.read(activeClipsProvider).valueOrNull ?? [];
+    _drawingClip = _hitTestClip(clips, boardPos);
+    ref.read(liveStrokePointsProvider.notifier).state = [boardPos];
+  }
+
+  void _handleDrawPointerMove(PointerMoveEvent event) {
+    final current = ref.read(liveStrokePointsProvider);
+    if (current == null) return;
+    final view = ref.read(boardViewProvider);
+    final boardPos = _screenToBoard(event.localPosition, view);
+    ref.read(liveStrokePointsProvider.notifier).state = [
+      ...current,
+      boardPos,
+    ];
+  }
+
+  void _handleDrawPointerUp(PointerUpEvent event) {
+    final points = ref.read(liveStrokePointsProvider);
+    ref.read(liveStrokePointsProvider.notifier).state = null;
+    final clip = _drawingClip;
+    _drawingClip = null;
+    if (points == null || points.length < 2) return;
+
+    final colorHex = ref.read(strokeColorHexProvider);
+    final width = ref.read(strokeWidthValueProvider);
+    final repo = ref.read(strokesRepositoryProvider);
+    final id = _uuid.v4();
+
+    if (clip != null) {
+      final center = ClipGeometry.clipCenter(clip);
+      final localPoints = points.map((point) {
+        final local = ClipGeometry.rotatePoint(point, center, -clip.rotation);
+        return Offset(
+          (local.dx - clip.x) / clip.width,
+          (local.dy - clip.y) / clip.height,
+        );
+      }).toList();
+      repo.addStroke(
+        id: id,
+        boardId: kLocalBoardId,
+        clipId: clip.id,
+        colorHex: colorHex,
+        strokeWidth: width,
+        points: localPoints,
+      );
+    } else {
+      repo.addStroke(
+        id: id,
+        boardId: kLocalBoardId,
+        colorHex: colorHex,
+        strokeWidth: width,
+        points: points,
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final clipsAsync = ref.watch(activeClipsProvider);
@@ -375,9 +458,17 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas> {
     final dragging = ref.watch(groupDragProvider);
     final selection = ref.watch(selectedClipIdsProvider);
     final overBin = ref.watch(isDraggingOverBinProvider);
+    final isDrawMode = ref.watch(isDrawModeProvider);
 
     final clips = clipsAsync.valueOrNull ?? [];
     final sorted = [...clips]..sort((a, b) => a.zIndex.compareTo(b.zIndex));
+
+    final strokesByClip = <String, List<Stroke>>{};
+    for (final stroke in ref.watch(boardStrokesProvider).valueOrNull ?? []) {
+      final clipId = stroke.clipId;
+      if (clipId == null) continue;
+      strokesByClip.putIfAbsent(clipId, () => []).add(stroke);
+    }
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -385,28 +476,45 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas> {
         return Focus(
           focusNode: _focusNode,
           autofocus: true,
-          child: Listener(
-            onPointerDown: _handlePointerDown,
-            onPointerMove: _handlePointerMove,
-            onPointerUp: _handlePointerUp,
-            onPointerSignal: _handlePointerSignal,
-            child: Container(
-              color: AppTheme.boardBackground,
-              width: double.infinity,
-              height: double.infinity,
-              child: Stack(
-                clipBehavior: Clip.hardEdge,
-                children: [
-                  for (final clip in sorted)
-                    _positionedClip(clip, dragging, selection, view),
-                  const MarqueeOverlay(),
-                  const SelectionHandles(),
-                  Positioned(
-                    right: 24,
-                    bottom: 24,
-                    child: BinDropTarget(highlighted: overBin, onTap: () {}),
-                  ),
-                ],
+          child: MouseRegion(
+            cursor: isDrawMode
+                ? SystemMouseCursors.precise
+                : SystemMouseCursors.basic,
+            child: Listener(
+              onPointerDown: _handlePointerDown,
+              onPointerMove: _handlePointerMove,
+              onPointerUp: _handlePointerUp,
+              onPointerSignal: _handlePointerSignal,
+              child: Container(
+                color: AppTheme.boardBackground,
+                width: double.infinity,
+                height: double.infinity,
+                child: Stack(
+                  clipBehavior: Clip.hardEdge,
+                  children: [
+                    for (final clip in sorted)
+                      _positionedClip(
+                        clip,
+                        dragging,
+                        selection,
+                        view,
+                        strokesByClip[clip.id] ?? const [],
+                      ),
+                    const Positioned.fill(child: DrawingOverlay()),
+                    if (!isDrawMode) ...[
+                      const MarqueeOverlay(),
+                      const SelectionHandles(),
+                    ],
+                    Positioned(
+                      right: 24,
+                      bottom: 24,
+                      child: BinDropTarget(
+                        highlighted: overBin,
+                        onTap: () {},
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -420,6 +528,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas> {
     Map<String, DraggingClip>? dragging,
     Set<String> selection,
     BoardViewState view,
+    List<Stroke> strokes,
   ) {
     final drag = dragging?[clip.id];
     final x = drag?.x ?? clip.x;
@@ -428,19 +537,47 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas> {
     final height = drag?.height ?? clip.height;
     final rotation = drag?.rotation ?? clip.rotation;
     final topLeft = _boardToScreen(Offset(x, y), view);
+    final boxWidth = width * view.scale;
+    final boxHeight = height * view.scale;
 
     return Positioned(
       left: topLeft.dx,
       top: topLeft.dy,
-      width: width * view.scale,
-      height: height * view.scale,
+      width: boxWidth,
+      height: boxHeight,
       child: IgnorePointer(
         child: Transform.rotate(
           angle: rotation,
           alignment: Alignment.center,
-          child: ClipWidget(
-            clip: clip,
-            selected: selection.contains(clip.id),
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: ClipWidget(
+                  clip: clip,
+                  selected: selection.contains(clip.id),
+                ),
+              ),
+              if (strokes.isNotEmpty)
+                Positioned.fill(
+                  child: CustomPaint(
+                    painter: StrokePainter([
+                      for (final stroke in strokes)
+                        StrokeSpec(
+                          points: stroke.points
+                              .map(
+                                (p) => Offset(
+                                  p.dx * boxWidth,
+                                  p.dy * boxHeight,
+                                ),
+                              )
+                              .toList(),
+                          color: hexToColor(stroke.colorHex),
+                          width: stroke.strokeWidth * view.scale,
+                        ),
+                    ]),
+                  ),
+                ),
+            ],
           ),
         ),
       ),
