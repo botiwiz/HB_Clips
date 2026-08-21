@@ -18,21 +18,21 @@ class ClipWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(10),
         border: Border.all(
-          color: selected ? AppTheme.accent : Colors.black54,
+          color: selected ? AppTheme.red : AppTheme.border,
           width: selected ? 2.5 : 1,
         ),
         boxShadow: const [
           BoxShadow(
-            color: Colors.black45,
-            blurRadius: 6,
-            offset: Offset(0, 3),
+            color: Colors.black54,
+            blurRadius: 10,
+            offset: Offset(0, 4),
           ),
         ],
         color: clip.type == ClipType.text
-            ? const Color(0xFFFFF3B0)
-            : AppTheme.surface,
+            ? AppTheme.textNoteSurface
+            : AppTheme.surfaceCard,
       ),
       clipBehavior: Clip.antiAlias,
       child: clip.type == ClipType.image ? _buildImage() : _buildText(),
@@ -43,7 +43,10 @@ class ClipWidget extends StatelessWidget {
     final path = clip.localFilePath;
     if (path == null) {
       return const Center(
-        child: Icon(Icons.broken_image_outlined, color: Colors.white38),
+        child: Icon(
+          Icons.broken_image_outlined,
+          color: AppTheme.textDisabled,
+        ),
       );
     }
     return Image.file(
@@ -52,7 +55,10 @@ class ClipWidget extends StatelessWidget {
       width: double.infinity,
       height: double.infinity,
       errorBuilder: (context, error, stackTrace) => const Center(
-        child: Icon(Icons.broken_image_outlined, color: Colors.white38),
+        child: Icon(
+          Icons.broken_image_outlined,
+          color: AppTheme.textDisabled,
+        ),
       ),
     );
   }
@@ -63,7 +69,7 @@ class ClipWidget extends StatelessWidget {
       child: Text(
         clip.textContent ?? '',
         style: const TextStyle(
-          color: Colors.black87,
+          color: AppTheme.textNoteText,
           fontSize: 14,
           height: 1.3,
         ),

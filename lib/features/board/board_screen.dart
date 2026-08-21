@@ -20,6 +20,7 @@ import 'controllers/board_controller.dart';
 import 'geometry/selection_geometry.dart';
 import 'services/clipboard_paste_service.dart';
 import 'widgets/board_canvas.dart';
+import 'widgets/board_toolbar.dart';
 import 'widgets/clip_counter_badge.dart';
 
 const _uuid = Uuid();
@@ -200,81 +201,6 @@ class BoardScreen extends ConsumerWidget {
     final isDrawMode = ref.watch(isDrawModeProvider);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('HB_Clips'),
-        bottom: isDrawMode
-            ? const PreferredSize(
-                preferredSize: Size.fromHeight(48),
-                child: DrawToolbar(),
-              )
-            : null,
-        actions: [
-          const ClipCounterBadge(),
-          const SizedBox(width: 12),
-          IconButton(
-            tooltip: isDrawMode ? 'Exit draw mode' : 'Draw / annotate',
-            icon: Icon(
-              isDrawMode ? Icons.edit : Icons.edit_outlined,
-              color: isDrawMode ? AppTheme.accent : null,
-            ),
-            onPressed: () => _toggleDrawMode(ref),
-          ),
-          if (!isDrawMode && hasSelection) ...[
-            IconButton(
-              tooltip: 'Bring to front',
-              icon: const Icon(Icons.flip_to_front_outlined),
-              onPressed: () => _applyZOrder(
-                ref,
-                (repo, id, boardId) => repo.bringToFront(id, boardId),
-              ),
-            ),
-            IconButton(
-              tooltip: 'Send to back',
-              icon: const Icon(Icons.flip_to_back_outlined),
-              onPressed: () => _applyZOrder(
-                ref,
-                (repo, id, boardId) => repo.sendToBack(id, boardId),
-              ),
-            ),
-            IconButton(
-              tooltip: 'Bin selected',
-              icon: const Icon(Icons.delete_sweep_outlined),
-              onPressed: () => _binSelected(ref),
-            ),
-            const SizedBox(width: 12),
-          ],
-          IconButton(
-            tooltip: 'Paste image (Ctrl+V)',
-            icon: const Icon(Icons.content_paste_outlined),
-            onPressed: () => pasteImageFromClipboard(context, ref),
-          ),
-          IconButton(
-            tooltip: 'Add text note',
-            icon: const Icon(Icons.note_add_outlined),
-            onPressed: () => _addTextNote(context, ref),
-          ),
-          IconButton(
-            tooltip: 'Add image clip',
-            icon: const Icon(Icons.add_photo_alternate_outlined),
-            onPressed: () => _addImageClip(context, ref),
-          ),
-          IconButton(
-            tooltip: 'Bin',
-            icon: const Icon(Icons.delete_outline),
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const BinScreen()),
-            ),
-          ),
-          IconButton(
-            tooltip: 'About',
-            icon: const Icon(Icons.info_outline),
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const AboutScreen()),
-            ),
-          ),
-          const SizedBox(width: 8),
-        ],
-      ),
       body: CallbackShortcuts(
         bindings: {
           const SingleActivator(LogicalKeyboardKey.delete): () =>
@@ -306,7 +232,109 @@ class BoardScreen extends ConsumerWidget {
           const SingleActivator(LogicalKeyboardKey.arrowDown, shift: true):
               () => _nudgeSelection(ref, const Offset(0, _nudgeStepFast)),
         },
-        child: const BoardCanvas(),
+        child: Stack(
+          children: [
+            const Positioned.fill(child: BoardCanvas()),
+            Positioned(
+              top: 16,
+              left: 16,
+              right: 16,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  PillGroup(
+                    children: [
+                      PillIconButton(
+                        tooltip: isDrawMode
+                            ? 'Exit draw mode'
+                            : 'Draw / annotate',
+                        icon: isDrawMode ? Icons.edit : Icons.edit_outlined,
+                        color: isDrawMode ? AppTheme.red : null,
+                        onPressed: () => _toggleDrawMode(ref),
+                      ),
+                      if (!isDrawMode && hasSelection) ...[
+                        PillIconButton(
+                          tooltip: 'Bring to front',
+                          icon: Icons.flip_to_front_outlined,
+                          onPressed: () => _applyZOrder(
+                            ref,
+                            (repo, id, boardId) =>
+                                repo.bringToFront(id, boardId),
+                          ),
+                        ),
+                        PillIconButton(
+                          tooltip: 'Send to back',
+                          icon: Icons.flip_to_back_outlined,
+                          onPressed: () => _applyZOrder(
+                            ref,
+                            (repo, id, boardId) =>
+                                repo.sendToBack(id, boardId),
+                          ),
+                        ),
+                        PillIconButton(
+                          tooltip: 'Bin selected',
+                          icon: Icons.delete_sweep_outlined,
+                          onPressed: () => _binSelected(ref),
+                        ),
+                      ],
+                      PillIconButton(
+                        tooltip: 'Paste image (Ctrl+V)',
+                        icon: Icons.content_paste_outlined,
+                        onPressed: () => pasteImageFromClipboard(context, ref),
+                      ),
+                      PillIconButton(
+                        tooltip: 'Add text note',
+                        icon: Icons.note_add_outlined,
+                        onPressed: () => _addTextNote(context, ref),
+                      ),
+                      PillIconButton(
+                        tooltip: 'Add image clip',
+                        icon: Icons.add_photo_alternate_outlined,
+                        onPressed: () => _addImageClip(context, ref),
+                      ),
+                    ],
+                  ),
+                  Row(
+                    children: [
+                      const ClipCounterBadge(),
+                      const SizedBox(width: 8),
+                      PillGroup(
+                        children: [
+                          PillIconButton(
+                            tooltip: 'Bin',
+                            icon: Icons.delete_outline,
+                            onPressed: () => Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => const BinScreen(),
+                              ),
+                            ),
+                          ),
+                          PillIconButton(
+                            tooltip: 'About',
+                            icon: Icons.info_outline,
+                            onPressed: () => Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => const AboutScreen(),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            if (isDrawMode)
+              const Positioned(
+                top: 76,
+                left: 0,
+                right: 0,
+                child: Center(child: DrawToolbar()),
+              ),
+          ],
+        ),
       ),
     );
   }

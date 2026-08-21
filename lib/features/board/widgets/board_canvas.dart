@@ -16,6 +16,7 @@ import '../controllers/board_controller.dart';
 import '../geometry/selection_geometry.dart';
 import 'bin_drop_target.dart';
 import 'clip_widget.dart';
+import 'dot_grid_background.dart';
 import 'marquee_overlay.dart';
 import 'selection_handles.dart';
 
@@ -486,12 +487,15 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas> {
               onPointerUp: _handlePointerUp,
               onPointerSignal: _handlePointerSignal,
               child: Container(
-                color: AppTheme.boardBackground,
+                color: AppTheme.canvasBackground,
                 width: double.infinity,
                 height: double.infinity,
                 child: Stack(
                   clipBehavior: Clip.hardEdge,
                   children: [
+                    Positioned.fill(
+                      child: CustomPaint(painter: DotGridPainter(view)),
+                    ),
                     for (final clip in sorted)
                       _positionedClip(
                         clip,

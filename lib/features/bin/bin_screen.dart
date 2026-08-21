@@ -84,6 +84,7 @@ class BinScreen extends ConsumerWidget {
           if (binned.isNotEmpty)
             TextButton.icon(
               onPressed: () => _emptyBin(context, ref, binned),
+              style: TextButton.styleFrom(foregroundColor: AppTheme.red),
               icon: const Icon(Icons.delete_forever_outlined),
               label: const Text('Empty Bin'),
             ),
@@ -94,7 +95,7 @@ class BinScreen extends ConsumerWidget {
           ? const Center(
               child: Text(
                 'Nothing in the bin.',
-                style: TextStyle(color: Colors.white54),
+                style: TextStyle(color: AppTheme.textSecondary),
               ),
             )
           : Column(
@@ -104,7 +105,7 @@ class BinScreen extends ConsumerWidget {
                   child: Text(
                     'Binned image clips still count toward your 30-image '
                     'limit until deleted forever.',
-                    style: TextStyle(color: Colors.white54, fontSize: 12),
+                    style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
                   ),
                 ),
                 Expanded(
@@ -171,19 +172,22 @@ class _BinnedClipTile extends ConsumerWidget {
     if (clip.type == ClipType.text) {
       return Container(
         width: double.infinity,
-        color: const Color(0xFFFFF3B0),
+        color: AppTheme.textNoteSurface,
         padding: const EdgeInsets.all(8),
         child: Text(
           clip.textContent ?? '',
           maxLines: 6,
           overflow: TextOverflow.ellipsis,
-          style: const TextStyle(color: Colors.black87, fontSize: 12),
+          style: const TextStyle(color: AppTheme.textNoteText, fontSize: 12),
         ),
       );
     }
     final path = clip.localFilePath;
     if (path == null) {
-      return const Icon(Icons.broken_image_outlined, color: Colors.white38);
+      return const Icon(
+        Icons.broken_image_outlined,
+        color: AppTheme.textDisabled,
+      );
     }
     return Image.file(File(path), fit: BoxFit.cover, width: double.infinity);
   }

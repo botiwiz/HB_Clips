@@ -15,20 +15,22 @@ class ClipCounterBadge extends ConsumerWidget {
     final remaining = ref.watch(imageSlotsRemainingProvider).valueOrNull;
     if (remaining == null) return const SizedBox.shrink();
 
+    // Brightness-based urgency instead of a second hue: only the truly
+    // critical tier gets the app's one red accent.
     final Color color;
     if (remaining <= 3) {
-      color = AppTheme.danger;
+      color = AppTheme.red;
     } else if (remaining <= 10) {
-      color = AppTheme.warning;
+      color = AppTheme.textPrimary;
     } else {
-      color = Colors.white70;
+      color = AppTheme.textSecondary;
     }
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(20),
+        color: AppTheme.surfaceElevated,
+        borderRadius: BorderRadius.circular(999),
         border: Border.all(color: color.withValues(alpha: 0.4)),
       ),
       child: Row(

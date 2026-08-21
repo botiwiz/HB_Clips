@@ -58,11 +58,13 @@ class SelectionHandles extends ConsumerWidget {
       child: IgnorePointer(
         child: DecoratedBox(
           decoration: BoxDecoration(
-            color: kind == HandleKind.rotate ? AppTheme.accent : Colors.white,
+            color: kind == HandleKind.rotate
+                ? AppTheme.red
+                : AppTheme.textPrimary,
             shape: kind == HandleKind.rotate
                 ? BoxShape.circle
                 : BoxShape.rectangle,
-            border: Border.all(color: Colors.black87, width: 1),
+            border: Border.all(color: AppTheme.canvasBackground, width: 1),
           ),
         ),
       ),

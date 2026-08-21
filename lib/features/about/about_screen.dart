@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
+import '../../core/theme/app_theme.dart';
+
 class AboutScreen extends StatelessWidget {
   const AboutScreen({super.key});
 
@@ -21,7 +23,7 @@ class AboutScreen extends StatelessWidget {
             const SizedBox(height: 4),
             const Text(
               'Created by Boti Harko',
-              style: TextStyle(color: Colors.white54),
+              style: TextStyle(color: AppTheme.textSecondary),
             ),
             const SizedBox(height: 16),
             FutureBuilder<PackageInfo>(
@@ -31,7 +33,10 @@ class AboutScreen extends StatelessWidget {
                 if (info == null) return const SizedBox.shrink();
                 return Text(
                   'Version ${info.version}+${info.buildNumber}',
-                  style: const TextStyle(color: Colors.white38, fontSize: 12),
+                  style: const TextStyle(
+                    color: AppTheme.textDisabled,
+                    fontSize: 12,
+                  ),
                 );
               },
             ),

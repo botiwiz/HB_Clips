@@ -17,7 +17,7 @@ class BinDropTarget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = highlighted ? AppTheme.danger : Colors.white54;
+    final color = highlighted ? AppTheme.red : AppTheme.textSecondary;
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
@@ -26,8 +26,8 @@ class BinDropTarget extends StatelessWidget {
         height: kBinTargetSize,
         decoration: BoxDecoration(
           color: highlighted
-              ? AppTheme.danger.withValues(alpha: 0.25)
-              : AppTheme.surface,
+              ? AppTheme.red.withValues(alpha: 0.25)
+              : AppTheme.surfaceElevated,
           shape: BoxShape.circle,
           border: Border.all(color: color, width: 2),
         ),
