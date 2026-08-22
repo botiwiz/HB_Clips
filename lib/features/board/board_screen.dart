@@ -7,11 +7,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
+import 'package:window_manager/window_manager.dart';
 
 import '../../core/constants.dart';
 import '../../core/theme/app_theme.dart';
 import '../../data/providers.dart';
 import '../../data/repositories/clips_repository.dart';
+import '../../main.dart';
 import '../about/about_screen.dart';
 import '../annotation/controllers/annotation_controller.dart';
 import '../annotation/draw_toolbar.dart';
@@ -238,10 +240,9 @@ class BoardScreen extends ConsumerWidget {
             Positioned(
               top: 16,
               left: 16,
-              right: 16,
+              right: isDesktopPlatform ? 56 : 16,
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   PillGroup(
                     children: [
@@ -295,6 +296,10 @@ class BoardScreen extends ConsumerWidget {
                       ),
                     ],
                   ),
+                  if (isDesktopPlatform)
+                    Expanded(child: DragToMoveArea(child: SizedBox.expand()))
+                  else
+                    const Spacer(),
                   Row(
                     children: [
                       const ClipCounterBadge(),
@@ -326,6 +331,12 @@ class BoardScreen extends ConsumerWidget {
                 ],
               ),
             ),
+            if (isDesktopPlatform)
+              const Positioned(
+                top: 16,
+                right: 12,
+                child: WindowCloseButton(),
+              ),
             if (isDrawMode)
               const Positioned(
                 top: 76,

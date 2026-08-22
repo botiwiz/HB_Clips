@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:window_manager/window_manager.dart';
 
 import '../../../core/theme/app_theme.dart';
 
@@ -48,6 +49,49 @@ class PillIconButton extends StatelessWidget {
       iconSize: 20,
       visualDensity: VisualDensity.compact,
       onPressed: onPressed,
+    );
+  }
+}
+
+/// The window's only close control, now that the OS title bar is gone -
+/// styled like a sticky note's corner X. Fills solid red on hover, matching
+/// the app's "red = irreversible action" rule (closing is about as
+/// irreversible as it gets).
+class WindowCloseButton extends StatefulWidget {
+  const WindowCloseButton({super.key});
+
+  @override
+  State<WindowCloseButton> createState() => _WindowCloseButtonState();
+}
+
+class _WindowCloseButtonState extends State<WindowCloseButton> {
+  bool _hovering = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hovering = true),
+      onExit: (_) => setState(() => _hovering = false),
+      child: GestureDetector(
+        onTap: () => windowManager.close(),
+        child: Container(
+          width: 28,
+          height: 28,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: _hovering ? AppTheme.red : AppTheme.surfaceElevated,
+            boxShadow: const [
+              BoxShadow(color: Colors.black54, blurRadius: 6, offset: Offset(0, 2)),
+            ],
+          ),
+          child: Icon(
+            Icons.close,
+            size: 16,
+            color: _hovering ? Colors.white : AppTheme.textSecondary,
+          ),
+        ),
+      ),
     );
   }
 }
