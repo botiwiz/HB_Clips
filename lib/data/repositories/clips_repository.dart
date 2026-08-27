@@ -76,6 +76,7 @@ class ClipsRepository {
     required double y,
     double width = kDefaultClipWidth,
     double height = kDefaultClipHeight,
+    double rotation = 0,
   }) async {
     final currentCount = await _currentImageCount(boardId);
     if (currentCount >= kMaxImageClips) {
@@ -91,6 +92,7 @@ class ClipsRepository {
         y: Value(y),
         width: Value(width),
         height: Value(height),
+        rotation: Value(rotation),
         zIndex: Value(zIndex),
         localFilePath: Value(localFilePath),
       ),

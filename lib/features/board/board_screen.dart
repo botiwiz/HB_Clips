@@ -21,6 +21,7 @@ import '../bin/bin_screen.dart';
 import 'controllers/board_controller.dart';
 import 'geometry/selection_geometry.dart';
 import 'services/clipboard_paste_service.dart';
+import 'services/pureref_import_service.dart';
 import 'widgets/board_canvas.dart';
 import 'widgets/board_toolbar.dart';
 import 'widgets/clip_counter_badge.dart';
@@ -102,6 +103,59 @@ class BoardScreen extends ConsumerWidget {
         ),
       );
     }
+  }
+
+  Future<void> _importPurFile(BuildContext context, WidgetRef ref) async {
+    final FilePickerResult? result;
+    try {
+      result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['pur'],
+        withData: false,
+      );
+    } catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            "Couldn't open the file picker. On Linux this needs zenity "
+            '(or kdialog) installed.',
+          ),
+          backgroundColor: AppTheme.danger,
+        ),
+      );
+      return;
+    }
+    final pickedPath = result?.files.single.path;
+    if (pickedPath == null) return;
+    if (!context.mounted) return;
+
+    final summary = await importPurFile(context, ref, pickedPath);
+    if (summary == null || !context.mounted) return;
+
+    final parts = <String>[
+      '${summary.imagesImported} image${summary.imagesImported == 1 ? '' : 's'}',
+      '${summary.textNotesImported} text note${summary.textNotesImported == 1 ? '' : 's'}',
+    ];
+    if (summary.imagesSkippedAtCap > 0) {
+      parts.add(
+        '${summary.imagesSkippedAtCap} image${summary.imagesSkippedAtCap == 1 ? '' : 's'} skipped (30-image limit reached)',
+      );
+    }
+
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Import complete'),
+        content: Text('Imported ${parts.join(', ')}.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _addTextNote(BuildContext context, WidgetRef ref) async {
@@ -293,6 +347,11 @@ class BoardScreen extends ConsumerWidget {
                         tooltip: 'Add image clip',
                         icon: Icons.add_photo_alternate_outlined,
                         onPressed: () => _addImageClip(context, ref),
+                      ),
+                      PillIconButton(
+                        tooltip: 'Import PureRef (.pur) file',
+                        icon: Icons.file_open_outlined,
+                        onPressed: () => _importPurFile(context, ref),
                       ),
                     ],
                   ),
