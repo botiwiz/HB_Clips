@@ -19,6 +19,7 @@ class DrawToolbar extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final selectedColor = ref.watch(strokeColorHexProvider);
     final width = ref.watch(strokeWidthValueProvider);
+    final tool = ref.watch(drawToolProvider);
 
     return Material(
       color: AppTheme.surfaceElevated,
@@ -27,10 +28,31 @@ class DrawToolbar extends ConsumerWidget {
       shadowColor: Colors.black54,
       child: Container(
         height: 48,
-        width: 440,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
+        width: 490,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
         child: Row(
           children: [
+            IconButton(
+              tooltip: 'Pen',
+              icon: const Icon(Icons.edit),
+              color: tool == DrawTool.pen ? AppTheme.red : null,
+              iconSize: 18,
+              visualDensity: VisualDensity.compact,
+              onPressed: () =>
+                  ref.read(drawToolProvider.notifier).state = DrawTool.pen,
+            ),
+            IconButton(
+              tooltip: 'Eraser',
+              icon: const Icon(Icons.auto_fix_off_outlined),
+              color: tool == DrawTool.eraser ? AppTheme.red : null,
+              iconSize: 18,
+              visualDensity: VisualDensity.compact,
+              onPressed: () =>
+                  ref.read(drawToolProvider.notifier).state = DrawTool.eraser,
+            ),
+            const SizedBox(width: 8),
+            const VerticalDivider(color: AppTheme.border, width: 1),
+            const SizedBox(width: 8),
             for (final colorHex in kStrokeColorPalette)
               ColorSwatchButton(
                 color: hexToColor(colorHex),

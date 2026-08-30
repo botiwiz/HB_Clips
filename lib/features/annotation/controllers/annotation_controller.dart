@@ -33,3 +33,15 @@ final strokeWidthValueProvider = StateProvider<double>(
 /// draw gesture is in progress. Rendered live by `DrawingOverlay`; only
 /// persisted to the repository on pointer-up.
 final liveStrokePointsProvider = StateProvider<List<Offset>?>((ref) => null);
+
+/// Which draw-mode sub-tool is active. `eyedropper` is wired up alongside
+/// `pen`/`eraser` here so the enum only needs defining once, even though its
+/// own toolbar button/pointer handling isn't added until later.
+enum DrawTool { pen, eraser, eyedropper }
+
+final drawToolProvider = StateProvider<DrawTool>((ref) => DrawTool.pen);
+
+/// Screen-space distance (matches other constant-screen-size hit radii like
+/// `ClipGeometry.handleHitRadius`) within which the eraser deletes a stroke
+/// it passes near.
+const double kEraserHitRadius = 12;

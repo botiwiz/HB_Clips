@@ -11,6 +11,7 @@ import '../../../data/models/stroke.dart';
 import '../../../data/providers.dart';
 import '../../annotation/controllers/annotation_controller.dart';
 import '../../annotation/drawing_overlay.dart';
+import '../../annotation/geometry/eraser_geometry.dart';
 import '../../annotation/stroke_painter.dart';
 import '../controllers/board_controller.dart';
 import '../controllers/crop_controller.dart';
@@ -469,6 +470,10 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas> {
   }
 
   void _handleDrawPointerDown(PointerDownEvent event) {
+    if (ref.read(drawToolProvider) == DrawTool.eraser) {
+      _eraseAt(event.localPosition);
+      return;
+    }
     final view = ref.read(boardViewProvider);
     final boardPos = _screenToBoard(event.localPosition, view);
     final clips = ref.read(activeClipsProvider).valueOrNull ?? [];
@@ -477,6 +482,10 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas> {
   }
 
   void _handleDrawPointerMove(PointerMoveEvent event) {
+    if (ref.read(drawToolProvider) == DrawTool.eraser) {
+      _eraseAt(event.localPosition);
+      return;
+    }
     final current = ref.read(liveStrokePointsProvider);
     if (current == null) return;
     final view = ref.read(boardViewProvider);
@@ -487,7 +496,55 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas> {
     ];
   }
 
+  /// Deletes every stroke (freestanding or clip-attached) that passes near
+  /// [screenPosition] - the eraser tool's hit-test, run on both pointer-down
+  /// and pointer-move so dragging the eraser across several strokes erases
+  /// all of them, not just the first one touched.
+  void _eraseAt(Offset screenPosition) {
+    final view = ref.read(boardViewProvider);
+    final boardPos = _screenToBoard(screenPosition, view);
+    final strokes = ref.read(boardStrokesProvider).valueOrNull ?? [];
+    final clips = ref.read(activeClipsProvider).valueOrNull ?? [];
+    final repo = ref.read(strokesRepositoryProvider);
+    final thresholdBoard = kEraserHitRadius / view.scale;
+
+    for (final stroke in strokes) {
+      if (stroke.clipId == null) {
+        if (EraserGeometry.strokeNearPoint(
+          stroke.points,
+          boardPos,
+          thresholdBoard,
+        )) {
+          repo.deleteStroke(stroke.id);
+        }
+        continue;
+      }
+      final clip = ClipGeometry.findById(clips, stroke.clipId!);
+      if (clip == null) continue;
+      final center = ClipGeometry.clipCenter(clip);
+      final local = ClipGeometry.rotatePoint(boardPos, center, -clip.rotation);
+      final fractional = Offset(
+        (local.dx - clip.x) / clip.width,
+        (local.dy - clip.y) / clip.height,
+      );
+      // A fractional-space threshold that approximates the screen-constant
+      // eraser radius - using clip width as the reference axis is a
+      // deliberate simplification (exact would be an ellipse for
+      // non-square clips), consistent with this app's other "close enough"
+      // hit-test tolerances.
+      final fractionalThreshold = thresholdBoard / clip.width;
+      if (EraserGeometry.strokeNearPoint(
+        stroke.points,
+        fractional,
+        fractionalThreshold,
+      )) {
+        repo.deleteStroke(stroke.id);
+      }
+    }
+  }
+
   void _handleDrawPointerUp(PointerUpEvent event) {
+    if (ref.read(drawToolProvider) == DrawTool.eraser) return;
     final points = ref.read(liveStrokePointsProvider);
     ref.read(liveStrokePointsProvider.notifier).state = null;
     final clip = _drawingClip;

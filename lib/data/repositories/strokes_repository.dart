@@ -57,4 +57,11 @@ class StrokesRepository {
   Future<void> deleteStrokesForClip(String clipId) {
     return (_db.delete(_db.strokes)..where((s) => s.clipId.equals(clipId))).go();
   }
+
+  /// Deletes a single stroke by id - the eraser tool's primitive (erasing
+  /// removes whichever whole strokes the pointer touches, not partial
+  /// segments).
+  Future<void> deleteStroke(String id) {
+    return (_db.delete(_db.strokes)..where((s) => s.id.equals(id))).go();
+  }
 }
