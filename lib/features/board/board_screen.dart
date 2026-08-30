@@ -13,6 +13,7 @@ import '../../core/constants.dart';
 import '../../core/theme/app_theme.dart';
 import '../../data/models/clip.dart';
 import '../../data/providers.dart';
+import '../../data/pureref/pur_writer.dart';
 import '../../data/repositories/clips_repository.dart';
 import '../../main.dart';
 import '../about/about_screen.dart';
@@ -152,6 +153,64 @@ class BoardScreen extends ConsumerWidget {
       builder: (context) => AlertDialog(
         title: const Text('Import complete'),
         content: Text('Imported ${parts.join(', ')}.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _exportPurFile(BuildContext context, WidgetRef ref) async {
+    String? savePath;
+    try {
+      savePath = await FilePicker.platform.saveFile(
+        dialogTitle: 'Export board as .pur',
+        fileName: 'board.pur',
+        type: FileType.custom,
+        allowedExtensions: ['pur'],
+      );
+    } catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            "Couldn't open the save dialog. On Linux this needs zenity "
+            '(or kdialog) installed.',
+          ),
+          backgroundColor: AppTheme.danger,
+        ),
+      );
+      return;
+    }
+    if (savePath == null) return;
+    if (!savePath.toLowerCase().endsWith('.pur')) {
+      savePath = '$savePath.pur';
+    }
+
+    final clips = ref.read(activeClipsProvider).valueOrNull ?? [];
+    final result = await writePurFile(clips);
+    await File(savePath).writeAsBytes(result.bytes);
+    if (!context.mounted) return;
+
+    final summary = result.summary;
+    final parts = <String>[
+      '${summary.imagesExported} image${summary.imagesExported == 1 ? '' : 's'}',
+      '${summary.textNotesExported} text note${summary.textNotesExported == 1 ? '' : 's'}',
+    ];
+    if (summary.imagesSkipped > 0) {
+      parts.add(
+        '${summary.imagesSkipped} image${summary.imagesSkipped == 1 ? '' : 's'} skipped (unreadable file)',
+      );
+    }
+
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Export complete'),
+        content: Text('Exported ${parts.join(', ')}.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
@@ -426,6 +485,11 @@ class BoardScreen extends ConsumerWidget {
                         tooltip: 'Import PureRef (.pur) file',
                         icon: Icons.file_open_outlined,
                         onPressed: () => _importPurFile(context, ref),
+                      ),
+                      PillIconButton(
+                        tooltip: 'Export board as .pur',
+                        icon: Icons.file_download_outlined,
+                        onPressed: () => _exportPurFile(context, ref),
                       ),
                     ],
                   ),
