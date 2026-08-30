@@ -13,11 +13,14 @@ import '../../annotation/controllers/annotation_controller.dart';
 import '../../annotation/drawing_overlay.dart';
 import '../../annotation/stroke_painter.dart';
 import '../controllers/board_controller.dart';
+import '../controllers/crop_controller.dart';
+import '../geometry/crop_geometry.dart';
 import '../geometry/selection_geometry.dart';
 import 'bin_drop_target.dart';
-import 'clip_widget.dart';
-import 'dot_grid_background.dart';
 import 'clip_style_popover.dart';
+import 'clip_widget.dart';
+import 'crop_overlay.dart';
+import 'dot_grid_background.dart';
 import 'marquee_overlay.dart';
 import 'selection_handles.dart';
 
@@ -75,6 +78,13 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas> {
   // stored in that clip's local frame.
   BoardClip? _drawingClip;
 
+  // Crop mode: the clip being cropped and its crop rect at gesture-start,
+  // captured once per drag so repeated CropGeometry.updateCropRect calls
+  // stay stable (same convention as the resize-handle drag above).
+  CropHandleKind? _activeCropHandle;
+  BoardClip? _cropModeClip;
+  Rect? _cropDragStartRect;
+
   Size _canvasSize = Size.zero;
 
   @override
@@ -117,6 +127,10 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas> {
       _handleDrawPointerDown(event);
       return;
     }
+    if (ref.read(isCropModeProvider)) {
+      _handleCropPointerDown(event);
+      return;
+    }
     final view = ref.read(boardViewProvider);
     final selection = ref.read(selectedClipIdsProvider);
     final clips = ref.read(activeClipsProvider).valueOrNull ?? [];
@@ -141,6 +155,13 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas> {
     _didPanMove = false;
     _marqueeMoved = false;
     _groupDragMoved = false;
+    // Cleared unconditionally so a miss below (e.g. a click on a toolbar
+    // button, which this canvas's raw Listener also receives as a
+    // full-screen sibling) can't leave a stale handle for a later,
+    // unrelated gesture's pointer-move to misinterpret as a resize/rotate
+    // still in progress.
+    _activeHandle = null;
+    _handleStartClip = null;
 
     // 1. A handle on the sole selected clip takes priority over everything.
     if (selection.length == 1) {
@@ -181,7 +202,16 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas> {
       }
 
       final Set<String> activeSelection;
-      if (selection.contains(hit.id) && selection.length > 1) {
+      if (hit.groupId != null) {
+        // A plain click on a grouped clip always selects the whole group -
+        // only a modifier-click (handled above) picks one member out.
+        activeSelection = clips
+            .where((c) => c.groupId == hit.groupId)
+            .map((c) => c.id)
+            .toSet();
+        ref.read(selectedClipIdsProvider.notifier).state = activeSelection;
+        _pendingCollapseId = null;
+      } else if (selection.contains(hit.id) && selection.length > 1) {
         activeSelection = selection;
         _pendingCollapseId = hit.id;
       } else {
@@ -230,6 +260,10 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas> {
   void _handlePointerMove(PointerMoveEvent event) {
     if (ref.read(isDrawModeProvider)) {
       _handleDrawPointerMove(event);
+      return;
+    }
+    if (ref.read(isCropModeProvider)) {
+      _handleCropPointerMove(event);
       return;
     }
     final view = ref.read(boardViewProvider);
@@ -342,6 +376,10 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas> {
   void _handlePointerUp(PointerUpEvent event) {
     if (ref.read(isDrawModeProvider)) {
       _handleDrawPointerUp(event);
+      return;
+    }
+    if (ref.read(isCropModeProvider)) {
+      _handleCropPointerUp(event);
       return;
     }
     final repo = ref.read(clipsRepositoryProvider);
@@ -489,6 +527,64 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas> {
     }
   }
 
+  void _handleCropPointerDown(PointerDownEvent event) {
+    // Unconditionally clear any previous drag state first - a miss here
+    // (e.g. a tap on the crop toolbar's own confirm/cancel buttons, which
+    // this canvas's raw Listener also receives since it's a full-screen
+    // sibling) must not leave a stale handle/rect around for the next
+    // pointer-move to misinterpret as a continuing drag.
+    _activeCropHandle = null;
+    _cropModeClip = null;
+    _cropDragStartRect = null;
+
+    final selection = ref.read(selectedClipIdsProvider);
+    if (selection.length != 1) return;
+    final clips = ref.read(activeClipsProvider).valueOrNull ?? [];
+    final clip = ClipGeometry.findById(clips, selection.first);
+    if (clip == null) return;
+    final view = ref.read(boardViewProvider);
+    final cropRect = ref.read(cropRectProvider) ?? const Rect.fromLTWH(0, 0, 1, 1);
+    final handle = CropGeometry.hitTestHandle(
+      clip,
+      view,
+      cropRect,
+      event.localPosition,
+    );
+    if (handle != null) {
+      _activeCropHandle = handle;
+      _cropModeClip = clip;
+      _cropDragStartRect = cropRect;
+    }
+  }
+
+  void _handleCropPointerMove(PointerMoveEvent event) {
+    if (_activeCropHandle == null ||
+        _cropModeClip == null ||
+        _cropDragStartRect == null) {
+      return;
+    }
+    final view = ref.read(boardViewProvider);
+    final boardPos = _screenToBoard(event.localPosition, view);
+    final clip = _cropModeClip!;
+    final center = ClipGeometry.clipCenter(clip);
+    final local = ClipGeometry.rotatePoint(boardPos, center, -clip.rotation);
+    final fractional = Offset(
+      (local.dx - clip.x) / clip.width,
+      (local.dy - clip.y) / clip.height,
+    );
+    ref.read(cropRectProvider.notifier).state = CropGeometry.updateCropRect(
+      _cropDragStartRect!,
+      _activeCropHandle!,
+      fractional,
+    );
+  }
+
+  void _handleCropPointerUp(PointerUpEvent event) {
+    _activeCropHandle = null;
+    _cropModeClip = null;
+    _cropDragStartRect = null;
+  }
+
   @override
   Widget build(BuildContext context) {
     final clipsAsync = ref.watch(activeClipsProvider);
@@ -497,6 +593,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas> {
     final selection = ref.watch(selectedClipIdsProvider);
     final overBin = ref.watch(isDraggingOverBinProvider);
     final isDrawMode = ref.watch(isDrawModeProvider);
+    final isCropMode = ref.watch(isCropModeProvider);
 
     final clips = clipsAsync.valueOrNull ?? [];
     final sorted = [...clips]..sort((a, b) => a.zIndex.compareTo(b.zIndex));
@@ -542,7 +639,9 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas> {
                         strokesByClip[clip.id] ?? const [],
                       ),
                     const Positioned.fill(child: DrawingOverlay()),
-                    if (!isDrawMode) ...[
+                    if (isCropMode) ...[
+                      const CropOverlay(),
+                    ] else if (!isDrawMode) ...[
                       const MarqueeOverlay(),
                       const SelectionHandles(),
                       const ClipStylePopover(),

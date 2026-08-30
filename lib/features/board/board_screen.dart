@@ -11,6 +11,7 @@ import 'package:window_manager/window_manager.dart';
 
 import '../../core/constants.dart';
 import '../../core/theme/app_theme.dart';
+import '../../data/models/clip.dart';
 import '../../data/providers.dart';
 import '../../data/repositories/clips_repository.dart';
 import '../../main.dart';
@@ -19,12 +20,14 @@ import '../annotation/controllers/annotation_controller.dart';
 import '../annotation/draw_toolbar.dart';
 import '../bin/bin_screen.dart';
 import 'controllers/board_controller.dart';
+import 'controllers/crop_controller.dart';
 import 'geometry/selection_geometry.dart';
 import 'services/clipboard_paste_service.dart';
 import 'services/pureref_import_service.dart';
 import 'widgets/board_canvas.dart';
 import 'widgets/board_toolbar.dart';
 import 'widgets/clip_counter_badge.dart';
+import 'widgets/crop_toolbar.dart';
 
 const _uuid = Uuid();
 
@@ -250,13 +253,48 @@ class BoardScreen extends ConsumerWidget {
     }
   }
 
+  void _groupSelection(WidgetRef ref) {
+    final selection = ref.read(selectedClipIdsProvider);
+    if (selection.length < 2) return;
+    ref.read(clipsRepositoryProvider).groupClips(selection.toList());
+  }
+
+  void _ungroupSelection(WidgetRef ref, String groupId) {
+    ref.read(clipsRepositoryProvider).ungroupClips(groupId);
+  }
+
+  void _toggleCropMode(WidgetRef ref) {
+    final next = !ref.read(isCropModeProvider);
+    ref.read(isCropModeProvider.notifier).state = next;
+    ref.read(cropRectProvider.notifier).state = next
+        ? const Rect.fromLTWH(0, 0, 1, 1)
+        : null;
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final selection = ref.watch(selectedClipIdsProvider);
     final hasSelection = selection.isNotEmpty;
     final isDrawMode = ref.watch(isDrawModeProvider);
+    final isCropMode = ref.watch(isCropModeProvider);
     final snapToGrid = ref.watch(snapToGridProvider);
     final alwaysOnTop = ref.watch(alwaysOnTopProvider);
+    final clips = ref.watch(activeClipsProvider).valueOrNull ?? [];
+    final selectedClips = [
+      for (final c in clips)
+        if (selection.contains(c.id)) c,
+    ];
+    final canGroup = selection.length >= 2;
+    final commonGroupId = selectedClips.isNotEmpty
+        ? selectedClips.first.groupId
+        : null;
+    final canUngroup =
+        commonGroupId != null &&
+        selectedClips.every((c) => c.groupId == commonGroupId);
+    final canCrop =
+        !isDrawMode &&
+        selectedClips.length == 1 &&
+        selectedClips.first.type == ClipType.image;
 
     return Scaffold(
       body: CallbackShortcuts(
@@ -321,6 +359,26 @@ class BoardScreen extends ConsumerWidget {
                             .state = !snapToGrid,
                       ),
                       if (!isDrawMode && hasSelection) ...[
+                        if (canGroup)
+                          PillIconButton(
+                            tooltip: 'Group',
+                            icon: Icons.group_work_outlined,
+                            onPressed: () => _groupSelection(ref),
+                          ),
+                        if (canUngroup)
+                          PillIconButton(
+                            tooltip: 'Ungroup',
+                            icon: Icons.group_off_outlined,
+                            onPressed: () =>
+                                _ungroupSelection(ref, commonGroupId),
+                          ),
+                        if (canCrop || isCropMode)
+                          PillIconButton(
+                            tooltip: isCropMode ? 'Exit crop' : 'Crop image',
+                            icon: Icons.crop,
+                            color: isCropMode ? AppTheme.red : null,
+                            onPressed: () => _toggleCropMode(ref),
+                          ),
                         PillIconButton(
                           tooltip: 'Bring to front',
                           icon: Icons.flip_to_front_outlined,
@@ -430,6 +488,13 @@ class BoardScreen extends ConsumerWidget {
                 left: 0,
                 right: 0,
                 child: Center(child: DrawToolbar()),
+              ),
+            if (isCropMode)
+              const Positioned(
+                top: 76,
+                left: 0,
+                right: 0,
+                child: Center(child: CropToolbar()),
               ),
           ],
         ),

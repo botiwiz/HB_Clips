@@ -1,8 +1,11 @@
 import 'package:drift/drift.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../core/constants.dart';
 import '../local/database.dart';
 import '../models/clip.dart';
+
+const _uuid = Uuid();
 
 /// Thrown when adding an image clip would exceed [kMaxImageClips]. Binned
 /// images still count toward the cap - only a permanent delete frees a slot.
@@ -155,6 +158,29 @@ class ClipsRepository {
     );
   }
 
+  /// Swaps in a newly-cropped image file for [id] and updates its board
+  /// bounds to match (called by the crop tool - a destructive edit, no
+  /// undo, matching the app's other irreversible-edit affordances).
+  Future<void> replaceImage(
+    String id, {
+    required String localFilePath,
+    required double x,
+    required double y,
+    required double width,
+    required double height,
+  }) {
+    return (_db.update(_db.clips)..where((c) => c.id.equals(id))).write(
+      ClipsCompanion(
+        localFilePath: Value(localFilePath),
+        x: Value(x),
+        y: Value(y),
+        width: Value(width),
+        height: Value(height),
+        updatedAt: Value(DateTime.now()),
+      ),
+    );
+  }
+
   Future<void> updateTextContent(String id, String textContent) {
     return (_db.update(_db.clips)..where((c) => c.id.equals(id))).write(
       ClipsCompanion(
@@ -256,5 +282,31 @@ class ClipsRepository {
     return (_db.delete(
       _db.clips,
     )..where((c) => c.boardId.equals(boardId) & c.isBinned.equals(true))).go();
+  }
+
+  /// Assigns a fresh group id to every clip in [ids], so clicking any one of
+  /// them selects (and then drags) the whole set.
+  Future<void> groupClips(List<String> ids) async {
+    final groupId = _uuid.v4();
+    for (final id in ids) {
+      await (_db.update(_db.clips)..where((c) => c.id.equals(id))).write(
+        ClipsCompanion(
+          groupId: Value(groupId),
+          updatedAt: Value(DateTime.now()),
+        ),
+      );
+    }
+  }
+
+  /// Clears the group id from every clip currently sharing [groupId].
+  Future<void> ungroupClips(String groupId) {
+    return (_db.update(
+      _db.clips,
+    )..where((c) => c.groupId.equals(groupId))).write(
+      ClipsCompanion(
+        groupId: const Value(null),
+        updatedAt: Value(DateTime.now()),
+      ),
+    );
   }
 }

@@ -111,6 +111,17 @@ class $ClipsTable extends Clips with TableInfo<$ClipsTable, ClipRow> {
     requiredDuringInsert: false,
     defaultValue: const Constant(1.0),
   );
+  static const VerificationMeta _groupIdMeta = const VerificationMeta(
+    'groupId',
+  );
+  @override
+  late final GeneratedColumn<String> groupId = GeneratedColumn<String>(
+    'group_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _textContentMeta = const VerificationMeta(
     'textContent',
   );
@@ -230,6 +241,7 @@ class $ClipsTable extends Clips with TableInfo<$ClipsTable, ClipRow> {
     rotation,
     zIndex,
     opacity,
+    groupId,
     textContent,
     backgroundColorHex,
     storagePath,
@@ -307,6 +319,12 @@ class $ClipsTable extends Clips with TableInfo<$ClipsTable, ClipRow> {
       context.handle(
         _opacityMeta,
         opacity.isAcceptableOrUnknown(data['opacity']!, _opacityMeta),
+      );
+    }
+    if (data.containsKey('group_id')) {
+      context.handle(
+        _groupIdMeta,
+        groupId.isAcceptableOrUnknown(data['group_id']!, _groupIdMeta),
       );
     }
     if (data.containsKey('text_content')) {
@@ -424,6 +442,10 @@ class $ClipsTable extends Clips with TableInfo<$ClipsTable, ClipRow> {
         DriftSqlType.double,
         data['${effectivePrefix}opacity'],
       )!,
+      groupId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}group_id'],
+      ),
       textContent: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}text_content'],
@@ -485,6 +507,10 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
 
   /// 0.0 (fully transparent) to 1.0 (fully opaque, the default).
   final double opacity;
+
+  /// Shared by every clip in a group; null when ungrouped. Clicking any
+  /// clip in a group selects (and then drags) every clip sharing this id.
+  final String? groupId;
   final String? textContent;
 
   /// Custom background color for a text note, as `#RRGGBB`. Null uses the
@@ -515,6 +541,7 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
     required this.rotation,
     required this.zIndex,
     required this.opacity,
+    this.groupId,
     this.textContent,
     this.backgroundColorHex,
     this.storagePath,
@@ -538,6 +565,9 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
     map['rotation'] = Variable<double>(rotation);
     map['z_index'] = Variable<int>(zIndex);
     map['opacity'] = Variable<double>(opacity);
+    if (!nullToAbsent || groupId != null) {
+      map['group_id'] = Variable<String>(groupId);
+    }
     if (!nullToAbsent || textContent != null) {
       map['text_content'] = Variable<String>(textContent);
     }
@@ -572,6 +602,9 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
       rotation: Value(rotation),
       zIndex: Value(zIndex),
       opacity: Value(opacity),
+      groupId: groupId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(groupId),
       textContent: textContent == null && nullToAbsent
           ? const Value.absent()
           : Value(textContent),
@@ -610,6 +643,7 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
       rotation: serializer.fromJson<double>(json['rotation']),
       zIndex: serializer.fromJson<int>(json['zIndex']),
       opacity: serializer.fromJson<double>(json['opacity']),
+      groupId: serializer.fromJson<String?>(json['groupId']),
       textContent: serializer.fromJson<String?>(json['textContent']),
       backgroundColorHex: serializer.fromJson<String?>(
         json['backgroundColorHex'],
@@ -637,6 +671,7 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
       'rotation': serializer.toJson<double>(rotation),
       'zIndex': serializer.toJson<int>(zIndex),
       'opacity': serializer.toJson<double>(opacity),
+      'groupId': serializer.toJson<String?>(groupId),
       'textContent': serializer.toJson<String?>(textContent),
       'backgroundColorHex': serializer.toJson<String?>(backgroundColorHex),
       'storagePath': serializer.toJson<String?>(storagePath),
@@ -660,6 +695,7 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
     double? rotation,
     int? zIndex,
     double? opacity,
+    Value<String?> groupId = const Value.absent(),
     Value<String?> textContent = const Value.absent(),
     Value<String?> backgroundColorHex = const Value.absent(),
     Value<String?> storagePath = const Value.absent(),
@@ -680,6 +716,7 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
     rotation: rotation ?? this.rotation,
     zIndex: zIndex ?? this.zIndex,
     opacity: opacity ?? this.opacity,
+    groupId: groupId.present ? groupId.value : this.groupId,
     textContent: textContent.present ? textContent.value : this.textContent,
     backgroundColorHex: backgroundColorHex.present
         ? backgroundColorHex.value
@@ -706,6 +743,7 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
       rotation: data.rotation.present ? data.rotation.value : this.rotation,
       zIndex: data.zIndex.present ? data.zIndex.value : this.zIndex,
       opacity: data.opacity.present ? data.opacity.value : this.opacity,
+      groupId: data.groupId.present ? data.groupId.value : this.groupId,
       textContent: data.textContent.present
           ? data.textContent.value
           : this.textContent,
@@ -739,6 +777,7 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
           ..write('rotation: $rotation, ')
           ..write('zIndex: $zIndex, ')
           ..write('opacity: $opacity, ')
+          ..write('groupId: $groupId, ')
           ..write('textContent: $textContent, ')
           ..write('backgroundColorHex: $backgroundColorHex, ')
           ..write('storagePath: $storagePath, ')
@@ -764,6 +803,7 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
     rotation,
     zIndex,
     opacity,
+    groupId,
     textContent,
     backgroundColorHex,
     storagePath,
@@ -788,6 +828,7 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
           other.rotation == this.rotation &&
           other.zIndex == this.zIndex &&
           other.opacity == this.opacity &&
+          other.groupId == this.groupId &&
           other.textContent == this.textContent &&
           other.backgroundColorHex == this.backgroundColorHex &&
           other.storagePath == this.storagePath &&
@@ -810,6 +851,7 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
   final Value<double> rotation;
   final Value<int> zIndex;
   final Value<double> opacity;
+  final Value<String?> groupId;
   final Value<String?> textContent;
   final Value<String?> backgroundColorHex;
   final Value<String?> storagePath;
@@ -831,6 +873,7 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
     this.rotation = const Value.absent(),
     this.zIndex = const Value.absent(),
     this.opacity = const Value.absent(),
+    this.groupId = const Value.absent(),
     this.textContent = const Value.absent(),
     this.backgroundColorHex = const Value.absent(),
     this.storagePath = const Value.absent(),
@@ -853,6 +896,7 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
     this.rotation = const Value.absent(),
     this.zIndex = const Value.absent(),
     this.opacity = const Value.absent(),
+    this.groupId = const Value.absent(),
     this.textContent = const Value.absent(),
     this.backgroundColorHex = const Value.absent(),
     this.storagePath = const Value.absent(),
@@ -877,6 +921,7 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
     Expression<double>? rotation,
     Expression<int>? zIndex,
     Expression<double>? opacity,
+    Expression<String>? groupId,
     Expression<String>? textContent,
     Expression<String>? backgroundColorHex,
     Expression<String>? storagePath,
@@ -899,6 +944,7 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
       if (rotation != null) 'rotation': rotation,
       if (zIndex != null) 'z_index': zIndex,
       if (opacity != null) 'opacity': opacity,
+      if (groupId != null) 'group_id': groupId,
       if (textContent != null) 'text_content': textContent,
       if (backgroundColorHex != null)
         'background_color_hex': backgroundColorHex,
@@ -924,6 +970,7 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
     Value<double>? rotation,
     Value<int>? zIndex,
     Value<double>? opacity,
+    Value<String?>? groupId,
     Value<String?>? textContent,
     Value<String?>? backgroundColorHex,
     Value<String?>? storagePath,
@@ -946,6 +993,7 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
       rotation: rotation ?? this.rotation,
       zIndex: zIndex ?? this.zIndex,
       opacity: opacity ?? this.opacity,
+      groupId: groupId ?? this.groupId,
       textContent: textContent ?? this.textContent,
       backgroundColorHex: backgroundColorHex ?? this.backgroundColorHex,
       storagePath: storagePath ?? this.storagePath,
@@ -991,6 +1039,9 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
     }
     if (opacity.present) {
       map['opacity'] = Variable<double>(opacity.value);
+    }
+    if (groupId.present) {
+      map['group_id'] = Variable<String>(groupId.value);
     }
     if (textContent.present) {
       map['text_content'] = Variable<String>(textContent.value);
@@ -1038,6 +1089,7 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
           ..write('rotation: $rotation, ')
           ..write('zIndex: $zIndex, ')
           ..write('opacity: $opacity, ')
+          ..write('groupId: $groupId, ')
           ..write('textContent: $textContent, ')
           ..write('backgroundColorHex: $backgroundColorHex, ')
           ..write('storagePath: $storagePath, ')
@@ -2157,6 +2209,7 @@ typedef $$ClipsTableCreateCompanionBuilder =
       Value<double> rotation,
       Value<int> zIndex,
       Value<double> opacity,
+      Value<String?> groupId,
       Value<String?> textContent,
       Value<String?> backgroundColorHex,
       Value<String?> storagePath,
@@ -2180,6 +2233,7 @@ typedef $$ClipsTableUpdateCompanionBuilder =
       Value<double> rotation,
       Value<int> zIndex,
       Value<double> opacity,
+      Value<String?> groupId,
       Value<String?> textContent,
       Value<String?> backgroundColorHex,
       Value<String?> storagePath,
@@ -2247,6 +2301,11 @@ class $$ClipsTableFilterComposer extends Composer<_$AppDatabase, $ClipsTable> {
 
   ColumnFilters<double> get opacity => $composableBuilder(
     column: $table.opacity,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get groupId => $composableBuilder(
+    column: $table.groupId,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -2355,6 +2414,11 @@ class $$ClipsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get groupId => $composableBuilder(
+    column: $table.groupId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get textContent => $composableBuilder(
     column: $table.textContent,
     builder: (column) => ColumnOrderings(column),
@@ -2440,6 +2504,9 @@ class $$ClipsTableAnnotationComposer
   GeneratedColumn<double> get opacity =>
       $composableBuilder(column: $table.opacity, builder: (column) => column);
 
+  GeneratedColumn<String> get groupId =>
+      $composableBuilder(column: $table.groupId, builder: (column) => column);
+
   GeneratedColumn<String> get textContent => $composableBuilder(
     column: $table.textContent,
     builder: (column) => column,
@@ -2514,6 +2581,7 @@ class $$ClipsTableTableManager
                 Value<double> rotation = const Value.absent(),
                 Value<int> zIndex = const Value.absent(),
                 Value<double> opacity = const Value.absent(),
+                Value<String?> groupId = const Value.absent(),
                 Value<String?> textContent = const Value.absent(),
                 Value<String?> backgroundColorHex = const Value.absent(),
                 Value<String?> storagePath = const Value.absent(),
@@ -2535,6 +2603,7 @@ class $$ClipsTableTableManager
                 rotation: rotation,
                 zIndex: zIndex,
                 opacity: opacity,
+                groupId: groupId,
                 textContent: textContent,
                 backgroundColorHex: backgroundColorHex,
                 storagePath: storagePath,
@@ -2558,6 +2627,7 @@ class $$ClipsTableTableManager
                 Value<double> rotation = const Value.absent(),
                 Value<int> zIndex = const Value.absent(),
                 Value<double> opacity = const Value.absent(),
+                Value<String?> groupId = const Value.absent(),
                 Value<String?> textContent = const Value.absent(),
                 Value<String?> backgroundColorHex = const Value.absent(),
                 Value<String?> storagePath = const Value.absent(),
@@ -2579,6 +2649,7 @@ class $$ClipsTableTableManager
                 rotation: rotation,
                 zIndex: zIndex,
                 opacity: opacity,
+                groupId: groupId,
                 textContent: textContent,
                 backgroundColorHex: backgroundColorHex,
                 storagePath: storagePath,

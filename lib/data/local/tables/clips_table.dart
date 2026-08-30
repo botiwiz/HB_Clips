@@ -25,6 +25,10 @@ class Clips extends Table {
   /// 0.0 (fully transparent) to 1.0 (fully opaque, the default).
   RealColumn get opacity => real().withDefault(const Constant(1.0))();
 
+  /// Shared by every clip in a group; null when ungrouped. Clicking any
+  /// clip in a group selects (and then drags) every clip sharing this id.
+  TextColumn get groupId => text().nullable()();
+
   TextColumn get textContent => text().nullable()();
 
   /// Custom background color for a text note, as `#RRGGBB`. Null uses the
