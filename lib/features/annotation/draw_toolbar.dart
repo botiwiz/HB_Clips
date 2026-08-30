@@ -30,7 +30,7 @@ class DrawToolbar extends ConsumerWidget {
       shadowColor: Colors.black54,
       child: Container(
         height: 48,
-        width: 570,
+        width: 610,
         padding: const EdgeInsets.symmetric(horizontal: 12),
         child: Row(
           children: [
@@ -51,6 +51,15 @@ class DrawToolbar extends ConsumerWidget {
               visualDensity: VisualDensity.compact,
               onPressed: () =>
                   ref.read(drawToolProvider.notifier).state = DrawTool.eraser,
+            ),
+            IconButton(
+              tooltip: 'Eyedropper',
+              icon: const Icon(Icons.colorize),
+              color: tool == DrawTool.eyedropper ? AppTheme.red : null,
+              iconSize: 18,
+              visualDensity: VisualDensity.compact,
+              onPressed: () => ref.read(drawToolProvider.notifier).state =
+                  DrawTool.eyedropper,
             ),
             const SizedBox(width: 8),
             const VerticalDivider(color: AppTheme.border, width: 1),

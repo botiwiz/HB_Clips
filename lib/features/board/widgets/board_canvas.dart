@@ -17,6 +17,7 @@ import '../controllers/board_controller.dart';
 import '../controllers/crop_controller.dart';
 import '../geometry/crop_geometry.dart';
 import '../geometry/selection_geometry.dart';
+import '../services/eyedropper_service.dart';
 import 'bin_drop_target.dart';
 import 'clip_style_popover.dart';
 import 'clip_widget.dart';
@@ -470,8 +471,13 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas> {
   }
 
   void _handleDrawPointerDown(PointerDownEvent event) {
-    if (ref.read(drawToolProvider) == DrawTool.eraser) {
+    final tool = ref.read(drawToolProvider);
+    if (tool == DrawTool.eraser) {
       _eraseAt(event.localPosition);
+      return;
+    }
+    if (tool == DrawTool.eyedropper) {
+      _pickColorAt(event.localPosition);
       return;
     }
     final view = ref.read(boardViewProvider);
@@ -541,6 +547,33 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas> {
         repo.deleteStroke(stroke.id);
       }
     }
+  }
+
+  /// Eyedropper: samples the color of whichever image clip is under
+  /// [screenPosition] and writes it into the active stroke color, then
+  /// switches back to the pen tool (one-shot-then-return, standard
+  /// eyedropper UX). A no-op if the pointer isn't over an image clip.
+  void _pickColorAt(Offset screenPosition) {
+    final view = ref.read(boardViewProvider);
+    final boardPos = _screenToBoard(screenPosition, view);
+    final clips = ref.read(activeClipsProvider).valueOrNull ?? [];
+    final clip = _hitTestClip(clips, boardPos);
+    if (clip == null ||
+        clip.type != ClipType.image ||
+        clip.localFilePath == null) {
+      return;
+    }
+    final center = ClipGeometry.clipCenter(clip);
+    final local = ClipGeometry.rotatePoint(boardPos, center, -clip.rotation);
+    final fractional = Offset(
+      (local.dx - clip.x) / clip.width,
+      (local.dy - clip.y) / clip.height,
+    );
+    sampleColorAt(clip.localFilePath!, fractional).then((hex) {
+      if (hex == null || !mounted) return;
+      ref.read(strokeColorHexProvider.notifier).state = hex;
+      ref.read(drawToolProvider.notifier).state = DrawTool.pen;
+    });
   }
 
   void _handleDrawPointerUp(PointerUpEvent event) {
