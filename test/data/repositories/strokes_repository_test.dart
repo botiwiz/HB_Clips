@@ -36,6 +36,24 @@ void main() {
     expect(strokes.single.colorHex, '#FF3B30');
     expect(strokes.single.strokeWidth, 4);
     expect(strokes.single.points, points);
+    expect(strokes.single.dashed, isFalse);
+    expect(strokes.single.arrowEnd, isFalse);
+  });
+
+  test('dashed and arrowEnd flags survive an add/watch round trip', () async {
+    await repo.addStroke(
+      id: _uuid.v4(),
+      boardId: kLocalBoardId,
+      colorHex: '#FF3B30',
+      strokeWidth: 4,
+      points: const [Offset(0, 0), Offset(1, 1)],
+      dashed: true,
+      arrowEnd: true,
+    );
+
+    final strokes = await repo.watchStrokes(kLocalBoardId).first;
+    expect(strokes.single.dashed, isTrue);
+    expect(strokes.single.arrowEnd, isTrue);
   });
 
   test('freestanding strokes have a null clipId', () async {

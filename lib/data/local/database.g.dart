@@ -1172,6 +1172,34 @@ class $StrokesTable extends Strokes with TableInfo<$StrokesTable, StrokeRow> {
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _dashedMeta = const VerificationMeta('dashed');
+  @override
+  late final GeneratedColumn<bool> dashed = GeneratedColumn<bool>(
+    'dashed',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("dashed" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _arrowEndMeta = const VerificationMeta(
+    'arrowEnd',
+  );
+  @override
+  late final GeneratedColumn<bool> arrowEnd = GeneratedColumn<bool>(
+    'arrow_end',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("arrow_end" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
   static const VerificationMeta _dirtyMeta = const VerificationMeta('dirty');
   @override
   late final GeneratedColumn<bool> dirty = GeneratedColumn<bool>(
@@ -1217,6 +1245,8 @@ class $StrokesTable extends Strokes with TableInfo<$StrokesTable, StrokeRow> {
     color,
     strokeWidth,
     pointsJson,
+    dashed,
+    arrowEnd,
     dirty,
     createdAt,
     updatedAt,
@@ -1275,6 +1305,18 @@ class $StrokesTable extends Strokes with TableInfo<$StrokesTable, StrokeRow> {
     } else if (isInserting) {
       context.missing(_pointsJsonMeta);
     }
+    if (data.containsKey('dashed')) {
+      context.handle(
+        _dashedMeta,
+        dashed.isAcceptableOrUnknown(data['dashed']!, _dashedMeta),
+      );
+    }
+    if (data.containsKey('arrow_end')) {
+      context.handle(
+        _arrowEndMeta,
+        arrowEnd.isAcceptableOrUnknown(data['arrow_end']!, _arrowEndMeta),
+      );
+    }
     if (data.containsKey('dirty')) {
       context.handle(
         _dirtyMeta,
@@ -1326,6 +1368,14 @@ class $StrokesTable extends Strokes with TableInfo<$StrokesTable, StrokeRow> {
         DriftSqlType.string,
         data['${effectivePrefix}points_json'],
       )!,
+      dashed: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}dashed'],
+      )!,
+      arrowEnd: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}arrow_end'],
+      )!,
       dirty: attachedDatabase.typeMapping.read(
         DriftSqlType.bool,
         data['${effectivePrefix}dirty'],
@@ -1356,6 +1406,8 @@ class StrokeRow extends DataClass implements Insertable<StrokeRow> {
 
   /// JSON-encoded list of [x, y] board-space points.
   final String pointsJson;
+  final bool dashed;
+  final bool arrowEnd;
   final bool dirty;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -1366,6 +1418,8 @@ class StrokeRow extends DataClass implements Insertable<StrokeRow> {
     required this.color,
     required this.strokeWidth,
     required this.pointsJson,
+    required this.dashed,
+    required this.arrowEnd,
     required this.dirty,
     required this.createdAt,
     required this.updatedAt,
@@ -1381,6 +1435,8 @@ class StrokeRow extends DataClass implements Insertable<StrokeRow> {
     map['color'] = Variable<String>(color);
     map['stroke_width'] = Variable<double>(strokeWidth);
     map['points_json'] = Variable<String>(pointsJson);
+    map['dashed'] = Variable<bool>(dashed);
+    map['arrow_end'] = Variable<bool>(arrowEnd);
     map['dirty'] = Variable<bool>(dirty);
     map['created_at'] = Variable<DateTime>(createdAt);
     map['updated_at'] = Variable<DateTime>(updatedAt);
@@ -1397,6 +1453,8 @@ class StrokeRow extends DataClass implements Insertable<StrokeRow> {
       color: Value(color),
       strokeWidth: Value(strokeWidth),
       pointsJson: Value(pointsJson),
+      dashed: Value(dashed),
+      arrowEnd: Value(arrowEnd),
       dirty: Value(dirty),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
@@ -1415,6 +1473,8 @@ class StrokeRow extends DataClass implements Insertable<StrokeRow> {
       color: serializer.fromJson<String>(json['color']),
       strokeWidth: serializer.fromJson<double>(json['strokeWidth']),
       pointsJson: serializer.fromJson<String>(json['pointsJson']),
+      dashed: serializer.fromJson<bool>(json['dashed']),
+      arrowEnd: serializer.fromJson<bool>(json['arrowEnd']),
       dirty: serializer.fromJson<bool>(json['dirty']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
@@ -1430,6 +1490,8 @@ class StrokeRow extends DataClass implements Insertable<StrokeRow> {
       'color': serializer.toJson<String>(color),
       'strokeWidth': serializer.toJson<double>(strokeWidth),
       'pointsJson': serializer.toJson<String>(pointsJson),
+      'dashed': serializer.toJson<bool>(dashed),
+      'arrowEnd': serializer.toJson<bool>(arrowEnd),
       'dirty': serializer.toJson<bool>(dirty),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
@@ -1443,6 +1505,8 @@ class StrokeRow extends DataClass implements Insertable<StrokeRow> {
     String? color,
     double? strokeWidth,
     String? pointsJson,
+    bool? dashed,
+    bool? arrowEnd,
     bool? dirty,
     DateTime? createdAt,
     DateTime? updatedAt,
@@ -1453,6 +1517,8 @@ class StrokeRow extends DataClass implements Insertable<StrokeRow> {
     color: color ?? this.color,
     strokeWidth: strokeWidth ?? this.strokeWidth,
     pointsJson: pointsJson ?? this.pointsJson,
+    dashed: dashed ?? this.dashed,
+    arrowEnd: arrowEnd ?? this.arrowEnd,
     dirty: dirty ?? this.dirty,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
@@ -1469,6 +1535,8 @@ class StrokeRow extends DataClass implements Insertable<StrokeRow> {
       pointsJson: data.pointsJson.present
           ? data.pointsJson.value
           : this.pointsJson,
+      dashed: data.dashed.present ? data.dashed.value : this.dashed,
+      arrowEnd: data.arrowEnd.present ? data.arrowEnd.value : this.arrowEnd,
       dirty: data.dirty.present ? data.dirty.value : this.dirty,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
@@ -1484,6 +1552,8 @@ class StrokeRow extends DataClass implements Insertable<StrokeRow> {
           ..write('color: $color, ')
           ..write('strokeWidth: $strokeWidth, ')
           ..write('pointsJson: $pointsJson, ')
+          ..write('dashed: $dashed, ')
+          ..write('arrowEnd: $arrowEnd, ')
           ..write('dirty: $dirty, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
@@ -1499,6 +1569,8 @@ class StrokeRow extends DataClass implements Insertable<StrokeRow> {
     color,
     strokeWidth,
     pointsJson,
+    dashed,
+    arrowEnd,
     dirty,
     createdAt,
     updatedAt,
@@ -1513,6 +1585,8 @@ class StrokeRow extends DataClass implements Insertable<StrokeRow> {
           other.color == this.color &&
           other.strokeWidth == this.strokeWidth &&
           other.pointsJson == this.pointsJson &&
+          other.dashed == this.dashed &&
+          other.arrowEnd == this.arrowEnd &&
           other.dirty == this.dirty &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt);
@@ -1525,6 +1599,8 @@ class StrokesCompanion extends UpdateCompanion<StrokeRow> {
   final Value<String> color;
   final Value<double> strokeWidth;
   final Value<String> pointsJson;
+  final Value<bool> dashed;
+  final Value<bool> arrowEnd;
   final Value<bool> dirty;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
@@ -1536,6 +1612,8 @@ class StrokesCompanion extends UpdateCompanion<StrokeRow> {
     this.color = const Value.absent(),
     this.strokeWidth = const Value.absent(),
     this.pointsJson = const Value.absent(),
+    this.dashed = const Value.absent(),
+    this.arrowEnd = const Value.absent(),
     this.dirty = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
@@ -1548,6 +1626,8 @@ class StrokesCompanion extends UpdateCompanion<StrokeRow> {
     this.color = const Value.absent(),
     this.strokeWidth = const Value.absent(),
     required String pointsJson,
+    this.dashed = const Value.absent(),
+    this.arrowEnd = const Value.absent(),
     this.dirty = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
@@ -1562,6 +1642,8 @@ class StrokesCompanion extends UpdateCompanion<StrokeRow> {
     Expression<String>? color,
     Expression<double>? strokeWidth,
     Expression<String>? pointsJson,
+    Expression<bool>? dashed,
+    Expression<bool>? arrowEnd,
     Expression<bool>? dirty,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
@@ -1574,6 +1656,8 @@ class StrokesCompanion extends UpdateCompanion<StrokeRow> {
       if (color != null) 'color': color,
       if (strokeWidth != null) 'stroke_width': strokeWidth,
       if (pointsJson != null) 'points_json': pointsJson,
+      if (dashed != null) 'dashed': dashed,
+      if (arrowEnd != null) 'arrow_end': arrowEnd,
       if (dirty != null) 'dirty': dirty,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
@@ -1588,6 +1672,8 @@ class StrokesCompanion extends UpdateCompanion<StrokeRow> {
     Value<String>? color,
     Value<double>? strokeWidth,
     Value<String>? pointsJson,
+    Value<bool>? dashed,
+    Value<bool>? arrowEnd,
     Value<bool>? dirty,
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
@@ -1600,6 +1686,8 @@ class StrokesCompanion extends UpdateCompanion<StrokeRow> {
       color: color ?? this.color,
       strokeWidth: strokeWidth ?? this.strokeWidth,
       pointsJson: pointsJson ?? this.pointsJson,
+      dashed: dashed ?? this.dashed,
+      arrowEnd: arrowEnd ?? this.arrowEnd,
       dirty: dirty ?? this.dirty,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
@@ -1628,6 +1716,12 @@ class StrokesCompanion extends UpdateCompanion<StrokeRow> {
     if (pointsJson.present) {
       map['points_json'] = Variable<String>(pointsJson.value);
     }
+    if (dashed.present) {
+      map['dashed'] = Variable<bool>(dashed.value);
+    }
+    if (arrowEnd.present) {
+      map['arrow_end'] = Variable<bool>(arrowEnd.value);
+    }
     if (dirty.present) {
       map['dirty'] = Variable<bool>(dirty.value);
     }
@@ -1652,6 +1746,8 @@ class StrokesCompanion extends UpdateCompanion<StrokeRow> {
           ..write('color: $color, ')
           ..write('strokeWidth: $strokeWidth, ')
           ..write('pointsJson: $pointsJson, ')
+          ..write('dashed: $dashed, ')
+          ..write('arrowEnd: $arrowEnd, ')
           ..write('dirty: $dirty, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
@@ -2691,6 +2787,8 @@ typedef $$StrokesTableCreateCompanionBuilder =
       Value<String> color,
       Value<double> strokeWidth,
       required String pointsJson,
+      Value<bool> dashed,
+      Value<bool> arrowEnd,
       Value<bool> dirty,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
@@ -2704,6 +2802,8 @@ typedef $$StrokesTableUpdateCompanionBuilder =
       Value<String> color,
       Value<double> strokeWidth,
       Value<String> pointsJson,
+      Value<bool> dashed,
+      Value<bool> arrowEnd,
       Value<bool> dirty,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
@@ -2746,6 +2846,16 @@ class $$StrokesTableFilterComposer
 
   ColumnFilters<String> get pointsJson => $composableBuilder(
     column: $table.pointsJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get dashed => $composableBuilder(
+    column: $table.dashed,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get arrowEnd => $composableBuilder(
+    column: $table.arrowEnd,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -2804,6 +2914,16 @@ class $$StrokesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<bool> get dashed => $composableBuilder(
+    column: $table.dashed,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get arrowEnd => $composableBuilder(
+    column: $table.arrowEnd,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<bool> get dirty => $composableBuilder(
     column: $table.dirty,
     builder: (column) => ColumnOrderings(column),
@@ -2851,6 +2971,12 @@ class $$StrokesTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<bool> get dashed =>
+      $composableBuilder(column: $table.dashed, builder: (column) => column);
+
+  GeneratedColumn<bool> get arrowEnd =>
+      $composableBuilder(column: $table.arrowEnd, builder: (column) => column);
+
   GeneratedColumn<bool> get dirty =>
       $composableBuilder(column: $table.dirty, builder: (column) => column);
 
@@ -2895,6 +3021,8 @@ class $$StrokesTableTableManager
                 Value<String> color = const Value.absent(),
                 Value<double> strokeWidth = const Value.absent(),
                 Value<String> pointsJson = const Value.absent(),
+                Value<bool> dashed = const Value.absent(),
+                Value<bool> arrowEnd = const Value.absent(),
                 Value<bool> dirty = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
@@ -2906,6 +3034,8 @@ class $$StrokesTableTableManager
                 color: color,
                 strokeWidth: strokeWidth,
                 pointsJson: pointsJson,
+                dashed: dashed,
+                arrowEnd: arrowEnd,
                 dirty: dirty,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
@@ -2919,6 +3049,8 @@ class $$StrokesTableTableManager
                 Value<String> color = const Value.absent(),
                 Value<double> strokeWidth = const Value.absent(),
                 required String pointsJson,
+                Value<bool> dashed = const Value.absent(),
+                Value<bool> arrowEnd = const Value.absent(),
                 Value<bool> dirty = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
@@ -2930,6 +3062,8 @@ class $$StrokesTableTableManager
                 color: color,
                 strokeWidth: strokeWidth,
                 pointsJson: pointsJson,
+                dashed: dashed,
+                arrowEnd: arrowEnd,
                 dirty: dirty,
                 createdAt: createdAt,
                 updatedAt: updatedAt,

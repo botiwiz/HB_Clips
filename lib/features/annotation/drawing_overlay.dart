@@ -29,12 +29,16 @@ class DrawingOverlay extends ConsumerWidget {
             points: stroke.points.map(toScreen).toList(),
             color: hexToColor(stroke.colorHex),
             width: stroke.strokeWidth * view.scale,
+            dashed: stroke.dashed,
+            arrowEnd: stroke.arrowEnd,
           ),
       if (liveBoardPoints != null && liveBoardPoints.length > 1)
         StrokeSpec(
           points: liveBoardPoints.map(toScreen).toList(),
           color: hexToColor(ref.watch(strokeColorHexProvider)),
           width: ref.watch(strokeWidthValueProvider) * view.scale,
+          dashed: ref.watch(strokeDashedProvider),
+          arrowEnd: ref.watch(strokeArrowProvider),
         ),
     ];
 

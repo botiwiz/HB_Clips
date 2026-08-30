@@ -1,4 +1,3 @@
-import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hb_clips/features/annotation/geometry/eraser_geometry.dart';
 

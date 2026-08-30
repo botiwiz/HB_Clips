@@ -16,6 +16,9 @@ class Strokes extends Table {
   /// JSON-encoded list of [x, y] board-space points.
   TextColumn get pointsJson => text()();
 
+  BoolColumn get dashed => boolean().withDefault(const Constant(false))();
+  BoolColumn get arrowEnd => boolean().withDefault(const Constant(false))();
+
   BoolColumn get dirty => boolean().withDefault(const Constant(true))();
 
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();

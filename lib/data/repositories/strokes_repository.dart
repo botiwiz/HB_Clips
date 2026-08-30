@@ -26,6 +26,8 @@ class StrokesRepository {
     required String colorHex,
     required double strokeWidth,
     required List<Offset> points,
+    bool dashed = false,
+    bool arrowEnd = false,
   }) {
     return _db.into(_db.strokes).insert(
       StrokesCompanion.insert(
@@ -35,6 +37,8 @@ class StrokesRepository {
         color: Value(colorHex),
         strokeWidth: Value(strokeWidth),
         pointsJson: Stroke.encodePoints(points),
+        dashed: Value(dashed),
+        arrowEnd: Value(arrowEnd),
       ),
     );
   }

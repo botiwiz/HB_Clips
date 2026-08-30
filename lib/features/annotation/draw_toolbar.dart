@@ -20,6 +20,8 @@ class DrawToolbar extends ConsumerWidget {
     final selectedColor = ref.watch(strokeColorHexProvider);
     final width = ref.watch(strokeWidthValueProvider);
     final tool = ref.watch(drawToolProvider);
+    final dashed = ref.watch(strokeDashedProvider);
+    final arrowEnd = ref.watch(strokeArrowProvider);
 
     return Material(
       color: AppTheme.surfaceElevated,
@@ -28,7 +30,7 @@ class DrawToolbar extends ConsumerWidget {
       shadowColor: Colors.black54,
       child: Container(
         height: 48,
-        width: 490,
+        width: 570,
         padding: const EdgeInsets.symmetric(horizontal: 12),
         child: Row(
           children: [
@@ -61,7 +63,30 @@ class DrawToolbar extends ConsumerWidget {
                     ref.read(strokeColorHexProvider.notifier).state =
                         colorHex,
               ),
-            const SizedBox(width: 16),
+            const SizedBox(width: 8),
+            const VerticalDivider(color: AppTheme.border, width: 1),
+            const SizedBox(width: 8),
+            IconButton(
+              tooltip: 'Dashed line',
+              icon: const Icon(Icons.more_horiz),
+              color: dashed ? AppTheme.red : null,
+              iconSize: 18,
+              visualDensity: VisualDensity.compact,
+              onPressed: () => ref
+                  .read(strokeDashedProvider.notifier)
+                  .update((value) => !value),
+            ),
+            IconButton(
+              tooltip: 'Arrow end',
+              icon: const Icon(Icons.arrow_right_alt),
+              color: arrowEnd ? AppTheme.red : null,
+              iconSize: 18,
+              visualDensity: VisualDensity.compact,
+              onPressed: () => ref
+                  .read(strokeArrowProvider.notifier)
+                  .update((value) => !value),
+            ),
+            const SizedBox(width: 8),
             const Icon(
               Icons.line_weight,
               size: 16,

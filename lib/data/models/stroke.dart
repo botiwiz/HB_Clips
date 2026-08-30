@@ -17,6 +17,8 @@ class Stroke {
   final String colorHex;
   final double strokeWidth;
   final List<Offset> points;
+  final bool dashed;
+  final bool arrowEnd;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -27,6 +29,8 @@ class Stroke {
     required this.colorHex,
     required this.strokeWidth,
     required this.points,
+    this.dashed = false,
+    this.arrowEnd = false,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -38,6 +42,8 @@ class Stroke {
     colorHex: row.color,
     strokeWidth: row.strokeWidth,
     points: decodePoints(row.pointsJson),
+    dashed: row.dashed,
+    arrowEnd: row.arrowEnd,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   );

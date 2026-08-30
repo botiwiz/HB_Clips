@@ -553,6 +553,8 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas> {
 
     final colorHex = ref.read(strokeColorHexProvider);
     final width = ref.read(strokeWidthValueProvider);
+    final dashed = ref.read(strokeDashedProvider);
+    final arrowEnd = ref.read(strokeArrowProvider);
     final repo = ref.read(strokesRepositoryProvider);
     final id = _uuid.v4();
 
@@ -572,6 +574,8 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas> {
         colorHex: colorHex,
         strokeWidth: width,
         points: localPoints,
+        dashed: dashed,
+        arrowEnd: arrowEnd,
       );
     } else {
       repo.addStroke(
@@ -580,6 +584,8 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas> {
         colorHex: colorHex,
         strokeWidth: width,
         points: points,
+        dashed: dashed,
+        arrowEnd: arrowEnd,
       );
     }
   }
@@ -771,6 +777,8 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas> {
                               .toList(),
                           color: hexToColor(stroke.colorHex),
                           width: stroke.strokeWidth * view.scale,
+                          dashed: stroke.dashed,
+                          arrowEnd: stroke.arrowEnd,
                         ),
                     ]),
                   ),

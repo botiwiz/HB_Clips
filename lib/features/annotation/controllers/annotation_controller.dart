@@ -41,6 +41,13 @@ enum DrawTool { pen, eraser, eyedropper }
 
 final drawToolProvider = StateProvider<DrawTool>((ref) => DrawTool.pen);
 
+/// Whether new strokes are drawn dashed / with an arrowhead at their end
+/// point. Read at pointer-up when persisting a stroke, and by the live
+/// preview so the in-progress stroke matches what will actually be saved.
+final strokeDashedProvider = StateProvider<bool>((ref) => false);
+
+final strokeArrowProvider = StateProvider<bool>((ref) => false);
+
 /// Screen-space distance (matches other constant-screen-size hit radii like
 /// `ClipGeometry.handleHitRadius`) within which the eraser deletes a stroke
 /// it passes near.
