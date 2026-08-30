@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_theme.dart';
 import '../../../data/models/clip.dart';
+import '../../annotation/stroke_painter.dart';
 
 /// Renders one clip's content (image or text note) at its given size. The
 /// caller (`BoardCanvas`) is responsible for positioning this via
@@ -16,26 +17,31 @@ class ClipWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-          color: selected ? AppTheme.red : AppTheme.border,
-          width: selected ? 2.5 : 1,
-        ),
-        boxShadow: const [
-          BoxShadow(
-            color: Colors.black54,
-            blurRadius: 10,
-            offset: Offset(0, 4),
+    return Opacity(
+      opacity: clip.opacity,
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: selected ? AppTheme.red : AppTheme.border,
+            width: selected ? 2.5 : 1,
           ),
-        ],
-        color: clip.type == ClipType.text
-            ? AppTheme.textNoteSurface
-            : AppTheme.surfaceCard,
+          boxShadow: const [
+            BoxShadow(
+              color: Colors.black54,
+              blurRadius: 10,
+              offset: Offset(0, 4),
+            ),
+          ],
+          color: clip.type == ClipType.text
+              ? (clip.backgroundColorHex != null
+                    ? hexToColor(clip.backgroundColorHex!)
+                    : AppTheme.textNoteSurface)
+              : AppTheme.surfaceCard,
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: clip.type == ClipType.image ? _buildImage() : _buildText(),
       ),
-      clipBehavior: Clip.antiAlias,
-      child: clip.type == ClipType.image ? _buildImage() : _buildText(),
     );
   }
 

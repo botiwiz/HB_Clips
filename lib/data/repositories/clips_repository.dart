@@ -140,6 +140,7 @@ class ClipsRepository {
     double? width,
     double? height,
     double? rotation,
+    double? opacity,
   }) {
     return (_db.update(_db.clips)..where((c) => c.id.equals(id))).write(
       ClipsCompanion(
@@ -148,6 +149,7 @@ class ClipsRepository {
         width: width != null ? Value(width) : const Value.absent(),
         height: height != null ? Value(height) : const Value.absent(),
         rotation: rotation != null ? Value(rotation) : const Value.absent(),
+        opacity: opacity != null ? Value(opacity) : const Value.absent(),
         updatedAt: Value(DateTime.now()),
       ),
     );
@@ -157,6 +159,17 @@ class ClipsRepository {
     return (_db.update(_db.clips)..where((c) => c.id.equals(id))).write(
       ClipsCompanion(
         textContent: Value(textContent),
+        updatedAt: Value(DateTime.now()),
+      ),
+    );
+  }
+
+  /// Sets a text note's custom background color, or clears it back to the
+  /// app default when [colorHex] is null.
+  Future<void> updateBackgroundColor(String id, String? colorHex) {
+    return (_db.update(_db.clips)..where((c) => c.id.equals(id))).write(
+      ClipsCompanion(
+        backgroundColorHex: Value(colorHex),
         updatedAt: Value(DateTime.now()),
       ),
     );

@@ -99,6 +99,18 @@ class $ClipsTable extends Clips with TableInfo<$ClipsTable, ClipRow> {
     requiredDuringInsert: false,
     defaultValue: const Constant(0),
   );
+  static const VerificationMeta _opacityMeta = const VerificationMeta(
+    'opacity',
+  );
+  @override
+  late final GeneratedColumn<double> opacity = GeneratedColumn<double>(
+    'opacity',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(1.0),
+  );
   static const VerificationMeta _textContentMeta = const VerificationMeta(
     'textContent',
   );
@@ -110,6 +122,17 @@ class $ClipsTable extends Clips with TableInfo<$ClipsTable, ClipRow> {
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _backgroundColorHexMeta =
+      const VerificationMeta('backgroundColorHex');
+  @override
+  late final GeneratedColumn<String> backgroundColorHex =
+      GeneratedColumn<String>(
+        'background_color_hex',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
   static const VerificationMeta _storagePathMeta = const VerificationMeta(
     'storagePath',
   );
@@ -206,7 +229,9 @@ class $ClipsTable extends Clips with TableInfo<$ClipsTable, ClipRow> {
     height,
     rotation,
     zIndex,
+    opacity,
     textContent,
+    backgroundColorHex,
     storagePath,
     localFilePath,
     isBinned,
@@ -278,12 +303,27 @@ class $ClipsTable extends Clips with TableInfo<$ClipsTable, ClipRow> {
         zIndex.isAcceptableOrUnknown(data['z_index']!, _zIndexMeta),
       );
     }
+    if (data.containsKey('opacity')) {
+      context.handle(
+        _opacityMeta,
+        opacity.isAcceptableOrUnknown(data['opacity']!, _opacityMeta),
+      );
+    }
     if (data.containsKey('text_content')) {
       context.handle(
         _textContentMeta,
         textContent.isAcceptableOrUnknown(
           data['text_content']!,
           _textContentMeta,
+        ),
+      );
+    }
+    if (data.containsKey('background_color_hex')) {
+      context.handle(
+        _backgroundColorHexMeta,
+        backgroundColorHex.isAcceptableOrUnknown(
+          data['background_color_hex']!,
+          _backgroundColorHexMeta,
         ),
       );
     }
@@ -380,9 +420,17 @@ class $ClipsTable extends Clips with TableInfo<$ClipsTable, ClipRow> {
         DriftSqlType.int,
         data['${effectivePrefix}z_index'],
       )!,
+      opacity: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}opacity'],
+      )!,
       textContent: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}text_content'],
+      ),
+      backgroundColorHex: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}background_color_hex'],
       ),
       storagePath: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
@@ -434,7 +482,14 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
   final double height;
   final double rotation;
   final int zIndex;
+
+  /// 0.0 (fully transparent) to 1.0 (fully opaque, the default).
+  final double opacity;
   final String? textContent;
+
+  /// Custom background color for a text note, as `#RRGGBB`. Null uses the
+  /// app's default text-note surface color.
+  final String? backgroundColorHex;
 
   /// Path in Supabase Storage once uploaded (Phase 6). Null until synced.
   final String? storagePath;
@@ -459,7 +514,9 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
     required this.height,
     required this.rotation,
     required this.zIndex,
+    required this.opacity,
     this.textContent,
+    this.backgroundColorHex,
     this.storagePath,
     this.localFilePath,
     required this.isBinned,
@@ -480,8 +537,12 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
     map['height'] = Variable<double>(height);
     map['rotation'] = Variable<double>(rotation);
     map['z_index'] = Variable<int>(zIndex);
+    map['opacity'] = Variable<double>(opacity);
     if (!nullToAbsent || textContent != null) {
       map['text_content'] = Variable<String>(textContent);
+    }
+    if (!nullToAbsent || backgroundColorHex != null) {
+      map['background_color_hex'] = Variable<String>(backgroundColorHex);
     }
     if (!nullToAbsent || storagePath != null) {
       map['storage_path'] = Variable<String>(storagePath);
@@ -510,9 +571,13 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
       height: Value(height),
       rotation: Value(rotation),
       zIndex: Value(zIndex),
+      opacity: Value(opacity),
       textContent: textContent == null && nullToAbsent
           ? const Value.absent()
           : Value(textContent),
+      backgroundColorHex: backgroundColorHex == null && nullToAbsent
+          ? const Value.absent()
+          : Value(backgroundColorHex),
       storagePath: storagePath == null && nullToAbsent
           ? const Value.absent()
           : Value(storagePath),
@@ -544,7 +609,11 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
       height: serializer.fromJson<double>(json['height']),
       rotation: serializer.fromJson<double>(json['rotation']),
       zIndex: serializer.fromJson<int>(json['zIndex']),
+      opacity: serializer.fromJson<double>(json['opacity']),
       textContent: serializer.fromJson<String?>(json['textContent']),
+      backgroundColorHex: serializer.fromJson<String?>(
+        json['backgroundColorHex'],
+      ),
       storagePath: serializer.fromJson<String?>(json['storagePath']),
       localFilePath: serializer.fromJson<String?>(json['localFilePath']),
       isBinned: serializer.fromJson<bool>(json['isBinned']),
@@ -567,7 +636,9 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
       'height': serializer.toJson<double>(height),
       'rotation': serializer.toJson<double>(rotation),
       'zIndex': serializer.toJson<int>(zIndex),
+      'opacity': serializer.toJson<double>(opacity),
       'textContent': serializer.toJson<String?>(textContent),
+      'backgroundColorHex': serializer.toJson<String?>(backgroundColorHex),
       'storagePath': serializer.toJson<String?>(storagePath),
       'localFilePath': serializer.toJson<String?>(localFilePath),
       'isBinned': serializer.toJson<bool>(isBinned),
@@ -588,7 +659,9 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
     double? height,
     double? rotation,
     int? zIndex,
+    double? opacity,
     Value<String?> textContent = const Value.absent(),
+    Value<String?> backgroundColorHex = const Value.absent(),
     Value<String?> storagePath = const Value.absent(),
     Value<String?> localFilePath = const Value.absent(),
     bool? isBinned,
@@ -606,7 +679,11 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
     height: height ?? this.height,
     rotation: rotation ?? this.rotation,
     zIndex: zIndex ?? this.zIndex,
+    opacity: opacity ?? this.opacity,
     textContent: textContent.present ? textContent.value : this.textContent,
+    backgroundColorHex: backgroundColorHex.present
+        ? backgroundColorHex.value
+        : this.backgroundColorHex,
     storagePath: storagePath.present ? storagePath.value : this.storagePath,
     localFilePath: localFilePath.present
         ? localFilePath.value
@@ -628,9 +705,13 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
       height: data.height.present ? data.height.value : this.height,
       rotation: data.rotation.present ? data.rotation.value : this.rotation,
       zIndex: data.zIndex.present ? data.zIndex.value : this.zIndex,
+      opacity: data.opacity.present ? data.opacity.value : this.opacity,
       textContent: data.textContent.present
           ? data.textContent.value
           : this.textContent,
+      backgroundColorHex: data.backgroundColorHex.present
+          ? data.backgroundColorHex.value
+          : this.backgroundColorHex,
       storagePath: data.storagePath.present
           ? data.storagePath.value
           : this.storagePath,
@@ -657,7 +738,9 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
           ..write('height: $height, ')
           ..write('rotation: $rotation, ')
           ..write('zIndex: $zIndex, ')
+          ..write('opacity: $opacity, ')
           ..write('textContent: $textContent, ')
+          ..write('backgroundColorHex: $backgroundColorHex, ')
           ..write('storagePath: $storagePath, ')
           ..write('localFilePath: $localFilePath, ')
           ..write('isBinned: $isBinned, ')
@@ -680,7 +763,9 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
     height,
     rotation,
     zIndex,
+    opacity,
     textContent,
+    backgroundColorHex,
     storagePath,
     localFilePath,
     isBinned,
@@ -702,7 +787,9 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
           other.height == this.height &&
           other.rotation == this.rotation &&
           other.zIndex == this.zIndex &&
+          other.opacity == this.opacity &&
           other.textContent == this.textContent &&
+          other.backgroundColorHex == this.backgroundColorHex &&
           other.storagePath == this.storagePath &&
           other.localFilePath == this.localFilePath &&
           other.isBinned == this.isBinned &&
@@ -722,7 +809,9 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
   final Value<double> height;
   final Value<double> rotation;
   final Value<int> zIndex;
+  final Value<double> opacity;
   final Value<String?> textContent;
+  final Value<String?> backgroundColorHex;
   final Value<String?> storagePath;
   final Value<String?> localFilePath;
   final Value<bool> isBinned;
@@ -741,7 +830,9 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
     this.height = const Value.absent(),
     this.rotation = const Value.absent(),
     this.zIndex = const Value.absent(),
+    this.opacity = const Value.absent(),
     this.textContent = const Value.absent(),
+    this.backgroundColorHex = const Value.absent(),
     this.storagePath = const Value.absent(),
     this.localFilePath = const Value.absent(),
     this.isBinned = const Value.absent(),
@@ -761,7 +852,9 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
     this.height = const Value.absent(),
     this.rotation = const Value.absent(),
     this.zIndex = const Value.absent(),
+    this.opacity = const Value.absent(),
     this.textContent = const Value.absent(),
+    this.backgroundColorHex = const Value.absent(),
     this.storagePath = const Value.absent(),
     this.localFilePath = const Value.absent(),
     this.isBinned = const Value.absent(),
@@ -783,7 +876,9 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
     Expression<double>? height,
     Expression<double>? rotation,
     Expression<int>? zIndex,
+    Expression<double>? opacity,
     Expression<String>? textContent,
+    Expression<String>? backgroundColorHex,
     Expression<String>? storagePath,
     Expression<String>? localFilePath,
     Expression<bool>? isBinned,
@@ -803,7 +898,10 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
       if (height != null) 'height': height,
       if (rotation != null) 'rotation': rotation,
       if (zIndex != null) 'z_index': zIndex,
+      if (opacity != null) 'opacity': opacity,
       if (textContent != null) 'text_content': textContent,
+      if (backgroundColorHex != null)
+        'background_color_hex': backgroundColorHex,
       if (storagePath != null) 'storage_path': storagePath,
       if (localFilePath != null) 'local_file_path': localFilePath,
       if (isBinned != null) 'is_binned': isBinned,
@@ -825,7 +923,9 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
     Value<double>? height,
     Value<double>? rotation,
     Value<int>? zIndex,
+    Value<double>? opacity,
     Value<String?>? textContent,
+    Value<String?>? backgroundColorHex,
     Value<String?>? storagePath,
     Value<String?>? localFilePath,
     Value<bool>? isBinned,
@@ -845,7 +945,9 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
       height: height ?? this.height,
       rotation: rotation ?? this.rotation,
       zIndex: zIndex ?? this.zIndex,
+      opacity: opacity ?? this.opacity,
       textContent: textContent ?? this.textContent,
+      backgroundColorHex: backgroundColorHex ?? this.backgroundColorHex,
       storagePath: storagePath ?? this.storagePath,
       localFilePath: localFilePath ?? this.localFilePath,
       isBinned: isBinned ?? this.isBinned,
@@ -887,8 +989,14 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
     if (zIndex.present) {
       map['z_index'] = Variable<int>(zIndex.value);
     }
+    if (opacity.present) {
+      map['opacity'] = Variable<double>(opacity.value);
+    }
     if (textContent.present) {
       map['text_content'] = Variable<String>(textContent.value);
+    }
+    if (backgroundColorHex.present) {
+      map['background_color_hex'] = Variable<String>(backgroundColorHex.value);
     }
     if (storagePath.present) {
       map['storage_path'] = Variable<String>(storagePath.value);
@@ -929,7 +1037,9 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
           ..write('height: $height, ')
           ..write('rotation: $rotation, ')
           ..write('zIndex: $zIndex, ')
+          ..write('opacity: $opacity, ')
           ..write('textContent: $textContent, ')
+          ..write('backgroundColorHex: $backgroundColorHex, ')
           ..write('storagePath: $storagePath, ')
           ..write('localFilePath: $localFilePath, ')
           ..write('isBinned: $isBinned, ')
@@ -2046,7 +2156,9 @@ typedef $$ClipsTableCreateCompanionBuilder =
       Value<double> height,
       Value<double> rotation,
       Value<int> zIndex,
+      Value<double> opacity,
       Value<String?> textContent,
+      Value<String?> backgroundColorHex,
       Value<String?> storagePath,
       Value<String?> localFilePath,
       Value<bool> isBinned,
@@ -2067,7 +2179,9 @@ typedef $$ClipsTableUpdateCompanionBuilder =
       Value<double> height,
       Value<double> rotation,
       Value<int> zIndex,
+      Value<double> opacity,
       Value<String?> textContent,
+      Value<String?> backgroundColorHex,
       Value<String?> storagePath,
       Value<String?> localFilePath,
       Value<bool> isBinned,
@@ -2131,8 +2245,18 @@ class $$ClipsTableFilterComposer extends Composer<_$AppDatabase, $ClipsTable> {
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<double> get opacity => $composableBuilder(
+    column: $table.opacity,
+    builder: (column) => ColumnFilters(column),
+  );
+
   ColumnFilters<String> get textContent => $composableBuilder(
     column: $table.textContent,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get backgroundColorHex => $composableBuilder(
+    column: $table.backgroundColorHex,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -2226,8 +2350,18 @@ class $$ClipsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<double> get opacity => $composableBuilder(
+    column: $table.opacity,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get textContent => $composableBuilder(
     column: $table.textContent,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get backgroundColorHex => $composableBuilder(
+    column: $table.backgroundColorHex,
     builder: (column) => ColumnOrderings(column),
   );
 
@@ -2303,8 +2437,16 @@ class $$ClipsTableAnnotationComposer
   GeneratedColumn<int> get zIndex =>
       $composableBuilder(column: $table.zIndex, builder: (column) => column);
 
+  GeneratedColumn<double> get opacity =>
+      $composableBuilder(column: $table.opacity, builder: (column) => column);
+
   GeneratedColumn<String> get textContent => $composableBuilder(
     column: $table.textContent,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get backgroundColorHex => $composableBuilder(
+    column: $table.backgroundColorHex,
     builder: (column) => column,
   );
 
@@ -2371,7 +2513,9 @@ class $$ClipsTableTableManager
                 Value<double> height = const Value.absent(),
                 Value<double> rotation = const Value.absent(),
                 Value<int> zIndex = const Value.absent(),
+                Value<double> opacity = const Value.absent(),
                 Value<String?> textContent = const Value.absent(),
+                Value<String?> backgroundColorHex = const Value.absent(),
                 Value<String?> storagePath = const Value.absent(),
                 Value<String?> localFilePath = const Value.absent(),
                 Value<bool> isBinned = const Value.absent(),
@@ -2390,7 +2534,9 @@ class $$ClipsTableTableManager
                 height: height,
                 rotation: rotation,
                 zIndex: zIndex,
+                opacity: opacity,
                 textContent: textContent,
+                backgroundColorHex: backgroundColorHex,
                 storagePath: storagePath,
                 localFilePath: localFilePath,
                 isBinned: isBinned,
@@ -2411,7 +2557,9 @@ class $$ClipsTableTableManager
                 Value<double> height = const Value.absent(),
                 Value<double> rotation = const Value.absent(),
                 Value<int> zIndex = const Value.absent(),
+                Value<double> opacity = const Value.absent(),
                 Value<String?> textContent = const Value.absent(),
+                Value<String?> backgroundColorHex = const Value.absent(),
                 Value<String?> storagePath = const Value.absent(),
                 Value<String?> localFilePath = const Value.absent(),
                 Value<bool> isBinned = const Value.absent(),
@@ -2430,7 +2578,9 @@ class $$ClipsTableTableManager
                 height: height,
                 rotation: rotation,
                 zIndex: zIndex,
+                opacity: opacity,
                 textContent: textContent,
+                backgroundColorHex: backgroundColorHex,
                 storagePath: storagePath,
                 localFilePath: localFilePath,
                 isBinned: isBinned,

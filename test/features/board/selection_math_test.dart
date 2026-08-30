@@ -220,4 +220,13 @@ void main() {
       expect(result['b'], const Offset(15, 15));
     });
   });
+
+  group('snap', () {
+    test('rounds to the nearest multiple of the given spacing', () {
+      expect(ClipGeometry.snap(37, 32), 32);
+      expect(ClipGeometry.snap(50, 32), 64);
+      expect(ClipGeometry.snap(-10, 32), 0);
+      expect(ClipGeometry.snap(64, 32), 64);
+    });
+  });
 }

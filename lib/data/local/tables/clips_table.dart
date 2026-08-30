@@ -22,7 +22,14 @@ class Clips extends Table {
   RealColumn get rotation => real().withDefault(const Constant(0))();
   IntColumn get zIndex => integer().withDefault(const Constant(0))();
 
+  /// 0.0 (fully transparent) to 1.0 (fully opaque, the default).
+  RealColumn get opacity => real().withDefault(const Constant(1.0))();
+
   TextColumn get textContent => text().nullable()();
+
+  /// Custom background color for a text note, as `#RRGGBB`. Null uses the
+  /// app's default text-note surface color.
+  TextColumn get backgroundColorHex => text().nullable()();
 
   /// Path in Supabase Storage once uploaded (Phase 6). Null until synced.
   TextColumn get storagePath => text().nullable()();

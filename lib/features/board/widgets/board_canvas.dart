@@ -17,6 +17,7 @@ import '../geometry/selection_geometry.dart';
 import 'bin_drop_target.dart';
 import 'clip_widget.dart';
 import 'dot_grid_background.dart';
+import 'clip_style_popover.dart';
 import 'marquee_overlay.dart';
 import 'selection_handles.dart';
 
@@ -120,6 +121,22 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas> {
     final selection = ref.read(selectedClipIdsProvider);
     final clips = ref.read(activeClipsProvider).valueOrNull ?? [];
     final boardPos = _screenToBoard(event.localPosition, view);
+
+    // 0. A click landing on the floating clip-style popover (opacity
+    // slider / text-note color swatches) is left entirely to that widget's
+    // own tap/drag handling - otherwise this canvas would see it as an
+    // empty-canvas click and clear the very selection the popover depends
+    // on to render at all.
+    if (selection.length == 1) {
+      final selectedClip = ClipGeometry.findById(clips, selection.first);
+      if (selectedClip != null &&
+          ClipStylePopover.screenRectFor(
+            selectedClip,
+            view,
+          ).contains(event.localPosition)) {
+        return;
+      }
+    }
 
     _didPanMove = false;
     _marqueeMoved = false;
@@ -238,12 +255,21 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas> {
           corner: _activeHandle!,
           pointerBoard: boardPos,
         );
+        final snap = ref.read(snapToGridProvider);
         ref.read(groupDragProvider.notifier).state = {
           id: current.copyWith(
-            x: result.x,
-            y: result.y,
-            width: result.width,
-            height: result.height,
+            x: snap
+                ? ClipGeometry.snap(result.x, kBoardGridSpacing)
+                : result.x,
+            y: snap
+                ? ClipGeometry.snap(result.y, kBoardGridSpacing)
+                : result.y,
+            width: snap
+                ? ClipGeometry.snap(result.width, kBoardGridSpacing)
+                : result.width,
+            height: snap
+                ? ClipGeometry.snap(result.height, kBoardGridSpacing)
+                : result.height,
           ),
         };
       }
@@ -253,6 +279,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas> {
     if (_groupDragStartPositions != null) {
       final delta = boardPos - _gestureStartPointerBoard!;
       if (delta.distance > 2) _groupDragMoved = true;
+      final snap = ref.read(snapToGridProvider);
       final newPositions = ClipGeometry.applyGroupDelta(
         _groupDragStartPositions!,
         delta,
@@ -263,8 +290,18 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas> {
         for (final entry in currentMap.entries)
           entry.key: newPositions.containsKey(entry.key)
               ? entry.value.copyWith(
-                  x: newPositions[entry.key]!.dx,
-                  y: newPositions[entry.key]!.dy,
+                  x: snap
+                      ? ClipGeometry.snap(
+                          newPositions[entry.key]!.dx,
+                          kBoardGridSpacing,
+                        )
+                      : newPositions[entry.key]!.dx,
+                  y: snap
+                      ? ClipGeometry.snap(
+                          newPositions[entry.key]!.dy,
+                          kBoardGridSpacing,
+                        )
+                      : newPositions[entry.key]!.dy,
                 )
               : entry.value,
       };
@@ -508,6 +545,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas> {
                     if (!isDrawMode) ...[
                       const MarqueeOverlay(),
                       const SelectionHandles(),
+                      const ClipStylePopover(),
                     ],
                     Positioned(
                       right: 24,

@@ -23,6 +23,12 @@ class ClipGeometry {
 
   static const double minClipSize = 40;
 
+  /// Rounds [value] to the nearest multiple of [spacing] - used to snap
+  /// drag/resize positions and sizes to the board's dot grid.
+  static double snap(double value, double spacing) {
+    return (value / spacing).round() * spacing;
+  }
+
   static Offset _boardToScreen(Offset boardPoint, BoardViewState view) {
     return boardPoint * view.scale + view.panOffset;
   }

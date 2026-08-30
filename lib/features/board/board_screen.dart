@@ -255,6 +255,8 @@ class BoardScreen extends ConsumerWidget {
     final selection = ref.watch(selectedClipIdsProvider);
     final hasSelection = selection.isNotEmpty;
     final isDrawMode = ref.watch(isDrawModeProvider);
+    final snapToGrid = ref.watch(snapToGridProvider);
+    final alwaysOnTop = ref.watch(alwaysOnTopProvider);
 
     return Scaffold(
       body: CallbackShortcuts(
@@ -307,6 +309,16 @@ class BoardScreen extends ConsumerWidget {
                         icon: isDrawMode ? Icons.edit : Icons.edit_outlined,
                         color: isDrawMode ? AppTheme.red : null,
                         onPressed: () => _toggleDrawMode(ref),
+                      ),
+                      PillIconButton(
+                        tooltip: snapToGrid
+                            ? 'Disable snap to grid'
+                            : 'Snap to grid',
+                        icon: snapToGrid ? Icons.grid_on : Icons.grid_off,
+                        color: snapToGrid ? AppTheme.red : null,
+                        onPressed: () => ref
+                            .read(snapToGridProvider.notifier)
+                            .state = !snapToGrid,
                       ),
                       if (!isDrawMode && hasSelection) ...[
                         PillIconButton(
@@ -365,6 +377,22 @@ class BoardScreen extends ConsumerWidget {
                       const SizedBox(width: 8),
                       PillGroup(
                         children: [
+                          if (isDesktopPlatform)
+                            PillIconButton(
+                              tooltip: alwaysOnTop
+                                  ? 'Unpin from top'
+                                  : 'Keep window on top',
+                              icon: alwaysOnTop
+                                  ? Icons.push_pin
+                                  : Icons.push_pin_outlined,
+                              color: alwaysOnTop ? AppTheme.red : null,
+                              onPressed: () {
+                                final next = !alwaysOnTop;
+                                ref.read(alwaysOnTopProvider.notifier).state =
+                                    next;
+                                windowManager.setAlwaysOnTop(next);
+                              },
+                            ),
                           PillIconButton(
                             tooltip: 'Bin',
                             icon: Icons.delete_outline,

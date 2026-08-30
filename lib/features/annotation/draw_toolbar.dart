@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/constants.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/widgets/color_swatch_button.dart';
 import '../../data/providers.dart';
 import 'controllers/annotation_controller.dart';
 import 'stroke_painter.dart';
@@ -31,27 +32,12 @@ class DrawToolbar extends ConsumerWidget {
         child: Row(
           children: [
             for (final colorHex in kStrokeColorPalette)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                child: GestureDetector(
-                  onTap: () =>
-                      ref.read(strokeColorHexProvider.notifier).state =
-                          colorHex,
-                  child: Container(
-                    width: 24,
-                    height: 24,
-                    decoration: BoxDecoration(
-                      color: hexToColor(colorHex),
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: selectedColor == colorHex
-                            ? AppTheme.red
-                            : AppTheme.border,
-                        width: selectedColor == colorHex ? 3 : 1,
-                      ),
-                    ),
-                  ),
-                ),
+              ColorSwatchButton(
+                color: hexToColor(colorHex),
+                selected: selectedColor == colorHex,
+                onTap: () =>
+                    ref.read(strokeColorHexProvider.notifier).state =
+                        colorHex,
               ),
             const SizedBox(width: 16),
             const Icon(

@@ -1,5 +1,6 @@
 import 'package:flutter/rendering.dart';
 
+import '../../../core/constants.dart';
 import '../../../core/theme/app_theme.dart';
 import '../controllers/board_controller.dart';
 
@@ -13,7 +14,7 @@ class DotGridPainter extends CustomPainter {
 
   const DotGridPainter(this.view);
 
-  static const double _boardSpacing = 32;
+  static const double _boardSpacing = kBoardGridSpacing;
   static const double _baseDotRadius = 1.5;
 
   @override

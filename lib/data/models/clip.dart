@@ -28,7 +28,9 @@ class BoardClip {
   final double height;
   final double rotation;
   final int zIndex;
+  final double opacity;
   final String? textContent;
+  final String? backgroundColorHex;
   final String? storagePath;
   final String? localFilePath;
   final bool isBinned;
@@ -46,7 +48,9 @@ class BoardClip {
     required this.height,
     this.rotation = 0,
     this.zIndex = 0,
+    this.opacity = 1.0,
     this.textContent,
+    this.backgroundColorHex,
     this.storagePath,
     this.localFilePath,
     this.isBinned = false,
@@ -65,7 +69,9 @@ class BoardClip {
     height: row.height,
     rotation: row.rotation,
     zIndex: row.zIndex,
+    opacity: row.opacity,
     textContent: row.textContent,
+    backgroundColorHex: row.backgroundColorHex,
     storagePath: row.storagePath,
     localFilePath: row.localFilePath,
     isBinned: row.isBinned,
@@ -81,7 +87,9 @@ class BoardClip {
     double? height,
     double? rotation,
     int? zIndex,
+    double? opacity,
     String? textContent,
+    String? backgroundColorHex,
     bool? isBinned,
     DateTime? binnedAt,
   }) {
@@ -95,7 +103,9 @@ class BoardClip {
       height: height ?? this.height,
       rotation: rotation ?? this.rotation,
       zIndex: zIndex ?? this.zIndex,
+      opacity: opacity ?? this.opacity,
       textContent: textContent ?? this.textContent,
+      backgroundColorHex: backgroundColorHex ?? this.backgroundColorHex,
       storagePath: storagePath,
       localFilePath: localFilePath,
       isBinned: isBinned ?? this.isBinned,
