@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/constants.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/color_swatch_button.dart';
 import '../../data/providers.dart';
@@ -115,7 +114,7 @@ class DrawToolbar extends ConsumerWidget {
               icon: const Icon(Icons.undo),
               onPressed: () => ref
                   .read(strokesRepositoryProvider)
-                  .deleteMostRecentStroke(kLocalBoardId),
+                  .deleteMostRecentStroke(ref.read(currentBoardIdProvider)),
             ),
           ],
         ),

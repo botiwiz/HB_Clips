@@ -100,6 +100,7 @@ Future<PurImportSummary?> importPurFile(
   await clipsDir.create(recursive: true);
 
   final repo = ref.read(clipsRepositoryProvider);
+  final boardId = ref.read(currentBoardIdProvider);
   var imagesImported = 0;
   var textNotesImported = 0;
   var imagesSkippedAtCap = 0;
@@ -107,14 +108,14 @@ Future<PurImportSummary?> importPurFile(
   for (final item in items) {
     switch (item) {
       case _ImportImage():
-        final placed = await _importImage(item, clipsDir, repo);
+        final placed = await _importImage(item, clipsDir, repo, boardId);
         if (placed) {
           imagesImported++;
         } else {
           imagesSkippedAtCap++;
         }
       case _ImportText():
-        await _importText(item, repo);
+        await _importText(item, repo, boardId);
         textNotesImported++;
     }
   }
@@ -131,6 +132,7 @@ Future<bool> _importImage(
   _ImportImage item,
   Directory clipsDir,
   ClipsRepository repo,
+  String boardId,
 ) async {
   final transform = item.transform;
   final decoded = img.decodePng(item.image.pngBytes);
@@ -193,7 +195,7 @@ Future<bool> _importImage(
   try {
     await repo.addImageClip(
       id: id,
-      boardId: kLocalBoardId,
+      boardId: boardId,
       localFilePath: destPath,
       x: transform.x - boardWidth / 2,
       y: transform.y - boardHeight / 2,
@@ -212,11 +214,15 @@ Future<bool> _importImage(
   }
 }
 
-Future<void> _importText(_ImportText item, ClipsRepository repo) async {
+Future<void> _importText(
+  _ImportText item,
+  ClipsRepository repo,
+  String boardId,
+) async {
   final text = item.text;
   await repo.addTextNote(
     id: _uuid.v4(),
-    boardId: kLocalBoardId,
+    boardId: boardId,
     textContent: text.text,
     x: text.x - kDefaultTextNoteWidth / 2,
     y: text.y - kDefaultTextNoteHeight / 2,

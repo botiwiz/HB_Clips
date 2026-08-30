@@ -25,6 +25,7 @@ import 'geometry/selection_geometry.dart';
 import 'services/clipboard_paste_service.dart';
 import 'services/pureref_import_service.dart';
 import 'widgets/board_canvas.dart';
+import 'widgets/board_switcher.dart';
 import 'widgets/board_toolbar.dart';
 import 'widgets/clip_counter_badge.dart';
 import 'widgets/crop_toolbar.dart';
@@ -89,7 +90,7 @@ class BoardScreen extends ConsumerWidget {
           .read(clipsRepositoryProvider)
           .addImageClip(
             id: id,
-            boardId: kLocalBoardId,
+            boardId: ref.read(currentBoardIdProvider),
             localFilePath: destPath,
             x: center.dx - kDefaultClipWidth / 2,
             y: center.dy - kDefaultClipHeight / 2,
@@ -197,7 +198,7 @@ class BoardScreen extends ConsumerWidget {
         .read(clipsRepositoryProvider)
         .addTextNote(
           id: id,
-          boardId: kLocalBoardId,
+          boardId: ref.read(currentBoardIdProvider),
           textContent: text.trim(),
           x: center.dx - kDefaultTextNoteWidth / 2,
           y: center.dy - kDefaultTextNoteHeight / 2,
@@ -248,8 +249,9 @@ class BoardScreen extends ConsumerWidget {
     final selection = ref.read(selectedClipIdsProvider);
     if (selection.isEmpty) return;
     final repo = ref.read(clipsRepositoryProvider);
+    final boardId = ref.read(currentBoardIdProvider);
     for (final id in selection) {
-      action(repo, id, kLocalBoardId);
+      action(repo, id, boardId);
     }
   }
 
@@ -338,6 +340,8 @@ class BoardScreen extends ConsumerWidget {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  const BoardSwitcher(),
+                  const SizedBox(width: 8),
                   PillGroup(
                     children: [
                       PillIconButton(

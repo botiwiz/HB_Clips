@@ -112,7 +112,7 @@ Future<void> pasteImageFromClipboard(BuildContext context, WidgetRef ref) async 
         .read(clipsRepositoryProvider)
         .addImageClip(
           id: id,
-          boardId: kLocalBoardId,
+          boardId: ref.read(currentBoardIdProvider),
           localFilePath: destPath,
           x: center.dx - kDefaultClipWidth / 2,
           y: center.dy - kDefaultClipHeight / 2,

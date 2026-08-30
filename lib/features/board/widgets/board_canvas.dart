@@ -222,7 +222,9 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas> {
         _pendingCollapseId = null;
       }
 
-      ref.read(clipsRepositoryProvider).bringToFront(hit.id, kLocalBoardId);
+      ref
+          .read(clipsRepositoryProvider)
+          .bringToFront(hit.id, ref.read(currentBoardIdProvider));
 
       final startPositions = <String, Offset>{};
       final dragMap = <String, DraggingClip>{};
@@ -590,6 +592,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas> {
     final arrowEnd = ref.read(strokeArrowProvider);
     final repo = ref.read(strokesRepositoryProvider);
     final id = _uuid.v4();
+    final boardId = ref.read(currentBoardIdProvider);
 
     if (clip != null) {
       final center = ClipGeometry.clipCenter(clip);
@@ -602,7 +605,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas> {
       }).toList();
       repo.addStroke(
         id: id,
-        boardId: kLocalBoardId,
+        boardId: boardId,
         clipId: clip.id,
         colorHex: colorHex,
         strokeWidth: width,
@@ -613,7 +616,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas> {
     } else {
       repo.addStroke(
         id: id,
-        boardId: kLocalBoardId,
+        boardId: boardId,
         colorHex: colorHex,
         strokeWidth: width,
         points: points,
