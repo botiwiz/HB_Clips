@@ -30,6 +30,7 @@ import 'widgets/board_switcher.dart';
 import 'widgets/board_toolbar.dart';
 import 'widgets/clip_counter_badge.dart';
 import 'widgets/crop_toolbar.dart';
+import 'widgets/gif_playback_toolbar.dart';
 
 const _uuid = Uuid();
 
@@ -356,6 +357,13 @@ class BoardScreen extends ConsumerWidget {
         !isDrawMode &&
         selectedClips.length == 1 &&
         selectedClips.first.type == ClipType.image;
+    final canPlayGif =
+        !isDrawMode &&
+        !isCropMode &&
+        selectedClips.length == 1 &&
+        selectedClips.first.type == ClipType.image &&
+        (selectedClips.first.localFilePath?.toLowerCase().endsWith('.gif') ??
+            false);
 
     return Scaffold(
       body: CallbackShortcuts(
@@ -563,6 +571,15 @@ class BoardScreen extends ConsumerWidget {
                 left: 0,
                 right: 0,
                 child: Center(child: CropToolbar()),
+              ),
+            if (canPlayGif)
+              Positioned(
+                top: 76,
+                left: 0,
+                right: 0,
+                child: Center(
+                  child: GifPlaybackToolbar(clip: selectedClips.first),
+                ),
               ),
           ],
         ),
