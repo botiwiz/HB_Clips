@@ -13,6 +13,11 @@ class Boards extends Table {
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
 
+  /// True when this row has local changes not yet pushed to the remote
+  /// backend. Same "local pending write wins over a realtime echo" role
+  /// that `Clips.dirty`/`Strokes.dirty` already play.
+  BoolColumn get dirty => boolean().withDefault(const Constant(true))();
+
   @override
   Set<Column> get primaryKey => {id};
 }

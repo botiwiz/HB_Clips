@@ -1,9 +1,9 @@
 -- HB_Clips initial schema.
 --
--- Apply this to your own Supabase project (SQL Editor, or `supabase db push`
--- if you use the Supabase CLI locally). Claude cannot provision or reach a
--- cloud Supabase project directly, so this migration is authored ahead of
--- Phase 6 (sync integration) and is not yet consumed by the app.
+-- Apply this to your Supabase project (self-hosted: via Studio's SQL
+-- editor; cloud: SQL Editor or `supabase db push`), then apply
+-- 0002_schema_drift.sql (and any later-numbered migration files) after it,
+-- in order. This file is now consumed by the app's sync layer.
 
 create extension if not exists "pgcrypto";
 

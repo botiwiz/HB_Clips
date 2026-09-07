@@ -2322,8 +2322,21 @@ class $BoardsTable extends Boards with TableInfo<$BoardsTable, BoardRow> {
     requiredDuringInsert: false,
     defaultValue: currentDateAndTime,
   );
+  static const VerificationMeta _dirtyMeta = const VerificationMeta('dirty');
   @override
-  List<GeneratedColumn> get $columns => [id, name, createdAt, updatedAt];
+  late final GeneratedColumn<bool> dirty = GeneratedColumn<bool>(
+    'dirty',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("dirty" IN (0, 1))',
+    ),
+    defaultValue: const Constant(true),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, name, createdAt, updatedAt, dirty];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -2359,6 +2372,12 @@ class $BoardsTable extends Boards with TableInfo<$BoardsTable, BoardRow> {
         updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
       );
     }
+    if (data.containsKey('dirty')) {
+      context.handle(
+        _dirtyMeta,
+        dirty.isAcceptableOrUnknown(data['dirty']!, _dirtyMeta),
+      );
+    }
     return context;
   }
 
@@ -2384,6 +2403,10 @@ class $BoardsTable extends Boards with TableInfo<$BoardsTable, BoardRow> {
         DriftSqlType.dateTime,
         data['${effectivePrefix}updated_at'],
       )!,
+      dirty: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}dirty'],
+      )!,
     );
   }
 
@@ -2398,11 +2421,17 @@ class BoardRow extends DataClass implements Insertable<BoardRow> {
   final String name;
   final DateTime createdAt;
   final DateTime updatedAt;
+
+  /// True when this row has local changes not yet pushed to the remote
+  /// backend. Same "local pending write wins over a realtime echo" role
+  /// that `Clips.dirty`/`Strokes.dirty` already play.
+  final bool dirty;
   const BoardRow({
     required this.id,
     required this.name,
     required this.createdAt,
     required this.updatedAt,
+    required this.dirty,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -2411,6 +2440,7 @@ class BoardRow extends DataClass implements Insertable<BoardRow> {
     map['name'] = Variable<String>(name);
     map['created_at'] = Variable<DateTime>(createdAt);
     map['updated_at'] = Variable<DateTime>(updatedAt);
+    map['dirty'] = Variable<bool>(dirty);
     return map;
   }
 
@@ -2420,6 +2450,7 @@ class BoardRow extends DataClass implements Insertable<BoardRow> {
       name: Value(name),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
+      dirty: Value(dirty),
     );
   }
 
@@ -2433,6 +2464,7 @@ class BoardRow extends DataClass implements Insertable<BoardRow> {
       name: serializer.fromJson<String>(json['name']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+      dirty: serializer.fromJson<bool>(json['dirty']),
     );
   }
   @override
@@ -2443,6 +2475,7 @@ class BoardRow extends DataClass implements Insertable<BoardRow> {
       'name': serializer.toJson<String>(name),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
+      'dirty': serializer.toJson<bool>(dirty),
     };
   }
 
@@ -2451,11 +2484,13 @@ class BoardRow extends DataClass implements Insertable<BoardRow> {
     String? name,
     DateTime? createdAt,
     DateTime? updatedAt,
+    bool? dirty,
   }) => BoardRow(
     id: id ?? this.id,
     name: name ?? this.name,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
+    dirty: dirty ?? this.dirty,
   );
   BoardRow copyWithCompanion(BoardsCompanion data) {
     return BoardRow(
@@ -2463,6 +2498,7 @@ class BoardRow extends DataClass implements Insertable<BoardRow> {
       name: data.name.present ? data.name.value : this.name,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      dirty: data.dirty.present ? data.dirty.value : this.dirty,
     );
   }
 
@@ -2472,13 +2508,14 @@ class BoardRow extends DataClass implements Insertable<BoardRow> {
           ..write('id: $id, ')
           ..write('name: $name, ')
           ..write('createdAt: $createdAt, ')
-          ..write('updatedAt: $updatedAt')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('dirty: $dirty')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, name, createdAt, updatedAt);
+  int get hashCode => Object.hash(id, name, createdAt, updatedAt, dirty);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -2486,7 +2523,8 @@ class BoardRow extends DataClass implements Insertable<BoardRow> {
           other.id == this.id &&
           other.name == this.name &&
           other.createdAt == this.createdAt &&
-          other.updatedAt == this.updatedAt);
+          other.updatedAt == this.updatedAt &&
+          other.dirty == this.dirty);
 }
 
 class BoardsCompanion extends UpdateCompanion<BoardRow> {
@@ -2494,12 +2532,14 @@ class BoardsCompanion extends UpdateCompanion<BoardRow> {
   final Value<String> name;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
+  final Value<bool> dirty;
   final Value<int> rowid;
   const BoardsCompanion({
     this.id = const Value.absent(),
     this.name = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
+    this.dirty = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   BoardsCompanion.insert({
@@ -2507,6 +2547,7 @@ class BoardsCompanion extends UpdateCompanion<BoardRow> {
     this.name = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
+    this.dirty = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id);
   static Insertable<BoardRow> custom({
@@ -2514,6 +2555,7 @@ class BoardsCompanion extends UpdateCompanion<BoardRow> {
     Expression<String>? name,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
+    Expression<bool>? dirty,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -2521,6 +2563,7 @@ class BoardsCompanion extends UpdateCompanion<BoardRow> {
       if (name != null) 'name': name,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
+      if (dirty != null) 'dirty': dirty,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -2530,6 +2573,7 @@ class BoardsCompanion extends UpdateCompanion<BoardRow> {
     Value<String>? name,
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
+    Value<bool>? dirty,
     Value<int>? rowid,
   }) {
     return BoardsCompanion(
@@ -2537,6 +2581,7 @@ class BoardsCompanion extends UpdateCompanion<BoardRow> {
       name: name ?? this.name,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      dirty: dirty ?? this.dirty,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -2556,6 +2601,9 @@ class BoardsCompanion extends UpdateCompanion<BoardRow> {
     if (updatedAt.present) {
       map['updated_at'] = Variable<DateTime>(updatedAt.value);
     }
+    if (dirty.present) {
+      map['dirty'] = Variable<bool>(dirty.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -2569,6 +2617,7 @@ class BoardsCompanion extends UpdateCompanion<BoardRow> {
           ..write('name: $name, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
+          ..write('dirty: $dirty, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -3663,6 +3712,7 @@ typedef $$BoardsTableCreateCompanionBuilder =
       Value<String> name,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
+      Value<bool> dirty,
       Value<int> rowid,
     });
 typedef $$BoardsTableUpdateCompanionBuilder =
@@ -3671,6 +3721,7 @@ typedef $$BoardsTableUpdateCompanionBuilder =
       Value<String> name,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
+      Value<bool> dirty,
       Value<int> rowid,
     });
 
@@ -3700,6 +3751,11 @@ class $$BoardsTableFilterComposer
 
   ColumnFilters<DateTime> get updatedAt => $composableBuilder(
     column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get dirty => $composableBuilder(
+    column: $table.dirty,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -3732,6 +3788,11 @@ class $$BoardsTableOrderingComposer
     column: $table.updatedAt,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<bool> get dirty => $composableBuilder(
+    column: $table.dirty,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$BoardsTableAnnotationComposer
@@ -3754,6 +3815,9 @@ class $$BoardsTableAnnotationComposer
 
   GeneratedColumn<DateTime> get updatedAt =>
       $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<bool> get dirty =>
+      $composableBuilder(column: $table.dirty, builder: (column) => column);
 }
 
 class $$BoardsTableTableManager
@@ -3788,12 +3852,14 @@ class $$BoardsTableTableManager
                 Value<String> name = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
+                Value<bool> dirty = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => BoardsCompanion(
                 id: id,
                 name: name,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
+                dirty: dirty,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -3802,12 +3868,14 @@ class $$BoardsTableTableManager
                 Value<String> name = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
+                Value<bool> dirty = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => BoardsCompanion.insert(
                 id: id,
                 name: name,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
+                dirty: dirty,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
