@@ -189,6 +189,16 @@ SUPABASE_URL=http://<tailscale-name>:8000
 SUPABASE_ANON_KEY=<the same ANON_KEY from this stack's .env>
 ```
 
+### 8. Full end-to-end app verification
+
+The curl-based smoke test above proves the backend (GoTrue, PostgREST,
+Storage, RLS) is behaving correctly on its own. Once the app is pointed at
+your server, run through **[`E2E_CHECKLIST.md`](./E2E_CHECKLIST.md)** for
+the fuller check — the app's own outbox/drain/realtime/reconciliation
+logic against the real deployed stack: persistence across restarts,
+cross-device realtime propagation, offline queueing, image/GIF round-trip
+integrity, delete propagation, and the server-side 30-image cap.
+
 ### Notes
 
 - Only port `8000` (the gateway, `API_GW_HTTP_PORT` if you change it from
