@@ -94,6 +94,7 @@ class BoardClip {
     String? textContent,
     String? backgroundColorHex,
     String? groupId,
+    String? storagePath,
     bool? isBinned,
     DateTime? binnedAt,
   }) {
@@ -111,7 +112,7 @@ class BoardClip {
       textContent: textContent ?? this.textContent,
       backgroundColorHex: backgroundColorHex ?? this.backgroundColorHex,
       groupId: groupId ?? this.groupId,
-      storagePath: storagePath,
+      storagePath: storagePath ?? this.storagePath,
       localFilePath: localFilePath,
       isBinned: isBinned ?? this.isBinned,
       binnedAt: binnedAt ?? this.binnedAt,

@@ -2,15 +2,28 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/clip.dart';
 
-/// Talks to the `clips` table over PostgREST. The single place that
+/// Talks to the `clips` table remotely. Abstract so sync code (the
+/// drainer, the reconciliation pull) can be unit-tested against a fake
+/// implementation with no network involved - see
+/// `test/data/sync/sync_queue_drainer_test.dart`.
+abstract class ClipsRemoteSource {
+  Future<void> upsert(BoardClip clip);
+  Future<void> delete(String id);
+
+  /// All of the current user's clips, for the reconciliation pull.
+  Future<List<Map<String, dynamic>>> fetchAll();
+}
+
+/// The real implementation, over PostgREST. The single place that
 /// translates [BoardClip]'s camelCase shape into the Postgres schema's
-/// snake_case columns (and back), and stamps `user_id` onto every write -
-/// local Drift rows never carry it, RLS requires it.
-class ClipsRemoteSource {
+/// snake_case columns, and stamps `user_id` onto every write - local
+/// Drift rows never carry it, RLS requires it.
+class SupabaseClipsRemoteSource implements ClipsRemoteSource {
   final SupabaseClient _client;
 
-  ClipsRemoteSource(this._client);
+  SupabaseClipsRemoteSource(this._client);
 
+  @override
   Future<void> upsert(BoardClip clip) {
     final userId = _client.auth.currentUser!.id;
     return _client.from('clips').upsert({
@@ -35,11 +48,12 @@ class ClipsRemoteSource {
     });
   }
 
+  @override
   Future<void> delete(String id) {
     return _client.from('clips').delete().eq('id', id);
   }
 
-  /// All of the current user's clips, for the reconciliation pull.
+  @override
   Future<List<Map<String, dynamic>>> fetchAll() async {
     final rows = await _client.from('clips').select();
     return (rows as List).cast<Map<String, dynamic>>();
