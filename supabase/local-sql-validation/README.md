@@ -1,0 +1,45 @@
+# Local SQL/RLS validation (no Docker required)
+
+Validates the schema, triggers, and RLS policies in `../migrations/*.sql`
+against a plain native Postgres install — for environments (like some dev
+sandboxes) where pulling the real `supabase/postgres` Docker image isn't
+possible. This is **not** a substitute for testing against the real
+self-hosted stack (see `../selfhost/README.md`) — it only proves the SQL
+itself is correct, not GoTrue/Storage/Realtime's actual runtime behavior.
+
+## What's here
+
+- `stubs.sql` — a minimal stand-in for the primitives the real
+  `supabase/postgres` image provides out of the box: an `auth` schema with
+  `auth.users` and `auth.uid()` (reading the `request.jwt.claims` GUC the
+  same way the real image's function does), a `storage` schema with
+  `storage.buckets`/`storage.objects`/`storage.foldername()`, and an empty
+  `supabase_realtime` publication — just enough for the migrations to apply
+  and their RLS policies to be exercisable.
+- `rls_smoke_test.sql` — simulates two different `authenticated` users via
+  `SET ROLE authenticated` + `SET request.jwt.claims`, exactly mirroring
+  what PostgREST does per-request, and checks: SELECT-level RLS row
+  isolation, INSERT's `WITH CHECK` rejecting a spoofed `user_id`, the
+  30-image-cap trigger firing at exactly the 30th image clip, and Storage's
+  folder-prefix RLS policy blocking a cross-user object write.
+
+## Running it
+
+```sh
+createdb hb_clips_test
+psql -d hb_clips_test -f stubs.sql
+psql -d hb_clips_test -f ../migrations/0001_init.sql
+psql -d hb_clips_test -f ../migrations/0002_schema_drift.sql   # once it exists
+psql -d hb_clips_test -f rls_smoke_test.sql
+dropdb hb_clips_test
+```
+
+Expect zero `ERROR` lines from the `stubs.sql`/migration applies, and from
+`rls_smoke_test.sql`: two `(expect ...)` sections showing the right visible
+row counts, one `ERROR: new row violates row-level security policy for
+table "clips"` (the spoofing attempt, correctly blocked), one `NOTICE: Cap
+trigger fired at insert #30`, and one `NOTICE: PASS: insert blocked` for
+the storage cross-user write.
+
+Re-run this after editing any migration file to catch RLS/trigger
+regressions before they ever reach a real deployment.
