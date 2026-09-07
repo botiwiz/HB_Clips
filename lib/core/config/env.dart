@@ -1,8 +1,9 @@
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 /// Reads Supabase credentials from the gitignored `.env` file (see
-/// `.env.example`). Not wired into `main.dart` yet — cloud sync/auth land
-/// in a later phase; this exists so the config surface is in place early.
+/// `.env.example`). Wired into `main.dart`'s startup bootstrap - when
+/// unconfigured (no `.env`, or still the placeholder values), the app
+/// runs fully local-only with no sync.
 class Env {
   Env._();
 
