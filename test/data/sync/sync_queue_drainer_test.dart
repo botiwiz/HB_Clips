@@ -21,6 +21,7 @@ const _uuid = Uuid();
 class FakeClipsRemoteSource implements ClipsRemoteSource {
   final List<BoardClip> upserted = [];
   final List<String> deleted = [];
+  final List<Map<String, dynamic>> remoteRows = [];
   bool shouldThrow = false;
 
   @override
@@ -36,7 +37,7 @@ class FakeClipsRemoteSource implements ClipsRemoteSource {
   }
 
   @override
-  Future<List<Map<String, dynamic>>> fetchAll() async => [];
+  Future<List<Map<String, dynamic>>> fetchAll() async => remoteRows;
 }
 
 class FakeStrokesRemoteSource implements StrokesRemoteSource {

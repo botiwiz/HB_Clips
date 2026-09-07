@@ -84,15 +84,61 @@ class RealtimeListener {
     if (payload.eventType == PostgresChangeEvent.delete) {
       final id = payload.oldRecord['id'] as String?;
       if (id == null) return;
-      final local = await (_db.select(
-        _db.boards,
-      )..where((b) => b.id.equals(id))).getSingleOrNull();
-      if (local == null || local.dirty) return;
-      await (_db.delete(_db.boards)..where((b) => b.id.equals(id))).go();
+      await deleteLocalBoardIfNotDirty(id);
       return;
     }
+    await applyBoardRecord(payload.newRecord);
+  }
 
-    final r = payload.newRecord;
+  Future<void> _handleClipChange(PostgresChangePayload payload) async {
+    if (payload.eventType == PostgresChangeEvent.delete) {
+      final id = payload.oldRecord['id'] as String?;
+      if (id == null) return;
+      await deleteLocalClipIfNotDirty(id);
+      return;
+    }
+    await applyClipRecord(payload.newRecord);
+  }
+
+  Future<void> _handleStrokeChange(PostgresChangePayload payload) async {
+    if (payload.eventType == PostgresChangeEvent.delete) {
+      final id = payload.oldRecord['id'] as String?;
+      if (id == null) return;
+      await deleteLocalStrokeIfNotDirty(id);
+      return;
+    }
+    await applyStrokeRecord(payload.newRecord);
+  }
+
+  Future<void> deleteLocalBoardIfNotDirty(String id) async {
+    final local = await (_db.select(
+      _db.boards,
+    )..where((b) => b.id.equals(id))).getSingleOrNull();
+    if (local == null || local.dirty) return;
+    await (_db.delete(_db.boards)..where((b) => b.id.equals(id))).go();
+  }
+
+  Future<void> deleteLocalClipIfNotDirty(String id) async {
+    final local = await (_db.select(
+      _db.clips,
+    )..where((c) => c.id.equals(id))).getSingleOrNull();
+    if (local == null || local.dirty) return;
+    await (_db.delete(_db.clips)..where((c) => c.id.equals(id))).go();
+  }
+
+  Future<void> deleteLocalStrokeIfNotDirty(String id) async {
+    final local = await (_db.select(
+      _db.strokes,
+    )..where((s) => s.id.equals(id))).getSingleOrNull();
+    if (local == null || local.dirty) return;
+    await (_db.delete(_db.strokes)..where((s) => s.id.equals(id))).go();
+  }
+
+  /// Applies one remote `boards` row to local Drift, gated by
+  /// [shouldApplyRemote]. Public so `sync_engine.dart`'s reconciliation
+  /// pass can reuse the exact same apply logic the live realtime path
+  /// uses, rather than duplicating it.
+  Future<void> applyBoardRecord(Map<String, dynamic> r) async {
     final id = r['id'] as String;
     final remoteUpdatedAt = DateTime.parse(r['updated_at'] as String);
     final local = await (_db.select(
@@ -119,19 +165,11 @@ class RealtimeListener {
         );
   }
 
-  Future<void> _handleClipChange(PostgresChangePayload payload) async {
-    if (payload.eventType == PostgresChangeEvent.delete) {
-      final id = payload.oldRecord['id'] as String?;
-      if (id == null) return;
-      final local = await (_db.select(
-        _db.clips,
-      )..where((c) => c.id.equals(id))).getSingleOrNull();
-      if (local == null || local.dirty) return;
-      await (_db.delete(_db.clips)..where((c) => c.id.equals(id))).go();
-      return;
-    }
-
-    final r = payload.newRecord;
+  /// Applies one remote `clips` row to local Drift, gated by
+  /// [shouldApplyRemote], downloading the image file if it isn't already
+  /// cached locally. Public for reuse by `sync_engine.dart`'s
+  /// reconciliation pass.
+  Future<void> applyClipRecord(Map<String, dynamic> r) async {
     final id = r['id'] as String;
     final remoteUpdatedAt = DateTime.parse(r['updated_at'] as String);
     final local = await (_db.select(
@@ -196,19 +234,10 @@ class RealtimeListener {
     }
   }
 
-  Future<void> _handleStrokeChange(PostgresChangePayload payload) async {
-    if (payload.eventType == PostgresChangeEvent.delete) {
-      final id = payload.oldRecord['id'] as String?;
-      if (id == null) return;
-      final local = await (_db.select(
-        _db.strokes,
-      )..where((s) => s.id.equals(id))).getSingleOrNull();
-      if (local == null || local.dirty) return;
-      await (_db.delete(_db.strokes)..where((s) => s.id.equals(id))).go();
-      return;
-    }
-
-    final r = payload.newRecord;
+  /// Applies one remote `strokes` row to local Drift, gated by
+  /// [shouldApplyRemote]. Public for reuse by `sync_engine.dart`'s
+  /// reconciliation pass.
+  Future<void> applyStrokeRecord(Map<String, dynamic> r) async {
     final id = r['id'] as String;
     final remoteUpdatedAt = DateTime.parse(r['updated_at'] as String);
     final local = await (_db.select(
