@@ -199,6 +199,41 @@ logic against the real deployed stack: persistence across restarts,
 cross-device realtime propagation, offline queueing, image/GIF round-trip
 integrity, delete propagation, and the server-side 30-image cap.
 
+### Device pairing (syncing a second device)
+
+Since there's no login/signup UI, `signInAnonymously()` mints a **brand-new,
+disjoint identity** on every fresh install by default — a second device
+would otherwise never see the first device's boards. HB_Clips addresses
+this with a one-time pairing code, no login screen involved:
+
+1. On the first device: the toolbar's "Sync to another device" icon (only
+   shown once `SUPABASE_URL`/`SUPABASE_ANON_KEY` are set) → **Add another
+   device** → shows a short code, valid for 5 minutes, single-use.
+2. On the second device: same icon → **Enter a pairing code** → type the
+   code in.
+3. The second device adopts the first device's session and, from then on,
+   syncs the same account/boards.
+
+This is implemented entirely through Postgres RPC
+(`../migrations/0003_device_pairing.sql`'s `create_pairing_code()`/
+`redeem_pairing_code()`, `SECURITY DEFINER` functions callable via
+`/rest/v1/rpc/...` — no extra backend service, and the underlying
+`device_pairing_codes` table is never directly readable, only reachable
+through those two functions).
+
+**Known limitation — not fully solved, stated plainly:** GoTrue's
+refresh-token rotation and reuse-detection are designed around one session
+refreshing sequentially, not multiple devices sharing one identity
+indefinitely. After pairing, if two devices both trigger a token refresh
+around the same time, GoTrue can flag the older token as replayed and
+revoke the whole session — meaning **all** paired devices get logged out
+and need to pair again. `GOTRUE_SECURITY_REFRESH_TOKEN_REUSE_INTERVAL` (an
+env var, grace-period in seconds) can widen the window this is tolerated,
+but this remains outside GoTrue's primary supported use case. If a paired
+device's sync mysteriously stops with an auth error weeks later, this is
+the likely cause — re-pairing (repeat the steps above) is the fix, and it
+takes under a minute.
+
 ### Notes
 
 - Only port `8000` (the gateway, `API_GW_HTTP_PORT` if you change it from

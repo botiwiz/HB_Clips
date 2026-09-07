@@ -6,6 +6,7 @@ import 'models/clip.dart';
 import 'models/stroke.dart';
 import 'remote/boards_remote_source.dart';
 import 'remote/clips_remote_source.dart';
+import 'remote/pairing_service.dart';
 import 'remote/storage_source.dart';
 import 'remote/strokes_remote_source.dart';
 import 'remote/supabase_client_provider.dart';
@@ -96,4 +97,13 @@ final syncEngineProvider = Provider<SyncEngine?>((ref) {
   );
   ref.onDispose(() => engine.stop());
   return engine;
+});
+
+/// Null when sync isn't configured, same as [syncEngineProvider] - the
+/// device-pairing UI in `board_screen.dart` only shows up when this is
+/// non-null.
+final pairingServiceProvider = Provider<PairingService?>((ref) {
+  final client = ref.watch(supabaseClientProvider);
+  if (client == null) return null;
+  return PairingService(client);
 });
