@@ -4,6 +4,7 @@ import 'package:uuid/uuid.dart';
 import '../../core/constants.dart';
 import '../local/database.dart';
 import '../models/clip.dart';
+import '../sync/outbox.dart';
 
 const _uuid = Uuid();
 
@@ -129,10 +130,19 @@ class ClipsRepository {
   }
 
   Future<BoardClip> _insertClip(ClipsCompanion companion) async {
-    await _db.into(_db.clips).insert(companion);
-    final row = await (_db.select(
-      _db.clips,
-    )..where((c) => c.id.equals(companion.id.value))).getSingle();
+    late ClipRow row;
+    await _db.transaction(() async {
+      await _db.into(_db.clips).insert(companion);
+      row = await (_db.select(
+        _db.clips,
+      )..where((c) => c.id.equals(companion.id.value))).getSingle();
+      await enqueueOutbox(
+        _db,
+        entityType: 'clip',
+        entityId: companion.id.value,
+        operation: 'upsert',
+      );
+    });
     return BoardClip.fromRow(row);
   }
 
@@ -145,17 +155,21 @@ class ClipsRepository {
     double? rotation,
     double? opacity,
   }) {
-    return (_db.update(_db.clips)..where((c) => c.id.equals(id))).write(
-      ClipsCompanion(
-        x: x != null ? Value(x) : const Value.absent(),
-        y: y != null ? Value(y) : const Value.absent(),
-        width: width != null ? Value(width) : const Value.absent(),
-        height: height != null ? Value(height) : const Value.absent(),
-        rotation: rotation != null ? Value(rotation) : const Value.absent(),
-        opacity: opacity != null ? Value(opacity) : const Value.absent(),
-        updatedAt: Value(DateTime.now()),
-      ),
-    );
+    return _db.transaction(() async {
+      await (_db.update(_db.clips)..where((c) => c.id.equals(id))).write(
+        ClipsCompanion(
+          x: x != null ? Value(x) : const Value.absent(),
+          y: y != null ? Value(y) : const Value.absent(),
+          width: width != null ? Value(width) : const Value.absent(),
+          height: height != null ? Value(height) : const Value.absent(),
+          rotation: rotation != null ? Value(rotation) : const Value.absent(),
+          opacity: opacity != null ? Value(opacity) : const Value.absent(),
+          updatedAt: Value(DateTime.now()),
+          dirty: const Value(true),
+        ),
+      );
+      await enqueueOutbox(_db, entityType: 'clip', entityId: id, operation: 'upsert');
+    });
   }
 
   /// Swaps in a newly-cropped image file for [id] and updates its board
@@ -169,56 +183,89 @@ class ClipsRepository {
     required double width,
     required double height,
   }) {
-    return (_db.update(_db.clips)..where((c) => c.id.equals(id))).write(
-      ClipsCompanion(
-        localFilePath: Value(localFilePath),
-        x: Value(x),
-        y: Value(y),
-        width: Value(width),
-        height: Value(height),
-        updatedAt: Value(DateTime.now()),
-      ),
-    );
+    return _db.transaction(() async {
+      await (_db.update(_db.clips)..where((c) => c.id.equals(id))).write(
+        ClipsCompanion(
+          localFilePath: Value(localFilePath),
+          x: Value(x),
+          y: Value(y),
+          width: Value(width),
+          height: Value(height),
+          updatedAt: Value(DateTime.now()),
+          dirty: const Value(true),
+        ),
+      );
+      // storagePath is stale after a crop (new local file, not yet
+      // re-uploaded) - clearing it forces the drainer to treat this as a
+      // fresh image upload rather than skipping straight to the metadata
+      // upsert with an old, now-mismatched storage_path.
+      await (_db.update(_db.clips)..where((c) => c.id.equals(id))).write(
+        const ClipsCompanion(storagePath: Value(null)),
+      );
+      await enqueueOutbox(_db, entityType: 'clip', entityId: id, operation: 'upsert');
+    });
   }
 
   Future<void> updateTextContent(String id, String textContent) {
-    return (_db.update(_db.clips)..where((c) => c.id.equals(id))).write(
-      ClipsCompanion(
-        textContent: Value(textContent),
-        updatedAt: Value(DateTime.now()),
-      ),
-    );
+    return _db.transaction(() async {
+      await (_db.update(_db.clips)..where((c) => c.id.equals(id))).write(
+        ClipsCompanion(
+          textContent: Value(textContent),
+          updatedAt: Value(DateTime.now()),
+          dirty: const Value(true),
+        ),
+      );
+      await enqueueOutbox(_db, entityType: 'clip', entityId: id, operation: 'upsert');
+    });
   }
 
   /// Sets a text note's custom background color, or clears it back to the
   /// app default when [colorHex] is null.
   Future<void> updateBackgroundColor(String id, String? colorHex) {
-    return (_db.update(_db.clips)..where((c) => c.id.equals(id))).write(
-      ClipsCompanion(
-        backgroundColorHex: Value(colorHex),
-        updatedAt: Value(DateTime.now()),
-      ),
-    );
-  }
-
-  Future<void> bringToFront(String id, String boardId) async {
-    final zIndex = await _nextZIndex(boardId);
-    await (_db.update(_db.clips)..where((c) => c.id.equals(id))).write(
-      ClipsCompanion(zIndex: Value(zIndex), updatedAt: Value(DateTime.now())),
-    );
-  }
-
-  Future<void> sendToBack(String id, String boardId) async {
-    final query = _db.selectOnly(_db.clips)
-      ..addColumns([_db.clips.zIndex.min()])
-      ..where(
-        _db.clips.boardId.equals(boardId) & _db.clips.isBinned.equals(false),
+    return _db.transaction(() async {
+      await (_db.update(_db.clips)..where((c) => c.id.equals(id))).write(
+        ClipsCompanion(
+          backgroundColorHex: Value(colorHex),
+          updatedAt: Value(DateTime.now()),
+          dirty: const Value(true),
+        ),
       );
-    final row = await query.getSingleOrNull();
-    final minZ = row?.read(_db.clips.zIndex.min()) ?? 0;
-    await (_db.update(_db.clips)..where((c) => c.id.equals(id))).write(
-      ClipsCompanion(zIndex: Value(minZ - 1), updatedAt: Value(DateTime.now())),
-    );
+      await enqueueOutbox(_db, entityType: 'clip', entityId: id, operation: 'upsert');
+    });
+  }
+
+  Future<void> bringToFront(String id, String boardId) {
+    return _db.transaction(() async {
+      final zIndex = await _nextZIndex(boardId);
+      await (_db.update(_db.clips)..where((c) => c.id.equals(id))).write(
+        ClipsCompanion(
+          zIndex: Value(zIndex),
+          updatedAt: Value(DateTime.now()),
+          dirty: const Value(true),
+        ),
+      );
+      await enqueueOutbox(_db, entityType: 'clip', entityId: id, operation: 'upsert');
+    });
+  }
+
+  Future<void> sendToBack(String id, String boardId) {
+    return _db.transaction(() async {
+      final query = _db.selectOnly(_db.clips)
+        ..addColumns([_db.clips.zIndex.min()])
+        ..where(
+          _db.clips.boardId.equals(boardId) & _db.clips.isBinned.equals(false),
+        );
+      final row = await query.getSingleOrNull();
+      final minZ = row?.read(_db.clips.zIndex.min()) ?? 0;
+      await (_db.update(_db.clips)..where((c) => c.id.equals(id))).write(
+        ClipsCompanion(
+          zIndex: Value(minZ - 1),
+          updatedAt: Value(DateTime.now()),
+          dirty: const Value(true),
+        ),
+      );
+      await enqueueOutbox(_db, entityType: 'clip', entityId: id, operation: 'upsert');
+    });
   }
 
   Future<List<ClipRow>> _orderedActiveRows(String boardId) {
@@ -230,12 +277,16 @@ class ClipsRepository {
 
   Future<void> _swapZIndex(ClipRow a, ClipRow b) async {
     final now = DateTime.now();
-    await (_db.update(_db.clips)..where((c) => c.id.equals(a.id))).write(
-      ClipsCompanion(zIndex: Value(b.zIndex), updatedAt: Value(now)),
-    );
-    await (_db.update(_db.clips)..where((c) => c.id.equals(b.id))).write(
-      ClipsCompanion(zIndex: Value(a.zIndex), updatedAt: Value(now)),
-    );
+    await _db.transaction(() async {
+      await (_db.update(_db.clips)..where((c) => c.id.equals(a.id))).write(
+        ClipsCompanion(zIndex: Value(b.zIndex), updatedAt: Value(now), dirty: const Value(true)),
+      );
+      await (_db.update(_db.clips)..where((c) => c.id.equals(b.id))).write(
+        ClipsCompanion(zIndex: Value(a.zIndex), updatedAt: Value(now), dirty: const Value(true)),
+      );
+      await enqueueOutbox(_db, entityType: 'clip', entityId: a.id, operation: 'upsert');
+      await enqueueOutbox(_db, entityType: 'clip', entityId: b.id, operation: 'upsert');
+    });
   }
 
   /// Swaps z-order with the clip immediately behind this one, if any.
@@ -255,58 +306,96 @@ class ClipsRepository {
   }
 
   Future<void> binClip(String id) {
-    return (_db.update(_db.clips)..where((c) => c.id.equals(id))).write(
-      ClipsCompanion(
-        isBinned: const Value(true),
-        binnedAt: Value(DateTime.now()),
-        updatedAt: Value(DateTime.now()),
-      ),
-    );
+    return _db.transaction(() async {
+      await (_db.update(_db.clips)..where((c) => c.id.equals(id))).write(
+        ClipsCompanion(
+          isBinned: const Value(true),
+          binnedAt: Value(DateTime.now()),
+          updatedAt: Value(DateTime.now()),
+          dirty: const Value(true),
+        ),
+      );
+      await enqueueOutbox(_db, entityType: 'clip', entityId: id, operation: 'upsert');
+    });
   }
 
   Future<void> restoreClip(String id) {
-    return (_db.update(_db.clips)..where((c) => c.id.equals(id))).write(
-      ClipsCompanion(
-        isBinned: const Value(false),
-        binnedAt: const Value(null),
-        updatedAt: Value(DateTime.now()),
-      ),
-    );
+    return _db.transaction(() async {
+      await (_db.update(_db.clips)..where((c) => c.id.equals(id))).write(
+        ClipsCompanion(
+          isBinned: const Value(false),
+          binnedAt: const Value(null),
+          updatedAt: Value(DateTime.now()),
+          dirty: const Value(true),
+        ),
+      );
+      await enqueueOutbox(_db, entityType: 'clip', entityId: id, operation: 'upsert');
+    });
   }
 
   Future<void> deleteForever(String id) {
-    return (_db.delete(_db.clips)..where((c) => c.id.equals(id))).go();
+    return _db.transaction(() async {
+      await (_db.delete(_db.clips)..where((c) => c.id.equals(id))).go();
+      await enqueueOutbox(_db, entityType: 'clip', entityId: id, operation: 'delete');
+    });
   }
 
   Future<void> emptyBin(String boardId) {
-    return (_db.delete(
-      _db.clips,
-    )..where((c) => c.boardId.equals(boardId) & c.isBinned.equals(true))).go();
+    return _db.transaction(() async {
+      final ids = await (_db.selectOnly(_db.clips)
+            ..addColumns([_db.clips.id])
+            ..where(
+              _db.clips.boardId.equals(boardId) & _db.clips.isBinned.equals(true),
+            ))
+          .map((row) => row.read(_db.clips.id)!)
+          .get();
+      await (_db.delete(
+        _db.clips,
+      )..where((c) => c.boardId.equals(boardId) & c.isBinned.equals(true))).go();
+      for (final id in ids) {
+        await enqueueOutbox(_db, entityType: 'clip', entityId: id, operation: 'delete');
+      }
+    });
   }
 
   /// Assigns a fresh group id to every clip in [ids], so clicking any one of
   /// them selects (and then drags) the whole set.
   Future<void> groupClips(List<String> ids) async {
     final groupId = _uuid.v4();
-    for (final id in ids) {
-      await (_db.update(_db.clips)..where((c) => c.id.equals(id))).write(
-        ClipsCompanion(
-          groupId: Value(groupId),
-          updatedAt: Value(DateTime.now()),
-        ),
-      );
-    }
+    await _db.transaction(() async {
+      for (final id in ids) {
+        await (_db.update(_db.clips)..where((c) => c.id.equals(id))).write(
+          ClipsCompanion(
+            groupId: Value(groupId),
+            updatedAt: Value(DateTime.now()),
+            dirty: const Value(true),
+          ),
+        );
+        await enqueueOutbox(_db, entityType: 'clip', entityId: id, operation: 'upsert');
+      }
+    });
   }
 
   /// Clears the group id from every clip currently sharing [groupId].
   Future<void> ungroupClips(String groupId) {
-    return (_db.update(
-      _db.clips,
-    )..where((c) => c.groupId.equals(groupId))).write(
-      ClipsCompanion(
-        groupId: const Value(null),
-        updatedAt: Value(DateTime.now()),
-      ),
-    );
+    return _db.transaction(() async {
+      final ids = await (_db.selectOnly(_db.clips)
+            ..addColumns([_db.clips.id])
+            ..where(_db.clips.groupId.equals(groupId)))
+          .map((row) => row.read(_db.clips.id)!)
+          .get();
+      await (_db.update(
+        _db.clips,
+      )..where((c) => c.groupId.equals(groupId))).write(
+        ClipsCompanion(
+          groupId: const Value(null),
+          updatedAt: Value(DateTime.now()),
+          dirty: const Value(true),
+        ),
+      );
+      for (final id in ids) {
+        await enqueueOutbox(_db, entityType: 'clip', entityId: id, operation: 'upsert');
+      }
+    });
   }
 }

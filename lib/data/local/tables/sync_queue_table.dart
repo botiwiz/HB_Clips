@@ -1,20 +1,23 @@
 import 'package:drift/drift.dart';
 
-/// Durable outbox of local mutations still waiting to be pushed to Supabase.
-/// Populated by repositories as they write; drained by the sync engine
-/// (Phase 6). Not consumed by anything yet in Phase 1 - the table exists now
-/// so the local schema doesn't need a breaking migration later.
+/// Durable outbox of local mutations still waiting to be pushed to
+/// Supabase. Populated by `ClipsRepository`/`StrokesRepository`/
+/// `BoardsRepository` (via `lib/data/sync/outbox.dart`) as they write;
+/// drained by `lib/data/sync/sync_queue_drainer.dart`.
 class SyncQueueEntries extends Table {
   IntColumn get id => integer().autoIncrement()();
 
-  /// 'clip' or 'stroke'.
+  /// 'clip', 'stroke', or 'board'.
   TextColumn get entityType => text()();
   TextColumn get entityId => text()();
 
   /// 'upsert' or 'delete'.
   TextColumn get operation => text()();
 
-  /// JSON snapshot of the row at enqueue time.
+  /// Unused for 'upsert' (the drainer always re-reads the current row from
+  /// Drift by [entityId] instead) and for 'delete' (only the id matters).
+  /// Kept as a required column since it's cheap and may be useful for
+  /// debugging a stuck queue entry later.
   TextColumn get payloadJson => text()();
 
   IntColumn get attemptCount => integer().withDefault(const Constant(0))();
