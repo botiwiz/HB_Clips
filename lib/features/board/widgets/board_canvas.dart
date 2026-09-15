@@ -1,5 +1,6 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/physics.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
@@ -50,7 +51,8 @@ class BoardCanvas extends ConsumerStatefulWidget {
   ConsumerState<BoardCanvas> createState() => _BoardCanvasState();
 }
 
-class _BoardCanvasState extends ConsumerState<BoardCanvas> {
+class _BoardCanvasState extends ConsumerState<BoardCanvas>
+    with TickerProviderStateMixin {
   final FocusNode _focusNode = FocusNode(debugLabel: 'BoardCanvas');
 
   // Resize/rotate handle drag.
@@ -76,6 +78,19 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas> {
   Offset? _panOffsetStart;
   bool _didPanMove = false;
 
+  // Recent (time, position) samples while panning, used to estimate
+  // release velocity for the inertial fling below - only the last ~100ms
+  // is kept so a slow-down right before release isn't averaged away.
+  final List<_TimedPoint> _panVelocitySamples = [];
+  AnimationController? _flingController;
+
+  // Debounces wheel-zoom steps: an isolated tick (gap since the last one
+  // exceeds the threshold) gets an eased transition; a rapid stream of
+  // ticks (trackpad pinch/scroll, which is already continuous input) is
+  // applied directly so animations don't pile up and fight each other.
+  DateTime? _lastZoomSignalTime;
+  AnimationController? _zoomEaseController;
+
   // Draw mode: the clip (if any) under the pointer when a stroke gesture
   // started - the whole stroke stays attached to it, per-clip strokes are
   // stored in that clip's local frame.
@@ -92,6 +107,8 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas> {
 
   @override
   void dispose() {
+    _flingController?.dispose();
+    _zoomEaseController?.dispose();
     _focusNode.dispose();
     super.dispose();
   }
@@ -126,6 +143,8 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas> {
 
   void _handlePointerDown(PointerDownEvent event) {
     _focusNode.requestFocus();
+    // Any new touch takes over from an in-flight fling.
+    _flingController?.stop();
     if (ref.read(isDrawModeProvider)) {
       _handleDrawPointerDown(event);
       return;
@@ -259,6 +278,9 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas> {
     } else {
       _panPointerStart = event.localPosition;
       _panOffsetStart = view.panOffset;
+      _panVelocitySamples
+        ..clear()
+        ..add(_TimedPoint(DateTime.now(), event.localPosition));
     }
   }
 
@@ -375,6 +397,11 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas> {
       final delta = event.localPosition - _panPointerStart!;
       if (delta.distance > 2) _didPanMove = true;
       ref.read(boardViewProvider.notifier).setPan(_panOffsetStart! + delta);
+      final now = DateTime.now();
+      _panVelocitySamples.add(_TimedPoint(now, event.localPosition));
+      _panVelocitySamples.removeWhere(
+        (s) => now.difference(s.time) > const Duration(milliseconds: 100),
+      );
     }
   }
 
@@ -459,18 +486,104 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas> {
     if (_panPointerStart != null) {
       if (!_didPanMove) {
         ref.read(selectedClipIdsProvider.notifier).state = {};
+      } else {
+        _maybeStartFling();
       }
       _panPointerStart = null;
     }
   }
 
+  /// Kicks off a decelerating fling continuing the pan in the direction (and
+  /// roughly the speed) the pointer was moving at release, using the same
+  /// friction-based simulation `ScrollPhysics` uses for touch scrolling -
+  /// the single biggest thing that makes the board feel like Miro instead
+  /// of a bare pan/zoom widget. A slow release (below [kMinFlingVelocity],
+  /// Flutter's own fling-vs-drag threshold) doesn't fling at all.
+  void _maybeStartFling() {
+    if (_panVelocitySamples.length < 2) return;
+    final first = _panVelocitySamples.first;
+    final last = _panVelocitySamples.last;
+    final dtSeconds = last.time.difference(first.time).inMicroseconds / 1e6;
+    if (dtSeconds <= 0) return;
+
+    final velocity = (last.point - first.point) / dtSeconds;
+    final speed = velocity.distance;
+    if (speed < kMinFlingVelocity) return;
+
+    final direction = velocity / speed;
+    final panAtFlingStart = ref.read(boardViewProvider).panOffset;
+
+    _flingController?.dispose();
+    // The friction simulation's output is a pixel distance (often well over
+    // 1.0), not a 0..1 progress value - a plain AnimationController clamps
+    // .value to [0, 1] by default, which would silently cap the fling
+    // after a single pixel. `.unbounded` is exactly Flutter's documented
+    // pattern for driving a Simulation like this.
+    final controller = AnimationController.unbounded(vsync: this);
+    _flingController = controller;
+    controller.addListener(() {
+      final traveled = controller.value;
+      ref
+          .read(boardViewProvider.notifier)
+          .setPan(panAtFlingStart + direction * traveled);
+    });
+    // Same friction constant Flutter's own ClampingScrollSimulation uses
+    // for touch-scroll deceleration - already tuned to feel natural.
+    controller.animateWith(FrictionSimulation(0.135, 0, speed));
+  }
+
   void _handlePointerSignal(PointerSignalEvent event) {
     if (event is PointerScrollEvent) {
       final factor = event.scrollDelta.dy > 0 ? 0.9 : 1.1;
-      ref
-          .read(boardViewProvider.notifier)
-          .zoomAt(event.localPosition, factor);
+      final now = DateTime.now();
+      final isIsolatedStep =
+          _lastZoomSignalTime == null ||
+          now.difference(_lastZoomSignalTime!) > const Duration(milliseconds: 150);
+      _lastZoomSignalTime = now;
+
+      if (isIsolatedStep) {
+        _animateZoomStep(event.localPosition, factor);
+      } else {
+        // A rapid stream of ticks (trackpad pinch/scroll) is already
+        // continuous input - apply directly, an eased transition per tick
+        // would just pile up and lag behind the gesture.
+        _zoomEaseController?.stop();
+        ref
+            .read(boardViewProvider.notifier)
+            .zoomAt(event.localPosition, factor);
+      }
     }
+  }
+
+  /// Eases a single, isolated zoom step (e.g. one physical mouse-wheel
+  /// click) over a short tween instead of snapping the scale instantly,
+  /// keeping the same focal point under the cursor throughout.
+  void _animateZoomStep(Offset focalPoint, double factor) {
+    final startView = ref.read(boardViewProvider);
+    final targetScale = (startView.scale * factor).clamp(
+      BoardViewNotifier.minScale,
+      BoardViewNotifier.maxScale,
+    );
+    final boardPointUnderCursor =
+        (focalPoint - startView.panOffset) / startView.scale;
+
+    _zoomEaseController?.dispose();
+    final controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 160),
+    );
+    _zoomEaseController = controller;
+    final scaleTween = Tween<double>(
+      begin: startView.scale,
+      end: targetScale,
+    ).chain(CurveTween(curve: Curves.easeOut));
+
+    controller.addListener(() {
+      final scale = scaleTween.evaluate(controller);
+      final newPan = focalPoint - boardPointUnderCursor * scale;
+      ref.read(boardViewProvider.notifier).setView(newPan, scale);
+    });
+    controller.forward();
   }
 
   void _handleDrawPointerDown(PointerDownEvent event) {
@@ -836,4 +949,13 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas> {
       ),
     );
   }
+}
+
+/// A screen position sampled at a point in time - used to estimate release
+/// velocity for the inertial pan fling.
+class _TimedPoint {
+  final DateTime time;
+  final Offset point;
+
+  const _TimedPoint(this.time, this.point);
 }

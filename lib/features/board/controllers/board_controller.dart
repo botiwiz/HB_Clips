@@ -20,8 +20,8 @@ class BoardViewState {
 class BoardViewNotifier extends StateNotifier<BoardViewState> {
   BoardViewNotifier() : super(const BoardViewState());
 
-  static const double _minScale = 0.15;
-  static const double _maxScale = 4.0;
+  static const double minScale = 0.15;
+  static const double maxScale = 4.0;
 
   void setPan(Offset panOffset) {
     state = state.copyWith(panOffset: panOffset);
@@ -34,11 +34,22 @@ class BoardViewNotifier extends StateNotifier<BoardViewState> {
   /// Zooms so that the board point under [focalScreenPoint] stays under the
   /// cursor - the usual "zoom towards the mouse" desktop behaviour.
   void zoomAt(Offset focalScreenPoint, double scaleFactor) {
-    final newScale = (state.scale * scaleFactor).clamp(_minScale, _maxScale);
+    final newScale = (state.scale * scaleFactor).clamp(minScale, maxScale);
     final boardPoint =
         (focalScreenPoint - state.panOffset) / state.scale;
     final newPanOffset = focalScreenPoint - boardPoint * newScale;
     state = BoardViewState(panOffset: newPanOffset, scale: newScale);
+  }
+
+  /// Sets pan and scale together in one update - used by the inertial-pan
+  /// and eased-zoom animations in `board_canvas.dart`, which need to drive
+  /// both values directly from their own simulation/tween rather than
+  /// through [setPan]/[zoomAt]'s incremental-from-current-state math.
+  void setView(Offset panOffset, double scale) {
+    state = BoardViewState(
+      panOffset: panOffset,
+      scale: scale.clamp(minScale, maxScale),
+    );
   }
 
   void reset() => state = const BoardViewState();
