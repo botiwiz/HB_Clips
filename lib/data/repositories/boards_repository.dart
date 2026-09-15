@@ -69,6 +69,7 @@ class BoardsRepository {
         _db.strokes,
       )..where((s) => s.boardId.equals(id) & s.clipId.isNull())).go();
       await (_db.delete(_db.clips)..where((c) => c.boardId.equals(id))).go();
+      await (_db.delete(_db.frames)..where((f) => f.boardId.equals(id))).go();
       await (_db.delete(_db.boards)..where((b) => b.id.equals(id))).go();
       await enqueueOutbox(_db, entityType: 'board', entityId: id, operation: 'delete');
     });

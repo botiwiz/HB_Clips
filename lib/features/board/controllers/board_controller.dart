@@ -121,3 +121,14 @@ final isDraggingOverBinProvider = StateProvider<bool>((ref) => false);
 /// When true, drag/resize positions and sizes snap to [kBoardGridSpacing] -
 /// a per-session UI preference, not persisted.
 final snapToGridProvider = StateProvider<bool>((ref) => false);
+
+/// Id of the single currently-selected frame, or null. Frames use a
+/// separate, single-select-only selection model from clips -
+/// [selectedClipIdsProvider] - since they're a simpler background/grouping
+/// concept, not a peer object type with its own multi-select semantics.
+final selectedFrameIdProvider = StateProvider<String?>((ref) => null);
+
+/// Ephemeral, not-yet-persisted rect of the frame currently being dragged
+/// or resized - same "render this instead of the DB value, write on
+/// pointer-up" role [groupDragProvider] plays for clips.
+final frameDragRectProvider = StateProvider<Rect?>((ref) => null);

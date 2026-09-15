@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../core/constants.dart';
 import '../../core/theme/app_theme.dart';
+import '../../data/local/database.dart' show FrameRow;
 import '../../data/models/clip.dart';
 import '../../data/providers.dart';
 import '../../data/pureref/pur_writer.dart';
@@ -481,6 +482,79 @@ class BoardScreen extends ConsumerWidget {
     }
   }
 
+  Future<void> _addFrame(BuildContext context, WidgetRef ref) async {
+    final controller = TextEditingController(text: 'Frame');
+    final name = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('New frame'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(hintText: 'Frame name'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(controller.text),
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    );
+    if (name == null || name.trim().isEmpty) return;
+    if (!context.mounted) return;
+
+    final center = _viewportCenterBoardPoint(ref, MediaQuery.sizeOf(context));
+    await ref
+        .read(framesRepositoryProvider)
+        .createFrame(
+          id: _uuid.v4(),
+          boardId: ref.read(currentBoardIdProvider),
+          name: name.trim(),
+          x: center.dx - 160,
+          y: center.dy - 120,
+          width: 320,
+          height: 240,
+        );
+  }
+
+  Future<void> _renameFrame(
+    BuildContext context,
+    WidgetRef ref,
+    FrameRow frame,
+  ) async {
+    final controller = TextEditingController(text: frame.name);
+    final name = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Rename frame'),
+        content: TextField(controller: controller, autofocus: true),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(controller.text),
+            child: const Text('Rename'),
+          ),
+        ],
+      ),
+    );
+    if (name == null || name.trim().isEmpty) return;
+    if (!context.mounted) return;
+    await ref.read(framesRepositoryProvider).renameFrame(frame.id, name.trim());
+  }
+
+  void _deleteFrame(WidgetRef ref, String frameId) {
+    ref.read(framesRepositoryProvider).deleteFrame(frameId);
+    ref.read(selectedFrameIdProvider.notifier).state = null;
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final selection = ref.watch(selectedClipIdsProvider);
@@ -489,6 +563,15 @@ class BoardScreen extends ConsumerWidget {
     final isCropMode = ref.watch(isCropModeProvider);
     final snapToGrid = ref.watch(snapToGridProvider);
     final syncConfigured = ref.watch(pairingServiceProvider) != null;
+    final selectedFrameId = ref.watch(selectedFrameIdProvider);
+    final frames = ref.watch(boardFramesProvider).valueOrNull ?? [];
+    FrameRow? selectedFrame;
+    for (final f in frames) {
+      if (f.id == selectedFrameId) {
+        selectedFrame = f;
+        break;
+      }
+    }
     final clips = ref.watch(activeClipsProvider).valueOrNull ?? [];
     final selectedClips = [
       for (final c in clips)
@@ -622,6 +705,24 @@ class BoardScreen extends ConsumerWidget {
                           onPressed: () => _binSelected(ref),
                         ),
                       ],
+                      if (selectedFrame != null) ...[
+                        PillIconButton(
+                          tooltip: 'Rename frame',
+                          icon: Icons.edit_outlined,
+                          onPressed: () =>
+                              _renameFrame(context, ref, selectedFrame!),
+                        ),
+                        PillIconButton(
+                          tooltip: 'Delete frame',
+                          icon: Icons.delete_outline,
+                          onPressed: () => _deleteFrame(ref, selectedFrame!.id),
+                        ),
+                      ],
+                      PillIconButton(
+                        tooltip: 'New frame',
+                        icon: Icons.crop_5_4_outlined,
+                        onPressed: () => _addFrame(context, ref),
+                      ),
                       PillIconButton(
                         tooltip: 'Paste image (Ctrl+V)',
                         icon: Icons.content_paste_outlined,

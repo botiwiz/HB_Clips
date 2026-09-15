@@ -2,12 +2,12 @@ import 'package:drift/drift.dart';
 
 /// Durable outbox of local mutations still waiting to be pushed to
 /// Supabase. Populated by `ClipsRepository`/`StrokesRepository`/
-/// `BoardsRepository` (via `lib/data/sync/outbox.dart`) as they write;
-/// drained by `lib/data/sync/sync_queue_drainer.dart`.
+/// `BoardsRepository`/`FramesRepository` (via `lib/data/sync/outbox.dart`)
+/// as they write; drained by `lib/data/sync/sync_queue_drainer.dart`.
 class SyncQueueEntries extends Table {
   IntColumn get id => integer().autoIncrement()();
 
-  /// 'clip', 'stroke', or 'board'.
+  /// 'clip', 'stroke', 'board', or 'frame'.
   TextColumn get entityType => text()();
   TextColumn get entityId => text()();
 

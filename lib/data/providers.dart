@@ -7,12 +7,14 @@ import 'models/clip.dart';
 import 'models/stroke.dart';
 import 'remote/boards_remote_source.dart';
 import 'remote/clips_remote_source.dart';
+import 'remote/frames_remote_source.dart';
 import 'remote/pairing_service.dart';
 import 'remote/storage_source.dart';
 import 'remote/strokes_remote_source.dart';
 import 'remote/supabase_client_provider.dart';
 import 'repositories/boards_repository.dart';
 import 'repositories/clips_repository.dart';
+import 'repositories/frames_repository.dart';
 import 'repositories/strokes_repository.dart';
 import 'sync/realtime_listener.dart';
 import 'sync/sync_engine.dart';
@@ -70,6 +72,15 @@ final boardsProvider = StreamProvider<List<BoardRow>>((ref) {
   return ref.watch(boardsRepositoryProvider).watchBoards();
 });
 
+final framesRepositoryProvider = Provider<FramesRepository>((ref) {
+  return FramesRepository(ref.watch(databaseProvider));
+});
+
+final boardFramesProvider = StreamProvider<List<FrameRow>>((ref) {
+  final boardId = ref.watch(currentBoardIdProvider);
+  return ref.watch(framesRepositoryProvider).watchFrames(boardId);
+});
+
 /// Null when sync isn't configured (no [supabaseClientProvider]) - the app
 /// then behaves exactly as it did before this feature, fully local-only.
 /// Read once (`ref.read(syncEngineProvider)?.start()`) at app startup, in
@@ -84,6 +95,7 @@ final syncEngineProvider = Provider<SyncEngine?>((ref) {
   final clipsRemote = SupabaseClipsRemoteSource(client);
   final strokesRemote = SupabaseStrokesRemoteSource(client);
   final boardsRemote = SupabaseBoardsRemoteSource(client);
+  final framesRemote = SupabaseFramesRemoteSource(client);
   final storage = SupabaseStorageSource(client, blobStore);
 
   final drainer = SyncQueueDrainer(
@@ -92,6 +104,7 @@ final syncEngineProvider = Provider<SyncEngine?>((ref) {
     clipsRemote,
     strokesRemote,
     boardsRemote,
+    framesRemote,
     storage,
     blobStore,
   );
@@ -103,6 +116,7 @@ final syncEngineProvider = Provider<SyncEngine?>((ref) {
     clipsRemote,
     strokesRemote,
     boardsRemote,
+    framesRemote,
   );
   ref.onDispose(() => engine.stop());
   return engine;

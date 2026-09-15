@@ -4,13 +4,16 @@ import 'package:drift_flutter/drift_flutter.dart';
 import '../../core/constants.dart';
 import 'tables/boards_table.dart';
 import 'tables/clips_table.dart';
+import 'tables/frames_table.dart';
 import 'tables/local_blobs_table.dart';
 import 'tables/strokes_table.dart';
 import 'tables/sync_queue_table.dart';
 
 part 'database.g.dart';
 
-@DriftDatabase(tables: [Clips, Strokes, SyncQueueEntries, Boards, LocalBlobs])
+@DriftDatabase(
+  tables: [Clips, Strokes, SyncQueueEntries, Boards, LocalBlobs, Frames],
+)
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
@@ -18,7 +21,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 8;
+  int get schemaVersion => 9;
 
   Future<void> _seedDefaultBoard(Migrator m) {
     return into(boards).insert(
@@ -55,6 +58,9 @@ class AppDatabase extends _$AppDatabase {
       }
       if (from < 8) {
         await m.createTable(localBlobs);
+      }
+      if (from < 9) {
+        await m.createTable(frames);
       }
     },
   );

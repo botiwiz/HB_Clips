@@ -6,6 +6,7 @@ import 'package:drift/drift.dart';
 import '../local/database.dart';
 import '../remote/boards_remote_source.dart';
 import '../remote/clips_remote_source.dart';
+import '../remote/frames_remote_source.dart';
 import '../remote/strokes_remote_source.dart';
 import 'realtime_listener.dart';
 import 'sync_queue_drainer.dart';
@@ -22,6 +23,7 @@ class SyncEngine {
   final ClipsRemoteSource _clipsRemote;
   final StrokesRemoteSource _strokesRemote;
   final BoardsRemoteSource _boardsRemote;
+  final FramesRemoteSource _framesRemote;
   final Connectivity _connectivity;
 
   StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
@@ -34,7 +36,8 @@ class SyncEngine {
     this._realtime,
     this._clipsRemote,
     this._strokesRemote,
-    this._boardsRemote, {
+    this._boardsRemote,
+    this._framesRemote, {
     Connectivity? connectivity,
   }) : _connectivity = connectivity ?? Connectivity();
 
@@ -87,6 +90,7 @@ class SyncEngine {
     await _reconcileClips();
     await _reconcileStrokes();
     await _reconcileBoards();
+    await _reconcileFrames();
   }
 
   Future<Set<String>> _pendingUpsertIds(String entityType) async {
@@ -143,6 +147,22 @@ class SyncEngine {
       if (remoteIds.contains(row.id)) continue;
       if (row.dirty || pendingUpsertIds.contains(row.id)) continue;
       await (_db.delete(_db.boards)..where((b) => b.id.equals(row.id))).go();
+    }
+  }
+
+  Future<void> _reconcileFrames() async {
+    final remoteRows = await _framesRemote.fetchAll();
+    for (final r in remoteRows) {
+      await _realtime.applyFrameRecord(r);
+    }
+
+    final remoteIds = remoteRows.map((r) => r['id'] as String).toSet();
+    final pendingUpsertIds = await _pendingUpsertIds('frame');
+    final localRows = await _db.select(_db.frames).get();
+    for (final row in localRows) {
+      if (remoteIds.contains(row.id)) continue;
+      if (row.dirty || pendingUpsertIds.contains(row.id)) continue;
+      await (_db.delete(_db.frames)..where((f) => f.id.equals(row.id))).go();
     }
   }
 }

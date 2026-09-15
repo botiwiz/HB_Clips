@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../../core/constants.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../data/local/database.dart' show FrameRow;
 import '../../../data/models/clip.dart';
 import '../../../data/models/stroke.dart';
 import '../../../data/providers.dart';
@@ -17,6 +18,7 @@ import '../../annotation/stroke_painter.dart';
 import '../controllers/board_controller.dart';
 import '../controllers/crop_controller.dart';
 import '../geometry/crop_geometry.dart';
+import '../geometry/frame_geometry.dart';
 import '../geometry/selection_geometry.dart';
 import '../services/eyedropper_service.dart';
 import 'bin_drop_target.dart';
@@ -25,6 +27,7 @@ import 'clip_style_popover.dart';
 import 'clip_widget.dart';
 import 'crop_overlay.dart';
 import 'dot_grid_background.dart';
+import 'frame_widget.dart';
 import 'marquee_overlay.dart';
 import 'selection_handles.dart';
 
@@ -103,6 +106,13 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
   BoardClip? _cropModeClip;
   Rect? _cropDragStartRect;
 
+  // Frame move/resize - only checked once a pointer-down misses every
+  // clip (frames sit behind clips, see FrameGeometry's doc comment).
+  String? _frameDragId;
+  bool _frameResizing = false;
+  Rect? _frameDragStartRect;
+  Offset? _frameGestureStartPointerBoard;
+
   Size _canvasSize = Size.zero;
 
   @override
@@ -132,6 +142,22 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     final sorted = [...clips]..sort((a, b) => b.zIndex.compareTo(a.zIndex));
     for (final clip in sorted) {
       if (ClipGeometry.pointInClip(boardPoint, clip)) return clip;
+    }
+    return null;
+  }
+
+  /// Last-created-on-top, mirroring how clips default to insertion order
+  /// absent an explicit z-index concept for frames.
+  FrameRow? _hitTestFrame(List<FrameRow> frames, Offset boardPoint) {
+    for (final frame in frames.reversed) {
+      if (FrameGeometry.pointInFrame(boardPoint, frame)) return frame;
+    }
+    return null;
+  }
+
+  FrameRow? _findFrameById(List<FrameRow> frames, String id) {
+    for (final frame in frames) {
+      if (frame.id == id) return frame;
     }
     return null;
   }
@@ -184,6 +210,10 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     // still in progress.
     _activeHandle = null;
     _handleStartClip = null;
+    _frameDragId = null;
+    _frameResizing = false;
+    _frameDragStartRect = null;
+    _frameGestureStartPointerBoard = null;
 
     // 1. A handle on the sole selected clip takes priority over everything.
     if (selection.length == 1) {
@@ -266,6 +296,38 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       _gestureStartPointerBoard = boardPos;
       ref.read(groupDragProvider.notifier).state = dragMap;
       return;
+    }
+
+    // 2.5. Frames sit behind clips - only checked once no clip was hit.
+    // A resize-handle hit only applies to the already-selected frame.
+    final frames = ref.read(boardFramesProvider).valueOrNull ?? [];
+    final selectedFrameId = ref.read(selectedFrameIdProvider);
+    if (selectedFrameId != null) {
+      final selectedFrame = _findFrameById(frames, selectedFrameId);
+      if (selectedFrame != null &&
+          FrameGeometry.hitTestResizeHandle(
+            selectedFrame,
+            view,
+            event.localPosition,
+          )) {
+        _frameResizing = true;
+        _frameDragId = selectedFrame.id;
+        _frameDragStartRect = FrameGeometry.boardRect(selectedFrame);
+        ref.read(frameDragRectProvider.notifier).state = _frameDragStartRect;
+        return;
+      }
+    }
+    final hitFrame = _hitTestFrame(frames, boardPos);
+    if (hitFrame != null) {
+      ref.read(selectedFrameIdProvider.notifier).state = hitFrame.id;
+      _frameDragId = hitFrame.id;
+      _frameDragStartRect = FrameGeometry.boardRect(hitFrame);
+      _frameGestureStartPointerBoard = boardPos;
+      ref.read(frameDragRectProvider.notifier).state = _frameDragStartRect;
+      return;
+    }
+    if (selectedFrameId != null) {
+      ref.read(selectedFrameIdProvider.notifier).state = null;
     }
 
     // 3. Empty canvas: Shift starts a marquee, otherwise pan (unchanged).
@@ -393,6 +455,24 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       return;
     }
 
+    if (_frameResizing && _frameDragStartRect != null) {
+      final resized = FrameGeometry.resize(
+        startRect: _frameDragStartRect!,
+        pointerBoard: boardPos,
+      );
+      ref.read(frameDragRectProvider.notifier).state = resized;
+      return;
+    }
+
+    if (_frameDragId != null &&
+        _frameDragStartRect != null &&
+        _frameGestureStartPointerBoard != null) {
+      final delta = boardPos - _frameGestureStartPointerBoard!;
+      ref.read(frameDragRectProvider.notifier).state = _frameDragStartRect!
+          .shift(delta);
+      return;
+    }
+
     if (_panPointerStart != null) {
       final delta = event.localPosition - _panPointerStart!;
       if (delta.distance > 2) _didPanMove = true;
@@ -480,6 +560,27 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       ref.read(marqueeRectProvider.notifier).state = null;
       _marqueeStartBoard = null;
       _marqueeMoved = false;
+      return;
+    }
+
+    if (_frameDragId != null) {
+      final rect = ref.read(frameDragRectProvider);
+      if (rect != null) {
+        ref
+            .read(framesRepositoryProvider)
+            .updateTransform(
+              _frameDragId!,
+              x: rect.left,
+              y: rect.top,
+              width: rect.width,
+              height: rect.height,
+            );
+      }
+      ref.read(frameDragRectProvider.notifier).state = null;
+      _frameDragId = null;
+      _frameResizing = false;
+      _frameDragStartRect = null;
+      _frameGestureStartPointerBoard = null;
       return;
     }
 
@@ -812,6 +913,9 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     final overBin = ref.watch(isDraggingOverBinProvider);
     final isDrawMode = ref.watch(isDrawModeProvider);
     final isCropMode = ref.watch(isCropModeProvider);
+    final frames = ref.watch(boardFramesProvider).valueOrNull ?? [];
+    final selectedFrameId = ref.watch(selectedFrameIdProvider);
+    final frameDragRect = ref.watch(frameDragRectProvider);
 
     final clips = clipsAsync.valueOrNull ?? [];
     final sorted = [...clips]..sort((a, b) => a.zIndex.compareTo(b.zIndex));
@@ -848,6 +952,13 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
                     Positioned.fill(
                       child: CustomPaint(painter: DotGridPainter(view)),
                     ),
+                    for (final frame in frames)
+                      _positionedFrame(
+                        frame,
+                        frame.id == selectedFrameId ? frameDragRect : null,
+                        frame.id == selectedFrameId,
+                        view,
+                      ),
                     for (final clip in sorted)
                       _positionedClip(
                         clip,
@@ -884,6 +995,23 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
           ),
         );
       },
+    );
+  }
+
+  Widget _positionedFrame(
+    FrameRow frame,
+    Rect? dragRect,
+    bool selected,
+    BoardViewState view,
+  ) {
+    final rect = dragRect ?? FrameGeometry.boardRect(frame);
+    final topLeft = _boardToScreen(rect.topLeft, view);
+    return Positioned(
+      left: topLeft.dx,
+      top: topLeft.dy,
+      width: rect.width * view.scale,
+      height: rect.height * view.scale,
+      child: FrameWidget(frame: frame, selected: selected),
     );
   }
 

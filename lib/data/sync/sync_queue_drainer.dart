@@ -7,6 +7,7 @@ import '../models/clip.dart';
 import '../models/stroke.dart';
 import '../remote/boards_remote_source.dart';
 import '../remote/clips_remote_source.dart';
+import '../remote/frames_remote_source.dart';
 import '../remote/storage_source.dart';
 import '../remote/strokes_remote_source.dart';
 
@@ -28,6 +29,7 @@ class SyncQueueDrainer {
   final ClipsRemoteSource _clips;
   final StrokesRemoteSource _strokes;
   final BoardsRemoteSource _boards;
+  final FramesRemoteSource _frames;
   final StorageSource _storage;
   final LocalBlobStore _blobStore;
 
@@ -37,6 +39,7 @@ class SyncQueueDrainer {
     this._clips,
     this._strokes,
     this._boards,
+    this._frames,
     this._storage,
     this._blobStore,
   );
@@ -78,6 +81,8 @@ class SyncQueueDrainer {
           await _strokes.delete(entry.entityId);
         case 'board':
           await _boards.delete(entry.entityId);
+        case 'frame':
+          await _frames.delete(entry.entityId);
       }
       return;
     }
@@ -89,6 +94,8 @@ class SyncQueueDrainer {
         await _pushStroke(entry.entityId);
       case 'board':
         await _pushBoard(entry.entityId);
+      case 'frame':
+        await _pushFrame(entry.entityId);
     }
   }
 
@@ -150,6 +157,18 @@ class SyncQueueDrainer {
     await _boards.upsert(row);
     await (_db.update(_db.boards)..where((b) => b.id.equals(row.id))).write(
       const BoardsCompanion(dirty: Value(false)),
+    );
+  }
+
+  Future<void> _pushFrame(String id) async {
+    final row = await (_db.select(
+      _db.frames,
+    )..where((f) => f.id.equals(id))).getSingleOrNull();
+    if (row == null) return;
+
+    await _frames.upsert(row);
+    await (_db.update(_db.frames)..where((f) => f.id.equals(row.id))).write(
+      const FramesCompanion(dirty: Value(false)),
     );
   }
 }

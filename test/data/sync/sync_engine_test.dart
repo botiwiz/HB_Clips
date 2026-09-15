@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hb_clips/core/constants.dart';
 import 'package:hb_clips/data/local/database.dart';
 import 'package:hb_clips/data/repositories/clips_repository.dart';
+import 'package:hb_clips/data/repositories/frames_repository.dart';
 import 'package:hb_clips/data/sync/realtime_listener.dart';
 import 'package:hb_clips/data/sync/sync_engine.dart';
 import 'package:hb_clips/data/sync/sync_queue_drainer.dart';
@@ -20,6 +21,7 @@ void main() {
   late FakeClipsRemoteSource fakeClips;
   late FakeStrokesRemoteSource fakeStrokes;
   late FakeBoardsRemoteSource fakeBoards;
+  late FakeFramesRemoteSource fakeFrames;
   late FakeStorageSource fakeStorage;
   late SyncEngine engine;
 
@@ -29,6 +31,7 @@ void main() {
     fakeClips = FakeClipsRemoteSource();
     fakeStrokes = FakeStrokesRemoteSource();
     fakeBoards = FakeBoardsRemoteSource();
+    fakeFrames = FakeFramesRemoteSource();
     fakeStorage = FakeStorageSource();
 
     final drainer = SyncQueueDrainer(
@@ -37,6 +40,7 @@ void main() {
       fakeClips,
       fakeStrokes,
       fakeBoards,
+      fakeFrames,
       fakeStorage,
       FakeLocalBlobStore(),
     );
@@ -48,7 +52,15 @@ void main() {
       SupabaseClient('http://localhost:0', 'test-anon-key'),
       fakeStorage,
     );
-    engine = SyncEngine(db, drainer, realtime, fakeClips, fakeStrokes, fakeBoards);
+    engine = SyncEngine(
+      db,
+      drainer,
+      realtime,
+      fakeClips,
+      fakeStrokes,
+      fakeBoards,
+      fakeFrames,
+    );
   });
 
   tearDown(() => db.close());
@@ -125,6 +137,72 @@ void main() {
     final row = await (db.select(
       db.clips,
     )..where((c) => c.id.equals(clip.id))).getSingleOrNull();
+    expect(row, isNotNull, reason: 'a dirty/pending row must not be deleted');
+  });
+
+  test('reconcile inserts a remote frame missing locally', () async {
+    fakeFrames.remoteRows.add({
+      'id': 'remote-frame-1',
+      'board_id': kLocalBoardId,
+      'name': 'Section from another device',
+      'x': 10.0,
+      'y': 20.0,
+      'width': 400.0,
+      'height': 300.0,
+      'created_at': DateTime(2024, 1, 1).toIso8601String(),
+      'updated_at': DateTime(2024, 1, 1).toIso8601String(),
+    });
+
+    await engine.reconcile();
+
+    final row = await (db.select(
+      db.frames,
+    )..where((f) => f.id.equals('remote-frame-1'))).getSingle();
+    expect(row.name, 'Section from another device');
+    expect(row.dirty, isFalse);
+  });
+
+  test('reconcile deletes a clean local frame missing from the remote set', () async {
+    final framesRepo = FramesRepository(db);
+    await framesRepo.createFrame(
+      id: 'frame-2',
+      boardId: kLocalBoardId,
+      name: 'Will be removed remotely',
+      x: 0,
+      y: 0,
+      width: 400,
+      height: 300,
+    );
+    await (db.delete(db.syncQueueEntries)).go();
+    await (db.update(db.frames)..where((f) => f.id.equals('frame-2'))).write(
+      const FramesCompanion(dirty: Value(false)),
+    );
+
+    await engine.reconcile();
+
+    final remaining = await (db.select(
+      db.frames,
+    )..where((f) => f.id.equals('frame-2'))).getSingleOrNull();
+    expect(remaining, isNull);
+  });
+
+  test('reconcile keeps a dirty local frame even though it is missing remotely', () async {
+    final framesRepo = FramesRepository(db);
+    await framesRepo.createFrame(
+      id: 'frame-3',
+      boardId: kLocalBoardId,
+      name: 'Not yet pushed',
+      x: 0,
+      y: 0,
+      width: 400,
+      height: 300,
+    );
+
+    await engine.reconcile();
+
+    final row = await (db.select(
+      db.frames,
+    )..where((f) => f.id.equals('frame-3'))).getSingleOrNull();
     expect(row, isNotNull, reason: 'a dirty/pending row must not be deleted');
   });
 }

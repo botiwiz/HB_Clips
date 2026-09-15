@@ -70,6 +70,13 @@ class RealtimeListener {
           filter: userFilter,
           callback: (payload) => _handleStrokeChange(payload),
         )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'frames',
+          filter: userFilter,
+          callback: (payload) => _handleFrameChange(payload),
+        )
         .subscribe();
   }
 
@@ -110,6 +117,16 @@ class RealtimeListener {
     await applyStrokeRecord(payload.newRecord);
   }
 
+  Future<void> _handleFrameChange(PostgresChangePayload payload) async {
+    if (payload.eventType == PostgresChangeEvent.delete) {
+      final id = payload.oldRecord['id'] as String?;
+      if (id == null) return;
+      await deleteLocalFrameIfNotDirty(id);
+      return;
+    }
+    await applyFrameRecord(payload.newRecord);
+  }
+
   Future<void> deleteLocalBoardIfNotDirty(String id) async {
     final local = await (_db.select(
       _db.boards,
@@ -132,6 +149,14 @@ class RealtimeListener {
     )..where((s) => s.id.equals(id))).getSingleOrNull();
     if (local == null || local.dirty) return;
     await (_db.delete(_db.strokes)..where((s) => s.id.equals(id))).go();
+  }
+
+  Future<void> deleteLocalFrameIfNotDirty(String id) async {
+    final local = await (_db.select(
+      _db.frames,
+    )..where((f) => f.id.equals(id))).getSingleOrNull();
+    if (local == null || local.dirty) return;
+    await (_db.delete(_db.frames)..where((f) => f.id.equals(id))).go();
   }
 
   /// Applies one remote `boards` row to local Drift, gated by
@@ -232,6 +257,41 @@ class RealtimeListener {
         );
       }
     }
+  }
+
+  /// Applies one remote `frames` row to local Drift, gated by
+  /// [shouldApplyRemote]. Public for reuse by `sync_engine.dart`'s
+  /// reconciliation pass.
+  Future<void> applyFrameRecord(Map<String, dynamic> r) async {
+    final id = r['id'] as String;
+    final remoteUpdatedAt = DateTime.parse(r['updated_at'] as String);
+    final local = await (_db.select(
+      _db.frames,
+    )..where((f) => f.id.equals(id))).getSingleOrNull();
+    if (!shouldApplyRemote(
+      localUpdatedAt: local?.updatedAt,
+      localDirty: local?.dirty ?? false,
+      remoteUpdatedAt: remoteUpdatedAt,
+    )) {
+      return;
+    }
+
+    await _db
+        .into(_db.frames)
+        .insertOnConflictUpdate(
+          FramesCompanion.insert(
+            id: id,
+            boardId: r['board_id'] as String,
+            name: Value(r['name'] as String),
+            x: Value((r['x'] as num).toDouble()),
+            y: Value((r['y'] as num).toDouble()),
+            width: Value((r['width'] as num).toDouble()),
+            height: Value((r['height'] as num).toDouble()),
+            createdAt: Value(DateTime.parse(r['created_at'] as String)),
+            updatedAt: Value(remoteUpdatedAt),
+            dirty: const Value(false),
+          ),
+        );
   }
 
   /// Applies one remote `strokes` row to local Drift, gated by

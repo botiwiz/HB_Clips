@@ -9,6 +9,7 @@ import 'package:hb_clips/data/models/clip.dart';
 import 'package:hb_clips/data/models/stroke.dart';
 import 'package:hb_clips/data/remote/boards_remote_source.dart';
 import 'package:hb_clips/data/remote/clips_remote_source.dart';
+import 'package:hb_clips/data/remote/frames_remote_source.dart';
 import 'package:hb_clips/data/remote/storage_source.dart';
 import 'package:hb_clips/data/remote/strokes_remote_source.dart';
 import 'package:hb_clips/data/repositories/boards_repository.dart';
@@ -69,6 +70,21 @@ class FakeBoardsRemoteSource implements BoardsRemoteSource {
   Future<List<Map<String, dynamic>>> fetchAll() async => [];
 }
 
+class FakeFramesRemoteSource implements FramesRemoteSource {
+  final List<FrameRow> upserted = [];
+  final List<String> deleted = [];
+  final List<Map<String, dynamic>> remoteRows = [];
+
+  @override
+  Future<void> upsert(FrameRow frame) async => upserted.add(frame);
+
+  @override
+  Future<void> delete(String id) async => deleted.add(id);
+
+  @override
+  Future<List<Map<String, dynamic>>> fetchAll() async => remoteRows;
+}
+
 class FakeStorageSource implements StorageSource {
   final List<String> uploadedClipIds = [];
 
@@ -115,6 +131,7 @@ void main() {
   late FakeClipsRemoteSource fakeClips;
   late FakeStrokesRemoteSource fakeStrokes;
   late FakeBoardsRemoteSource fakeBoards;
+  late FakeFramesRemoteSource fakeFrames;
   late FakeStorageSource fakeStorage;
   late SyncQueueDrainer drainer;
 
@@ -126,6 +143,7 @@ void main() {
     fakeClips = FakeClipsRemoteSource();
     fakeStrokes = FakeStrokesRemoteSource();
     fakeBoards = FakeBoardsRemoteSource();
+    fakeFrames = FakeFramesRemoteSource();
     fakeStorage = FakeStorageSource();
     drainer = SyncQueueDrainer(
       db,
@@ -133,6 +151,7 @@ void main() {
       fakeClips,
       fakeStrokes,
       fakeBoards,
+      fakeFrames,
       fakeStorage,
       FakeLocalBlobStore(),
     );
