@@ -169,6 +169,63 @@ bypass that client-side check to prove the **server-side** trigger from
 **Expected:** the insert is rejected by the trigger even though it bypassed
 every client-side check.
 
+## 8. Web app: browser-specific checks
+
+Everything in sections 1-7 above was written against native app instances;
+none of it is web-specific. If you've also deployed the web container
+(`README.md`'s "Web app: browser access" section), run through these too -
+they exercise things that only exist in a browser context (IndexedDB
+persistence, cross-origin-free proxying, no installed binary) and weren't
+covered by this sandbox's own Playwright checks, which ran against an
+**unconfigured local build with no server** (`flutter build web` served
+locally, no Supabase pointed at) - proving the UI/gesture code works, not
+that the deployed reverse-proxy/CORS setup does.
+
+1. **Load over Tailscale, not `localhost`.** From a browser on a *different*
+   device on your tailnet than the server itself, open
+   `http://<tailscale-name>:8080` (or your `WEB_HTTP_PORT`). Confirm the
+   board loads and an anonymous session appears in Studio - this is the
+   real proof the Caddy reverse-proxy setup works cross-origin-free from an
+   actual remote client, not just from the server's own `localhost`.
+2. **IndexedDB survives a reload.** Add an image clip and a text note.
+   Reload the page (`F5`/`Cmd+R`). Confirm both are still there - this
+   proves the WASM+IndexedDB-backed Drift database (`drift_flutter`,
+   `lib/data/local/database.dart`) actually persists, not just that the
+   in-memory state looked right before any reload.
+3. **IndexedDB survives a hard refresh.** Repeat step 2 but with a hard
+   refresh (`Ctrl+Shift+R`/`Cmd+Shift+R`, which also re-fetches the service
+   worker and static assets). Confirm the clips are still there afterward -
+   a hard refresh is a meaningfully different code path (fresh asset
+   fetch + service worker update) than a normal reload, worth checking
+   separately.
+4. **Minimap, inertial pan, and frames work in a real browser.** Scatter a
+   few clips around, confirm the minimap (bottom-corner panel) reflects
+   them and that clicking/dragging inside it re-centers the main view;
+   pan the board with a flick and confirm it keeps moving briefly after
+   release before settling; create a frame, rename it, resize it, and
+   confirm a clip placed on top of it renders in front of the frame's
+   border. These all passed in this sandbox's own Playwright checks
+   against an unconfigured local build - this step is about confirming
+   they still work through the *deployed* reverse proxy, in a real browser,
+   over Tailscale, not re-discovering new bugs in the gesture code itself.
+5. **Device pairing between a browser tab and a native build**, if you
+   still have a native install around. Generate a pairing code on one
+   (either direction - web → native or native → web), redeem it on the
+   other, and confirm both then show the same boards/clips. This is the
+   one pairing scenario the earlier device-pairing work never exercised
+   (Phase M was built and tested against two native instances only) - a
+   browser tab's session storage behaves differently enough from a native
+   installs' (`SharedPreferencesLocalStorage` backed by `shared_preferences`
+   in both cases, but the browser's origin/storage-partitioning rules are
+   a different code path worth confirming explicitly).
+
+**Expected:** all five pass with no surprises specific to running in a
+browser. If IndexedDB persistence fails (steps 2-3), that's most likely a
+`drift_flutter` configuration issue (double check `sqlite3.wasm` and the
+drift worker JS are actually being served from `web/` in the built output,
+not 404ing silently) rather than anything in the sync logic itself, since
+sections 1-7's Postgres-side behavior is platform-independent.
+
 ## Note: running two instances from one machine
 
 If you don't have two physical devices handy yet, you can still exercise
