@@ -19,6 +19,7 @@ import '../geometry/crop_geometry.dart';
 import '../geometry/selection_geometry.dart';
 import '../services/eyedropper_service.dart';
 import 'bin_drop_target.dart';
+import 'board_minimap.dart';
 import 'clip_style_popover.dart';
 import 'clip_widget.dart';
 import 'crop_overlay.dart';
@@ -757,6 +758,11 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas> {
                         highlighted: overBin,
                         onTap: () {},
                       ),
+                    ),
+                    const Positioned(
+                      left: 24,
+                      bottom: 24,
+                      child: BoardMinimap(),
                     ),
                   ],
                 ),
