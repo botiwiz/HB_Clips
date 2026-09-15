@@ -25,6 +25,9 @@ future `supabase/supabase` re-vendor shows precisely what upstream changed.
 - `volumes/` — service configs (Envoy gateway routing, Postgres init SQL,
   etc.) and, once running, the actual Postgres/Storage data directories
   (gitignored).
+- `web/` + `docker-compose.web.yml` — **not** vendored, HB_Clips-specific:
+  builds and serves the Flutter web app as its own container next to this
+  stack. See "Web app: browser access" below.
 
 ## HB_Clips-specific `.env` overrides
 
@@ -198,6 +201,93 @@ the fuller check — the app's own outbox/drain/realtime/reconciliation
 logic against the real deployed stack: persistence across restarts,
 cross-device realtime propagation, offline queueing, image/GIF round-trip
 integrity, delete propagation, and the server-side 30-image cap.
+
+## Web app: browser access
+
+HB_Clips also runs as a browser app, reachable from any device on your
+tailnet with nothing installed - built from the same HB_Clips source tree,
+served by its own container (`supabase/selfhost/web/`) that sits *next to*
+this Supabase stack, sharing only its Docker network. Rebuilding or
+restarting the web container never touches Postgres/Auth/Storage/Realtime.
+
+A single [Caddy](https://caddyserver.com/) instance in that container does
+two things on one origin/port, so the browser never needs CORS configured
+anywhere: serves the built Flutter web app as static files, and reverse
+proxies `/auth/v1`, `/rest/v1`, `/realtime/v1`, `/storage/v1`, etc. through
+to this stack's `api-gw` service internally (see
+`web/Caddyfile`/`docker-compose.web.yml`). Caddy also handles the
+WebSocket upgrade Realtime needs with no extra config.
+
+**Prerequisite - this needs the *app's own* `.env`, not just this stack's.**
+The Supabase stack you deployed above has its own `.env` in this directory
+(`supabase/selfhost/.env`). The web build additionally needs HB_Clips'
+own `.env` at the **repo root** (`../../.env` from here) - the same file
+the native desktop build reads, gitignored, copied from
+`../../.env.example`. `flutter_dotenv` bakes this into the web build as a
+bundled asset at `flutter build web` time (not read at container runtime),
+so it has to exist on disk *before* you build the image:
+
+```sh
+cd ../../   # repo root
+cp .env.example .env
+```
+
+Then edit that root `.env` and point it at the web container's own origin
+- **not** port 8000 directly, since Caddy is what proxies both the page
+and the API from one origin:
+
+```
+SUPABASE_URL=http://<tailscale-name>:8080
+SUPABASE_ANON_KEY=<the ANON_KEY from supabase/selfhost/.env>
+```
+
+(`8080` is this stack's default `WEB_HTTP_PORT` - see below if you changed
+it.)
+
+### Build and run
+
+From this directory (`supabase/selfhost/`), with the Supabase stack from
+the sections above already running:
+
+```sh
+docker compose -f docker-compose.yml -f docker-compose.web.yml up -d --build
+```
+
+`--build` compiles the Flutter web app from source *inside* the image
+build (stage 1 of `web/Dockerfile`, using the community
+`ghcr.io/cirruslabs/flutter` image - nothing prebuilt needs to be copied
+onto the server). This will be the slowest step on first run - a real
+`flutter pub get` + `flutter build web --release` happens inside Docker.
+
+By default the web app listens on host port `8080`. To use a different
+port, set `WEB_HTTP_PORT` in `supabase/selfhost/.env` before running the
+command above (e.g. `WEB_HTTP_PORT=9000`), and update `SUPABASE_URL` in
+the root `.env` to match before rebuilding.
+
+### Smoke-test
+
+From a browser on your tailnet (not `localhost` - the point is to prove
+this works cross-device with no CORS issues): open
+`http://<tailscale-name>:8080`. You should see the board, and a fresh
+anonymous user should show up in Studio
+(`http://<tailscale-name>:8000`) within a few seconds, exactly like a
+fresh native-app install.
+
+### Rebuilding after a code change
+
+```sh
+docker compose -f docker-compose.yml -f docker-compose.web.yml up -d --build web
+```
+
+`--build web` limits the rebuild to just this container - the Supabase
+stack's own containers are untouched.
+
+**Not independently verified here** - this sandbox can neither pull the
+`ghcr.io/cirruslabs/flutter`/`caddy` images nor reach a real Tailscale
+server, so `docker compose config` (the merged YAML) was checked for
+correctness, but the actual `docker build`/`docker compose up` and the
+browser smoke test above need to be run by you on your server and
+reported back, same as the rest of this deploy runbook.
 
 ### Device pairing (syncing a second device)
 

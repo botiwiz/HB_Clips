@@ -1,0 +1,27 @@
+# Runs the HB_Clips web app as its own container, on the same Docker
+# network the vendored docker-compose.yml already creates (compose's
+# default per-project network - no explicit `networks:` needed, every
+# service across every file in one `docker compose -f ... -f ...`
+# invocation joins it automatically), so Caddy can reach `api-gw:8000`
+# internally. Kept as a separate override file rather than edited into
+# docker-compose.yml so that file stays byte-identical to upstream for
+# clean re-vendoring diffs later - same reasoning as every other
+# docker-compose.*.yml override already here.
+#
+# Usage (from this directory):
+#   docker compose -f docker-compose.yml -f docker-compose.web.yml up -d --build
+#
+# See ./web/Dockerfile and ./web/Caddyfile for the build/serve details, and
+# README.md's "Web app: browser access" section for the full runbook.
+services:
+  web:
+    container_name: hb-clips-web
+    build:
+      context: ../../
+      dockerfile: supabase/selfhost/web/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${WEB_HTTP_PORT:-8080}:80"
+    depends_on:
+      api-gw:
+        condition: service_healthy

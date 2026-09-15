@@ -1,0 +1,21 @@
+# No domain/TLS here - Tailscale is the trust boundary (same choice the
+# rest of this deployment makes), so this just listens on plain HTTP
+# inside the container; docker-compose.web.yml maps that to a host port.
+# API path list mirrors ../volumes/proxy/caddy/Caddyfile (the vendored
+# public-HTTPS Caddy override) minus the domain/basic-auth/Studio parts,
+# which don't apply to this single-origin, no-login web app.
+:80 {
+	@supabase_api path /auth/v1/* /rest/v1/* /graphql/v1 /realtime/v1/* /storage/v1/* /functions/v1/* /mcp /sso/*
+
+	handle @supabase_api {
+		reverse_proxy api-gw:8000
+	}
+
+	handle {
+		root * /srv
+		file_server
+		try_files {path} /index.html
+	}
+
+	header -server
+}

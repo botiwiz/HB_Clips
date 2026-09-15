@@ -1,0 +1,20 @@
+# Keeps the web build's Docker context small and the image build fast.
+# Deliberately does NOT exclude `.env` - the web build stage needs it
+# present on disk (flutter_dotenv loads it as a bundled asset, baked into
+# build/web at `flutter build web` time, not read at container runtime).
+
+.git/
+.dart_tool/
+.pub-cache/
+.pub/
+/build/
+/coverage/
+
+android/
+ios/
+linux/
+macos/
+windows/
+
+supabase/selfhost/volumes/
+supabase/local-sql-validation/
