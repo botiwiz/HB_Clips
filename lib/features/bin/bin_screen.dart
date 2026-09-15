@@ -1,25 +1,24 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../data/models/clip.dart';
 import '../../data/providers.dart';
+import '../board/widgets/local_image.dart';
 
-/// Permanently deletes [clip]: its local image file (best-effort), any
-/// strokes attached to it, then the clip row itself - in that order, since
-/// once the row is gone there's nothing left to look up the file path or
-/// stroke ownership from. Lives here rather than in `ClipsRepository` so
-/// the repositories stay decoupled from each other and from `dart:io`.
+/// Permanently deletes [clip]: its local image cache entry (best-effort),
+/// any strokes attached to it, then the clip row itself - in that order,
+/// since once the row is gone there's nothing left to look up the blob
+/// key or stroke ownership from. Lives here rather than in
+/// `ClipsRepository` so the repositories stay decoupled from each other
+/// and from the local blob store.
 Future<void> _deleteClipForever(WidgetRef ref, BoardClip clip) async {
   final path = clip.localFilePath;
   if (clip.type == ClipType.image && path != null) {
     try {
-      final file = File(path);
-      if (await file.exists()) await file.delete();
+      await ref.read(localBlobStoreProvider).delete(path);
     } catch (_) {
-      // Best-effort: a missing/unreadable file shouldn't block deletion.
+      // Best-effort: a missing/unreadable entry shouldn't block deletion.
     }
   }
   await ref.read(strokesRepositoryProvider).deleteStrokesForClip(clip.id);
@@ -189,6 +188,6 @@ class _BinnedClipTile extends ConsumerWidget {
         color: AppTheme.textDisabled,
       );
     }
-    return Image.file(File(path), fit: BoxFit.cover, width: double.infinity);
+    return LocalImage(path: path, fit: BoxFit.cover, width: double.infinity);
   }
 }

@@ -110,6 +110,3 @@ final isDraggingOverBinProvider = StateProvider<bool>((ref) => false);
 /// When true, drag/resize positions and sizes snap to [kBoardGridSpacing] -
 /// a per-session UI preference, not persisted.
 final snapToGridProvider = StateProvider<bool>((ref) => false);
-
-/// True while the window is pinned always-on-top of other windows.
-final alwaysOnTopProvider = StateProvider<bool>((ref) => false);

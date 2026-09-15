@@ -1,10 +1,7 @@
-import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../core/theme/app_theme.dart';
@@ -34,11 +31,9 @@ class GifPlaybackToolbar extends ConsumerWidget {
     if (byteData == null) return;
 
     final id = _uuid.v4();
-    final supportDir = await getApplicationSupportDirectory();
-    final clipsDir = Directory(p.join(supportDir.path, 'clips'));
-    await clipsDir.create(recursive: true);
-    final destPath = p.join(clipsDir.path, '$id.png');
-    await File(destPath).writeAsBytes(byteData.buffer.asUint8List());
+    final destPath = await ref
+        .read(localBlobStoreProvider)
+        .writeBytes(byteData.buffer.asUint8List(), extension: '.png');
 
     try {
       await ref

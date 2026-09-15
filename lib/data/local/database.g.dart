@@ -1990,14 +1990,17 @@ class $SyncQueueEntriesTable extends SyncQueueEntries
 class SyncQueueEntry extends DataClass implements Insertable<SyncQueueEntry> {
   final int id;
 
-  /// 'clip' or 'stroke'.
+  /// 'clip', 'stroke', or 'board'.
   final String entityType;
   final String entityId;
 
   /// 'upsert' or 'delete'.
   final String operation;
 
-  /// JSON snapshot of the row at enqueue time.
+  /// Unused for 'upsert' (the drainer always re-reads the current row from
+  /// Drift by [entityId] instead) and for 'delete' (only the id matters).
+  /// Kept as a required column since it's cheap and may be useful for
+  /// debugging a stuck queue entry later.
   final String payloadJson;
   final int attemptCount;
   final String? lastError;
@@ -2624,6 +2627,211 @@ class BoardsCompanion extends UpdateCompanion<BoardRow> {
   }
 }
 
+class $LocalBlobsTable extends LocalBlobs
+    with TableInfo<$LocalBlobsTable, LocalBlob> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $LocalBlobsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _bytesMeta = const VerificationMeta('bytes');
+  @override
+  late final GeneratedColumn<Uint8List> bytes = GeneratedColumn<Uint8List>(
+    'bytes',
+    aliasedName,
+    false,
+    type: DriftSqlType.blob,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, bytes];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'local_blobs';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<LocalBlob> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('bytes')) {
+      context.handle(
+        _bytesMeta,
+        bytes.isAcceptableOrUnknown(data['bytes']!, _bytesMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_bytesMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  LocalBlob map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return LocalBlob(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      bytes: attachedDatabase.typeMapping.read(
+        DriftSqlType.blob,
+        data['${effectivePrefix}bytes'],
+      )!,
+    );
+  }
+
+  @override
+  $LocalBlobsTable createAlias(String alias) {
+    return $LocalBlobsTable(attachedDatabase, alias);
+  }
+}
+
+class LocalBlob extends DataClass implements Insertable<LocalBlob> {
+  final String id;
+  final Uint8List bytes;
+  const LocalBlob({required this.id, required this.bytes});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['bytes'] = Variable<Uint8List>(bytes);
+    return map;
+  }
+
+  LocalBlobsCompanion toCompanion(bool nullToAbsent) {
+    return LocalBlobsCompanion(id: Value(id), bytes: Value(bytes));
+  }
+
+  factory LocalBlob.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return LocalBlob(
+      id: serializer.fromJson<String>(json['id']),
+      bytes: serializer.fromJson<Uint8List>(json['bytes']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'bytes': serializer.toJson<Uint8List>(bytes),
+    };
+  }
+
+  LocalBlob copyWith({String? id, Uint8List? bytes}) =>
+      LocalBlob(id: id ?? this.id, bytes: bytes ?? this.bytes);
+  LocalBlob copyWithCompanion(LocalBlobsCompanion data) {
+    return LocalBlob(
+      id: data.id.present ? data.id.value : this.id,
+      bytes: data.bytes.present ? data.bytes.value : this.bytes,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LocalBlob(')
+          ..write('id: $id, ')
+          ..write('bytes: $bytes')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, $driftBlobEquality.hash(bytes));
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is LocalBlob &&
+          other.id == this.id &&
+          $driftBlobEquality.equals(other.bytes, this.bytes));
+}
+
+class LocalBlobsCompanion extends UpdateCompanion<LocalBlob> {
+  final Value<String> id;
+  final Value<Uint8List> bytes;
+  final Value<int> rowid;
+  const LocalBlobsCompanion({
+    this.id = const Value.absent(),
+    this.bytes = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  LocalBlobsCompanion.insert({
+    required String id,
+    required Uint8List bytes,
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       bytes = Value(bytes);
+  static Insertable<LocalBlob> custom({
+    Expression<String>? id,
+    Expression<Uint8List>? bytes,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (bytes != null) 'bytes': bytes,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  LocalBlobsCompanion copyWith({
+    Value<String>? id,
+    Value<Uint8List>? bytes,
+    Value<int>? rowid,
+  }) {
+    return LocalBlobsCompanion(
+      id: id ?? this.id,
+      bytes: bytes ?? this.bytes,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (bytes.present) {
+      map['bytes'] = Variable<Uint8List>(bytes.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LocalBlobsCompanion(')
+          ..write('id: $id, ')
+          ..write('bytes: $bytes, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -2633,6 +2841,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     this,
   );
   late final $BoardsTable boards = $BoardsTable(this);
+  late final $LocalBlobsTable localBlobs = $LocalBlobsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -2642,6 +2851,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     strokes,
     syncQueueEntries,
     boards,
+    localBlobs,
   ];
 }
 
@@ -3900,6 +4110,142 @@ typedef $$BoardsTableProcessedTableManager =
       BoardRow,
       PrefetchHooks Function()
     >;
+typedef $$LocalBlobsTableCreateCompanionBuilder =
+    LocalBlobsCompanion Function({
+      required String id,
+      required Uint8List bytes,
+      Value<int> rowid,
+    });
+typedef $$LocalBlobsTableUpdateCompanionBuilder =
+    LocalBlobsCompanion Function({
+      Value<String> id,
+      Value<Uint8List> bytes,
+      Value<int> rowid,
+    });
+
+class $$LocalBlobsTableFilterComposer
+    extends Composer<_$AppDatabase, $LocalBlobsTable> {
+  $$LocalBlobsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<Uint8List> get bytes => $composableBuilder(
+    column: $table.bytes,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$LocalBlobsTableOrderingComposer
+    extends Composer<_$AppDatabase, $LocalBlobsTable> {
+  $$LocalBlobsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<Uint8List> get bytes => $composableBuilder(
+    column: $table.bytes,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$LocalBlobsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $LocalBlobsTable> {
+  $$LocalBlobsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<Uint8List> get bytes =>
+      $composableBuilder(column: $table.bytes, builder: (column) => column);
+}
+
+class $$LocalBlobsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $LocalBlobsTable,
+          LocalBlob,
+          $$LocalBlobsTableFilterComposer,
+          $$LocalBlobsTableOrderingComposer,
+          $$LocalBlobsTableAnnotationComposer,
+          $$LocalBlobsTableCreateCompanionBuilder,
+          $$LocalBlobsTableUpdateCompanionBuilder,
+          (
+            LocalBlob,
+            BaseReferences<_$AppDatabase, $LocalBlobsTable, LocalBlob>,
+          ),
+          LocalBlob,
+          PrefetchHooks Function()
+        > {
+  $$LocalBlobsTableTableManager(_$AppDatabase db, $LocalBlobsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$LocalBlobsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$LocalBlobsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$LocalBlobsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<Uint8List> bytes = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => LocalBlobsCompanion(id: id, bytes: bytes, rowid: rowid),
+          createCompanionCallback:
+              ({
+                required String id,
+                required Uint8List bytes,
+                Value<int> rowid = const Value.absent(),
+              }) => LocalBlobsCompanion.insert(
+                id: id,
+                bytes: bytes,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$LocalBlobsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $LocalBlobsTable,
+      LocalBlob,
+      $$LocalBlobsTableFilterComposer,
+      $$LocalBlobsTableOrderingComposer,
+      $$LocalBlobsTableAnnotationComposer,
+      $$LocalBlobsTableCreateCompanionBuilder,
+      $$LocalBlobsTableUpdateCompanionBuilder,
+      (LocalBlob, BaseReferences<_$AppDatabase, $LocalBlobsTable, LocalBlob>),
+      LocalBlob,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -3912,4 +4258,6 @@ class $AppDatabaseManager {
       $$SyncQueueEntriesTableTableManager(_db, _db.syncQueueEntries);
   $$BoardsTableTableManager get boards =>
       $$BoardsTableTableManager(_db, _db.boards);
+  $$LocalBlobsTableTableManager get localBlobs =>
+      $$LocalBlobsTableTableManager(_db, _db.localBlobs);
 }

@@ -1,10 +1,5 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
-import 'package:uuid/uuid.dart';
 
 import '../../../core/theme/app_theme.dart';
 import '../../../data/providers.dart';
@@ -12,8 +7,6 @@ import '../controllers/board_controller.dart';
 import '../controllers/crop_controller.dart';
 import '../geometry/selection_geometry.dart';
 import '../services/image_crop_service.dart';
-
-const _uuid = Uuid();
 
 /// Floating pill toolbar shown while the crop tool is active: just confirm
 /// and cancel - the crop rectangle itself is dragged directly on the canvas
@@ -36,16 +29,19 @@ class CropToolbar extends ConsumerWidget {
       return;
     }
 
-    final result = await cropImageFile(clip.localFilePath!, cropRect);
+    final blobStore = ref.read(localBlobStoreProvider);
+    final oldPath = clip.localFilePath!;
+    final sourceBytes = await blobStore.readBytes(oldPath);
+    if (sourceBytes == null) return;
+
+    final result = await cropImageFile(sourceBytes, cropRect);
     if (result == null) return;
 
-    final supportDir = await getApplicationSupportDirectory();
-    final clipsDir = Directory(p.join(supportDir.path, 'clips'));
-    await clipsDir.create(recursive: true);
-    final newPath = p.join(clipsDir.path, '${_uuid.v4()}.png');
-    await File(newPath).writeAsBytes(result.pngBytes);
+    final newPath = await blobStore.writeBytes(
+      result.pngBytes,
+      extension: '.png',
+    );
 
-    final oldPath = clip.localFilePath!;
     await ref
         .read(clipsRepositoryProvider)
         .replaceImage(
@@ -58,9 +54,9 @@ class CropToolbar extends ConsumerWidget {
         );
 
     try {
-      await File(oldPath).delete();
+      await blobStore.delete(oldPath);
     } catch (_) {
-      // Best-effort cleanup; a leftover file here is harmless.
+      // Best-effort cleanup; a leftover blob here is harmless.
     }
 
     ref.read(isCropModeProvider.notifier).state = false;

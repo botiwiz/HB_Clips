@@ -1,11 +1,8 @@
 import 'dart:async';
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 import 'package:super_clipboard/super_clipboard.dart';
 import 'package:uuid/uuid.dart';
 
@@ -95,11 +92,9 @@ Future<void> pasteImageFromClipboard(BuildContext context, WidgetRef ref) async 
   }
 
   final id = _uuid.v4();
-  final supportDir = await getApplicationSupportDirectory();
-  final clipsDir = Directory(p.join(supportDir.path, 'clips'));
-  await clipsDir.create(recursive: true);
-  final destPath = p.join(clipsDir.path, '$id${_imageFormats[matchedFormat]}');
-  await File(destPath).writeAsBytes(bytes);
+  final destPath = await ref
+      .read(localBlobStoreProvider)
+      .writeBytes(bytes, extension: _imageFormats[matchedFormat]!);
 
   if (!context.mounted) return;
   final size = MediaQuery.sizeOf(context);

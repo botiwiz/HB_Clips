@@ -571,7 +571,12 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas> {
       (local.dx - clip.x) / clip.width,
       (local.dy - clip.y) / clip.height,
     );
-    sampleColorAt(clip.localFilePath!, fractional).then((hex) {
+    ref.read(localBlobStoreProvider).readBytes(clip.localFilePath!).then((
+      bytes,
+    ) {
+      if (bytes == null || !mounted) return null;
+      return sampleColorAt(bytes, fractional);
+    }).then((hex) {
       if (hex == null || !mounted) return;
       ref.read(strokeColorHexProvider.notifier).state = hex;
       ref.read(drawToolProvider.notifier).state = DrawTool.pen;

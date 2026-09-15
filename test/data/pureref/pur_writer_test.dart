@@ -106,7 +106,10 @@ void main() {
       ),
     ];
 
-    final result = await writePurFile(clips);
+    final result = await writePurFile(
+      clips,
+      readBytes: (path) => File(path).readAsBytes(),
+    );
     expect(result.summary.imagesExported, 2);
     expect(result.summary.textNotesExported, 1);
     expect(result.summary.imagesSkipped, 0);
@@ -138,7 +141,10 @@ void main() {
 
   test('a text note with no custom background exports the default color', () async {
     final clips = [_textClip(id: 'text-1', text: 'plain', x: 0, y: 0)];
-    final result = await writePurFile(clips);
+    final result = await writePurFile(
+      clips,
+      readBytes: (path) => File(path).readAsBytes(),
+    );
     final parsed = PurReader(result.bytes).read();
     expect(
       parsed.text.single.rgbBackground,
@@ -157,7 +163,10 @@ void main() {
         height: 10,
       ),
     ];
-    final result = await writePurFile(clips);
+    final result = await writePurFile(
+      clips,
+      readBytes: (path) => File(path).readAsBytes(),
+    );
     expect(result.summary.imagesExported, 0);
     expect(result.summary.imagesSkipped, 1);
   });

@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 
@@ -62,7 +61,16 @@ class _EncodedImage {
 /// its source format, since the format only supports embedding PNG bytes.
 /// Grouped clips lose their group membership - the format has no grouping
 /// concept.
-Future<PurWriteResult> writePurFile(List<BoardClip> clips) async {
+///
+/// [readBytes] resolves a clip's `localFilePath` to its raw bytes - a
+/// plain callback (rather than a direct `LocalBlobStore` dependency) so
+/// this file stays decoupled from the app's storage layer, matching
+/// `pur_reader.dart`'s own no-UI-dependency stance. Callers typically pass
+/// `LocalBlobStore.readBytes` directly.
+Future<PurWriteResult> writePurFile(
+  List<BoardClip> clips, {
+  required Future<Uint8List?> Function(String key) readBytes,
+}) async {
   final imageClips = clips.where((c) => c.type == ClipType.image).toList();
   final textClips = clips.where((c) => c.type == ClipType.text).toList();
 
@@ -75,7 +83,11 @@ Future<PurWriteResult> writePurFile(List<BoardClip> clips) async {
       continue;
     }
     try {
-      final bytes = await File(path).readAsBytes();
+      final bytes = await readBytes(path);
+      if (bytes == null) {
+        imagesSkipped++;
+        continue;
+      }
       final decoded = img.decodeImage(bytes);
       if (decoded == null) {
         imagesSkipped++;

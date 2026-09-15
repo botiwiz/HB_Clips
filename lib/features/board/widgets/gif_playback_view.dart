@@ -1,9 +1,9 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../data/providers.dart';
 import '../services/gif_controller_service.dart';
+import 'local_image.dart';
 
 /// Renders a GIF clip's currently-selected frame once its frames have been
 /// decoded via [GifPlaybackController], falling back to the ordinary
@@ -30,9 +30,13 @@ class _GifPlaybackViewState extends ConsumerState<GifPlaybackView> {
   void initState() {
     super.initState();
     _controller = ref.read(gifPlaybackControllerProvider.notifier);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
-      _controller.openClip(widget.clipId, widget.path);
+      final bytes = await ref
+          .read(localBlobStoreProvider)
+          .readBytes(widget.path);
+      if (!mounted || bytes == null) return;
+      _controller.openClip(widget.clipId, bytes);
     });
   }
 
@@ -48,8 +52,8 @@ class _GifPlaybackViewState extends ConsumerState<GifPlaybackView> {
   Widget build(BuildContext context) {
     final state = ref.watch(gifPlaybackControllerProvider);
     if (state == null || state.clipId != widget.clipId || state.frames.isEmpty) {
-      return Image.file(
-        File(widget.path),
+      return LocalImage(
+        path: widget.path,
         fit: BoxFit.cover,
         width: double.infinity,
         height: double.infinity,

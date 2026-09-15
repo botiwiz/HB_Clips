@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:io';
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -55,14 +55,13 @@ class GifPlaybackController extends StateNotifier<GifPlaybackState?> {
 
   Timer? _timer;
 
-  /// Loads and starts playing [path]'s frames for [clipId], replacing
+  /// Loads and starts playing [bytes]' frames for [clipId], replacing
   /// whatever was previously open. A no-op if [clipId] is already open.
-  Future<void> openClip(String clipId, String path) async {
+  Future<void> openClip(String clipId, Uint8List bytes) async {
     if (state?.clipId == clipId) return;
     _timer?.cancel();
     state = null;
 
-    final bytes = await File(path).readAsBytes();
     final codec = await ui.instantiateImageCodec(bytes);
     final frames = <GifFrame>[];
     for (var i = 0; i < codec.frameCount; i++) {

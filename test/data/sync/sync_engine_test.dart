@@ -38,6 +38,7 @@ void main() {
       fakeStrokes,
       fakeBoards,
       fakeStorage,
+      FakeLocalBlobStore(),
     );
     // Never started (.start()/.stop() aren't called in these tests, so no
     // real network I/O happens) - only its public applyXRecord methods,

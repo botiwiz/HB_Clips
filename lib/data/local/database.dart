@@ -1,19 +1,16 @@
-import 'dart:io';
-
 import 'package:drift/drift.dart';
-import 'package:drift/native.dart';
-import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
+import 'package:drift_flutter/drift_flutter.dart';
 
 import '../../core/constants.dart';
 import 'tables/boards_table.dart';
 import 'tables/clips_table.dart';
+import 'tables/local_blobs_table.dart';
 import 'tables/strokes_table.dart';
 import 'tables/sync_queue_table.dart';
 
 part 'database.g.dart';
 
-@DriftDatabase(tables: [Clips, Strokes, SyncQueueEntries, Boards])
+@DriftDatabase(tables: [Clips, Strokes, SyncQueueEntries, Boards, LocalBlobs])
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
@@ -21,7 +18,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 7;
+  int get schemaVersion => 8;
 
   Future<void> _seedDefaultBoard(Migrator m) {
     return into(boards).insert(
@@ -56,14 +53,27 @@ class AppDatabase extends _$AppDatabase {
       if (from < 7) {
         await m.addColumn(boards, boards.dirty);
       }
+      if (from < 8) {
+        await m.createTable(localBlobs);
+      }
     },
   );
 }
 
-LazyDatabase _openConnection() {
-  return LazyDatabase(() async {
-    final dir = await getApplicationSupportDirectory();
-    final file = File(p.join(dir.path, 'hb_clips.sqlite'));
-    return NativeDatabase.createInBackground(file);
-  });
+/// `driftDatabase()` picks the right backend per platform: a native SQLite
+/// file (via `getApplicationDocumentsDirectory()`) on desktop/mobile, or a
+/// WASM+IndexedDB-backed database in the browser on web - the same
+/// offline-capable, fully-synced database either way, no separate code path
+/// for web. The web backend needs `sqlite3.wasm` and `drift_worker.js`
+/// present in `web/`, downloaded from the `sqlite3`/`drift` GitHub releases
+/// matching this project's installed package versions - re-download and
+/// replace both if those package versions are ever bumped.
+QueryExecutor _openConnection() {
+  return driftDatabase(
+    name: 'hb_clips',
+    web: DriftWebOptions(
+      sqlite3Wasm: Uri.parse('sqlite3.wasm'),
+      driftWorker: Uri.parse('drift_worker.js'),
+    ),
+  );
 }

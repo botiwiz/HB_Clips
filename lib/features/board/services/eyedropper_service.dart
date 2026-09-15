@@ -1,18 +1,18 @@
-import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/rendering.dart';
 import 'package:image/image.dart' as img;
 
 /// Samples the pixel color at [fractionalPoint] (0..1 of the image's native
-/// pixel bounds) in the image file at [sourcePath], returning it as an
-/// uppercase `#RRGGBB` hex string - the eyedropper tool's primitive. Returns
-/// null if the file can't be decoded as an image.
+/// pixel bounds) in [sourceBytes], returning it as an uppercase `#RRGGBB`
+/// hex string - the eyedropper tool's primitive. Returns null if the bytes
+/// can't be decoded as an image. Operates on raw bytes (not a file path)
+/// so it works unchanged on web.
 Future<String?> sampleColorAt(
-  String sourcePath,
+  Uint8List sourceBytes,
   Offset fractionalPoint,
 ) async {
-  final bytes = await File(sourcePath).readAsBytes();
-  final decoded = img.decodeImage(bytes);
+  final decoded = img.decodeImage(sourceBytes);
   if (decoded == null) return null;
 
   final x = (fractionalPoint.dx * decoded.width).round().clamp(

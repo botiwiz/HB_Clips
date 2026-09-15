@@ -1,13 +1,9 @@
-import 'dart:io';
-
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
-import 'package:window_manager/window_manager.dart';
 
 import '../../core/constants.dart';
 import '../../core/theme/app_theme.dart';
@@ -15,7 +11,6 @@ import '../../data/models/clip.dart';
 import '../../data/providers.dart';
 import '../../data/pureref/pur_writer.dart';
 import '../../data/repositories/clips_repository.dart';
-import '../../main.dart';
 import '../about/about_screen.dart';
 import '../annotation/controllers/annotation_controller.dart';
 import '../annotation/draw_toolbar.dart';
@@ -25,6 +20,7 @@ import 'controllers/crop_controller.dart';
 import 'geometry/selection_geometry.dart';
 import 'services/clipboard_paste_service.dart';
 import 'services/pureref_import_service.dart';
+import 'services/save_file_service.dart';
 import 'widgets/board_canvas.dart';
 import 'widgets/board_switcher.dart';
 import 'widgets/board_toolbar.dart';
@@ -52,7 +48,7 @@ class BoardScreen extends ConsumerWidget {
     try {
       result = await FilePicker.platform.pickFiles(
         type: FileType.image,
-        withData: false,
+        withData: true,
       );
     } catch (error) {
       // On Linux, file_picker shells out to zenity/kdialog for the native
@@ -70,16 +66,15 @@ class BoardScreen extends ConsumerWidget {
       );
       return;
     }
-    final pickedPath = result?.files.single.path;
-    if (pickedPath == null) return;
+    final picked = result?.files.single;
+    final pickedBytes = picked?.bytes;
+    if (picked == null || pickedBytes == null) return;
 
     final id = _uuid.v4();
-    final supportDir = await getApplicationSupportDirectory();
-    final clipsDir = Directory(p.join(supportDir.path, 'clips'));
-    await clipsDir.create(recursive: true);
-    final ext = p.extension(pickedPath);
-    final destPath = p.join(clipsDir.path, '$id$ext');
-    await File(pickedPath).copy(destPath);
+    final ext = p.extension(picked.name);
+    final destPath = await ref
+        .read(localBlobStoreProvider)
+        .writeBytes(pickedBytes, extension: ext);
 
     if (!context.mounted) return;
     final center = _viewportCenterBoardPoint(
@@ -117,7 +112,7 @@ class BoardScreen extends ConsumerWidget {
       result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['pur'],
-        withData: false,
+        withData: true,
       );
     } catch (error) {
       if (!context.mounted) return;
@@ -132,11 +127,11 @@ class BoardScreen extends ConsumerWidget {
       );
       return;
     }
-    final pickedPath = result?.files.single.path;
-    if (pickedPath == null) return;
+    final pickedBytes = result?.files.single.bytes;
+    if (pickedBytes == null) return;
     if (!context.mounted) return;
 
-    final summary = await importPurFile(context, ref, pickedPath);
+    final summary = await importPurFile(context, ref, pickedBytes);
     if (summary == null || !context.mounted) return;
 
     final parts = <String>[
@@ -165,6 +160,11 @@ class BoardScreen extends ConsumerWidget {
   }
 
   Future<void> _exportPurFile(BuildContext context, WidgetRef ref) async {
+    final clips = ref.read(activeClipsProvider).valueOrNull ?? [];
+    final blobStore = ref.read(localBlobStoreProvider);
+    final result = await writePurFile(clips, readBytes: blobStore.readBytes);
+    if (!context.mounted) return;
+
     String? savePath;
     try {
       savePath = await FilePicker.platform.saveFile(
@@ -172,6 +172,7 @@ class BoardScreen extends ConsumerWidget {
         fileName: 'board.pur',
         type: FileType.custom,
         allowedExtensions: ['pur'],
+        bytes: result.bytes,
       );
     } catch (error) {
       if (!context.mounted) return;
@@ -190,10 +191,7 @@ class BoardScreen extends ConsumerWidget {
     if (!savePath.toLowerCase().endsWith('.pur')) {
       savePath = '$savePath.pur';
     }
-
-    final clips = ref.read(activeClipsProvider).valueOrNull ?? [];
-    final result = await writePurFile(clips);
-    await File(savePath).writeAsBytes(result.bytes);
+    await writeBytesToPath(savePath, result.bytes);
     if (!context.mounted) return;
 
     final summary = result.summary;
@@ -490,7 +488,6 @@ class BoardScreen extends ConsumerWidget {
     final isDrawMode = ref.watch(isDrawModeProvider);
     final isCropMode = ref.watch(isCropModeProvider);
     final snapToGrid = ref.watch(snapToGridProvider);
-    final alwaysOnTop = ref.watch(alwaysOnTopProvider);
     final syncConfigured = ref.watch(pairingServiceProvider) != null;
     final clips = ref.watch(activeClipsProvider).valueOrNull ?? [];
     final selectedClips = [
@@ -554,7 +551,7 @@ class BoardScreen extends ConsumerWidget {
             Positioned(
               top: 16,
               left: 16,
-              right: isDesktopPlatform ? 56 : 16,
+              right: 16,
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -652,32 +649,13 @@ class BoardScreen extends ConsumerWidget {
                       ),
                     ],
                   ),
-                  if (isDesktopPlatform)
-                    Expanded(child: DragToMoveArea(child: SizedBox.expand()))
-                  else
-                    const Spacer(),
+                  const Spacer(),
                   Row(
                     children: [
                       const ClipCounterBadge(),
                       const SizedBox(width: 8),
                       PillGroup(
                         children: [
-                          if (isDesktopPlatform)
-                            PillIconButton(
-                              tooltip: alwaysOnTop
-                                  ? 'Unpin from top'
-                                  : 'Keep window on top',
-                              icon: alwaysOnTop
-                                  ? Icons.push_pin
-                                  : Icons.push_pin_outlined,
-                              color: alwaysOnTop ? AppTheme.red : null,
-                              onPressed: () {
-                                final next = !alwaysOnTop;
-                                ref.read(alwaysOnTopProvider.notifier).state =
-                                    next;
-                                windowManager.setAlwaysOnTop(next);
-                              },
-                            ),
                           if (syncConfigured)
                             PillIconButton(
                               tooltip: 'Sync to another device',
@@ -710,12 +688,6 @@ class BoardScreen extends ConsumerWidget {
                 ],
               ),
             ),
-            if (isDesktopPlatform)
-              const Positioned(
-                top: 16,
-                right: 12,
-                child: WindowCloseButton(),
-              ),
             if (isDrawMode)
               const Positioned(
                 top: 76,

@@ -1,9 +1,10 @@
-import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hb_clips/core/constants.dart';
 import 'package:hb_clips/data/local/database.dart';
+import 'package:hb_clips/data/local_blob_store.dart';
 import 'package:hb_clips/data/models/clip.dart';
 import 'package:hb_clips/data/models/stroke.dart';
 import 'package:hb_clips/data/remote/boards_remote_source.dart';
@@ -75,7 +76,8 @@ class FakeStorageSource implements StorageSource {
   Future<String> uploadImage({
     required String userId,
     required String clipId,
-    required File localFile,
+    required Uint8List bytes,
+    required String extension,
   }) async {
     uploadedClipIds.add(clipId);
     return '$userId/$clipId/original.png';
@@ -86,6 +88,23 @@ class FakeStorageSource implements StorageSource {
     required String clipId,
     required String storagePath,
   }) async => '/tmp/$clipId.png';
+}
+
+/// Always returns non-empty bytes for any key, regardless of whether
+/// anything was ever "written" there - the tests below only care that an
+/// upload was attempted with the right clip id, not about real byte
+/// content, and use plain placeholder paths like `/tmp/fake.png` as clip
+/// `localFilePath`s rather than real cache entries.
+class FakeLocalBlobStore implements LocalBlobStore {
+  @override
+  Future<String> writeBytes(Uint8List bytes, {String extension = ''}) async =>
+      '/tmp/fake$extension';
+
+  @override
+  Future<Uint8List?> readBytes(String key) async => Uint8List.fromList([0]);
+
+  @override
+  Future<void> delete(String key) async {}
 }
 
 void main() {
@@ -115,6 +134,7 @@ void main() {
       fakeStrokes,
       fakeBoards,
       fakeStorage,
+      FakeLocalBlobStore(),
     );
   });
 

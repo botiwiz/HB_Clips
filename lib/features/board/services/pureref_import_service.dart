@@ -1,15 +1,13 @@
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image/image.dart' as img;
-import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../core/constants.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../data/local_blob_store.dart';
 import '../../../data/providers.dart';
 import '../../../data/pureref/pur_file.dart';
 import '../../../data/pureref/pur_reader.dart';
@@ -56,21 +54,15 @@ class _ImportText extends _ImportItem {
 
 /// Imports a PureRef `.pur` project file (old 1.10/1.11.1 format only - see
 /// `pur_reader.dart`) into the current board, reusing the same
-/// add-clip/cap-handling path as manual add and clipboard paste.
+/// add-clip/cap-handling path as manual add and clipboard paste. Takes the
+/// file's raw [bytes] directly (not a path) since `file_picker` already
+/// hands those back on every platform, including web where there is no
+/// path to read from.
 Future<PurImportSummary?> importPurFile(
   BuildContext context,
   WidgetRef ref,
-  String filePath,
+  Uint8List bytes,
 ) async {
-  final Uint8List bytes;
-  try {
-    bytes = await File(filePath).readAsBytes();
-  } catch (_) {
-    if (!context.mounted) return null;
-    _showError(context, "Couldn't read that file.");
-    return null;
-  }
-
   final PurFile parsed;
   try {
     parsed = PurReader(bytes).read();
@@ -95,9 +87,7 @@ Future<PurImportSummary?> importPurFile(
   ]..sort((a, b) => a.zLayer.compareTo(b.zLayer));
 
   if (!context.mounted) return null;
-  final supportDir = await getApplicationSupportDirectory();
-  final clipsDir = Directory(p.join(supportDir.path, 'clips'));
-  await clipsDir.create(recursive: true);
+  final blobStore = ref.read(localBlobStoreProvider);
 
   final repo = ref.read(clipsRepositoryProvider);
   final boardId = ref.read(currentBoardIdProvider);
@@ -108,7 +98,7 @@ Future<PurImportSummary?> importPurFile(
   for (final item in items) {
     switch (item) {
       case _ImportImage():
-        final placed = await _importImage(item, clipsDir, repo, boardId);
+        final placed = await _importImage(item, blobStore, repo, boardId);
         if (placed) {
           imagesImported++;
         } else {
@@ -130,7 +120,7 @@ Future<PurImportSummary?> importPurFile(
 /// Returns false if the image cap was already reached (nothing inserted).
 Future<bool> _importImage(
   _ImportImage item,
-  Directory clipsDir,
+  LocalBlobStore blobStore,
   ClipsRepository repo,
   String boardId,
 ) async {
@@ -189,8 +179,7 @@ Future<bool> _importImage(
   }
 
   final id = _uuid.v4();
-  final destPath = p.join(clipsDir.path, '$id.png');
-  await File(destPath).writeAsBytes(finalBytes);
+  final destPath = await blobStore.writeBytes(finalBytes, extension: '.png');
 
   try {
     await repo.addImageClip(
@@ -206,9 +195,9 @@ Future<bool> _importImage(
     return true;
   } on ClipCapExceededException {
     try {
-      await File(destPath).delete();
+      await blobStore.delete(destPath);
     } catch (_) {
-      // Best-effort cleanup; a leftover file here is harmless.
+      // Best-effort cleanup; a leftover blob here is harmless.
     }
     return false;
   }

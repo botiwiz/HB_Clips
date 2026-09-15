@@ -1,10 +1,9 @@
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/rendering.dart';
 import 'package:image/image.dart' as img;
 
-/// Result of cropping an image file to a fractional rect.
+/// Result of cropping an image to a fractional rect.
 class ImageCropResult {
   final Uint8List pngBytes;
   final int width;
@@ -17,17 +16,18 @@ class ImageCropResult {
   });
 }
 
-/// Crops the image at [sourcePath] to [fractionalRect] (0..1 of its native
-/// pixel bounds), returning re-encoded PNG bytes and the cropped pixel
+/// Crops [sourceBytes] to [fractionalRect] (0..1 of its native pixel
+/// bounds), returning re-encoded PNG bytes and the cropped pixel
 /// dimensions - shared by the interactive crop tool and mirrors the
 /// equivalent inline crop logic in `pureref_import_service.dart`. Returns
-/// null if the file can't be decoded as an image.
+/// null if the bytes can't be decoded as an image. Operates on raw bytes
+/// (not a file path) so it works unchanged on web, where callers read
+/// bytes via `LocalBlobStore` instead of `dart:io`.
 Future<ImageCropResult?> cropImageFile(
-  String sourcePath,
+  Uint8List sourceBytes,
   Rect fractionalRect,
 ) async {
-  final bytes = await File(sourcePath).readAsBytes();
-  final decoded = img.decodeImage(bytes);
+  final decoded = img.decodeImage(sourceBytes);
   if (decoded == null) return null;
 
   final left = (fractionalRect.left * decoded.width).round().clamp(

@@ -1,11 +1,10 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_theme.dart';
 import '../../../data/models/clip.dart';
 import '../../annotation/stroke_painter.dart';
 import 'gif_playback_view.dart';
+import 'local_image.dart';
 
 /// Renders one clip's content (image or text note) at its given size. The
 /// caller (`BoardCanvas`) is responsible for positioning this via
@@ -59,8 +58,8 @@ class ClipWidget extends StatelessWidget {
     if (selected && path.toLowerCase().endsWith('.gif')) {
       return GifPlaybackView(clipId: clip.id, path: path);
     }
-    return Image.file(
-      File(path),
+    return LocalImage(
+      path: path,
       fit: BoxFit.cover,
       width: double.infinity,
       height: double.infinity,

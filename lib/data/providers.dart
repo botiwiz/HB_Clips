@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/constants.dart';
 import 'local/database.dart';
+import 'local_blob_store.dart';
 import 'models/clip.dart';
 import 'models/stroke.dart';
 import 'remote/boards_remote_source.dart';
@@ -21,6 +22,12 @@ final databaseProvider = Provider<AppDatabase>((ref) {
   final db = AppDatabase();
   ref.onDispose(db.close);
   return db;
+});
+
+/// Native-file-backed on desktop/mobile, IndexedDB-backed on web - see
+/// `local_blob_store.dart`'s doc comment for the full picture.
+final localBlobStoreProvider = Provider<LocalBlobStore>((ref) {
+  return LocalBlobStore(ref.watch(databaseProvider));
 });
 
 /// The board currently shown/edited. Defaults to the seeded default board;
@@ -73,10 +80,11 @@ final syncEngineProvider = Provider<SyncEngine?>((ref) {
   if (client == null) return null;
 
   final db = ref.watch(databaseProvider);
+  final blobStore = ref.watch(localBlobStoreProvider);
   final clipsRemote = SupabaseClipsRemoteSource(client);
   final strokesRemote = SupabaseStrokesRemoteSource(client);
   final boardsRemote = SupabaseBoardsRemoteSource(client);
-  final storage = SupabaseStorageSource(client);
+  final storage = SupabaseStorageSource(client, blobStore);
 
   final drainer = SyncQueueDrainer(
     db,
@@ -85,6 +93,7 @@ final syncEngineProvider = Provider<SyncEngine?>((ref) {
     strokesRemote,
     boardsRemote,
     storage,
+    blobStore,
   );
   final realtime = RealtimeListener(db, client, storage);
   final engine = SyncEngine(

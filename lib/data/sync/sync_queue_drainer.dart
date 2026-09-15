@@ -1,8 +1,8 @@
-import 'dart:io';
-
 import 'package:drift/drift.dart';
+import 'package:path/path.dart' as p;
 
 import '../local/database.dart';
+import '../local_blob_store.dart';
 import '../models/clip.dart';
 import '../models/stroke.dart';
 import '../remote/boards_remote_source.dart';
@@ -29,6 +29,7 @@ class SyncQueueDrainer {
   final StrokesRemoteSource _strokes;
   final BoardsRemoteSource _boards;
   final StorageSource _storage;
+  final LocalBlobStore _blobStore;
 
   SyncQueueDrainer(
     this._db,
@@ -37,6 +38,7 @@ class SyncQueueDrainer {
     this._strokes,
     this._boards,
     this._storage,
+    this._blobStore,
   );
 
   Future<void> drainOnce() async {
@@ -103,15 +105,21 @@ class SyncQueueDrainer {
     if (clip.type == ClipType.image &&
         clip.storagePath == null &&
         clip.localFilePath != null) {
-      final storagePath = await _storage.uploadImage(
-        userId: _currentUserId(),
-        clipId: clip.id,
-        localFile: File(clip.localFilePath!),
-      );
-      await (_db.update(_db.clips)..where((c) => c.id.equals(clip.id))).write(
-        ClipsCompanion(storagePath: Value(storagePath)),
-      );
-      clip = clip.copyWith(storagePath: storagePath);
+      final bytes = await _blobStore.readBytes(clip.localFilePath!);
+      if (bytes != null) {
+        final storagePath = await _storage.uploadImage(
+          userId: _currentUserId(),
+          clipId: clip.id,
+          bytes: bytes,
+          extension: p.extension(clip.localFilePath!),
+        );
+        await (_db.update(
+          _db.clips,
+        )..where((c) => c.id.equals(clip.id))).write(
+          ClipsCompanion(storagePath: Value(storagePath)),
+        );
+        clip = clip.copyWith(storagePath: storagePath);
+      }
     }
 
     await _clips.upsert(clip);
