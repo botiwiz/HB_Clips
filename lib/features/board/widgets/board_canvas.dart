@@ -1,3 +1,6 @@
+import 'dart:math' as math;
+
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/physics.dart';
@@ -127,7 +130,24 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
   Size _canvasSize = Size.zero;
 
   @override
+  void initState() {
+    super.initState();
+    // A real right-click's native browser context menu can steal pointer
+    // capture mid-gesture (the browser never sends this canvas a matching
+    // pointer-up), which is exactly the scenario that used to leave stale
+    // gesture state around to hijack the next drag - right-click isn't
+    // wired to anything in this app yet, so there's nothing lost by
+    // suppressing the browser's own menu for it.
+    if (kIsWeb) {
+      BrowserContextMenu.disableContextMenu();
+    }
+  }
+
+  @override
   void dispose() {
+    if (kIsWeb) {
+      BrowserContextMenu.enableContextMenu();
+    }
     _flingController?.dispose();
     _zoomEaseController?.dispose();
     _focusNode.dispose();
@@ -178,6 +198,41 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       HardwareKeyboard.instance.isControlPressed ||
       HardwareKeyboard.instance.isMetaPressed;
 
+  /// Unconditionally clears every gesture-tracking field, plus the
+  /// ephemeral Riverpod state that mirrors them - called at the start of
+  /// every pointer-down (so a leftover field from a gesture whose
+  /// pointer-up never arrived can't hijack the next one, regardless of
+  /// which button/key it uses) and from [_handlePointerCancel] (the
+  /// browser can cancel a pointer sequence outright - e.g. a right-click's
+  /// native context menu stealing capture mid-drag - and unlike a normal
+  /// pointer-up, nothing was clearing state for that case at all).
+  void _resetGestureState() {
+    _activeHandle = null;
+    _handleStartClip = null;
+    _groupDragStartPositions = null;
+    _groupDragPrimaryId = null;
+    _groupDragMoved = false;
+    _pendingCollapseId = null;
+    _gestureStartPointerBoard = null;
+    _marqueeStartBoard = null;
+    _marqueeMoved = false;
+    _panPointerStart = null;
+    _panOffsetStart = null;
+    _didPanMove = false;
+    _frameDragId = null;
+    _frameResizing = false;
+    _frameDragStartRect = null;
+    _frameGestureStartPointerBoard = null;
+    _frameChildStartPositions = null;
+    ref.read(groupDragProvider.notifier).state = null;
+    ref.read(marqueeRectProvider.notifier).state = null;
+    ref.read(frameDragRectProvider.notifier).state = null;
+  }
+
+  void _handlePointerCancel(PointerCancelEvent event) {
+    _resetGestureState();
+  }
+
   void _handlePointerDown(PointerDownEvent event) {
     _focusNode.requestFocus();
     // Any new touch takes over from an in-flight fling.
@@ -193,21 +248,10 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     final view = ref.read(boardViewProvider);
     final boardPos = _screenToBoard(event.localPosition, view);
 
-    _didPanMove = false;
-    _marqueeMoved = false;
-    _groupDragMoved = false;
-    // Cleared unconditionally so a miss below (e.g. a click on a toolbar
-    // button, which this canvas's raw Listener also receives as a
-    // full-screen sibling) can't leave a stale handle for a later,
-    // unrelated gesture's pointer-move to misinterpret as a resize/rotate
-    // still in progress.
-    _activeHandle = null;
-    _handleStartClip = null;
-    _frameDragId = null;
-    _frameResizing = false;
-    _frameDragStartRect = null;
-    _frameGestureStartPointerBoard = null;
-    _frameChildStartPositions = null;
+    // Unconditional so a stale field from a gesture that never got a
+    // pointer-up (dropped event, cancelled pointer) can't leak into this
+    // new one no matter which button/key started it.
+    _resetGestureState();
 
     // Middle-mouse-button or Space+drag always pans, regardless of what's
     // under the cursor - checked before any hit-testing so it takes
@@ -751,10 +795,19 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     // FrictionSimulation's total travel distance and its time-to-decay are
     // both proportional to 1/|ln(drag)| for a fixed initial speed, so
     // squaring Flutter's own ClampingScrollSimulation drag constant (0.135)
-    // doubles |ln(drag)| and halves *both* quantities together - a shorter
-    // coast with the same decay shape, not a different feel.
-    const flingDrag = 0.135 * 0.135;
-    controller.animateWith(FrictionSimulation(flingDrag, 0, speed));
+    // halves both quantities together - applied twice here (a quarter of
+    // the original pre-fix feel) since a single halving still coasted
+    // noticeably further than Miro's near-immediate stop on release.
+    const flingDrag = 0.135 * 0.135 * 0.135 * 0.135;
+    // FrictionSimulation's total travel distance (decaying to a stop at
+    // t=infinity) is exactly speed / |ln(drag)| - so capping the speed fed
+    // into it at maxFlingDistance * |ln(flingDrag)| guarantees the fling
+    // can never travel past maxFlingDistance, however hard the physical
+    // flick was, instead of only ever shortening the *typical* case.
+    const maxFlingDistance = 120.0;
+    final speedCap = maxFlingDistance * -math.log(flingDrag);
+    final effectiveSpeed = math.min(speed, speedCap);
+    controller.animateWith(FrictionSimulation(flingDrag, 0, effectiveSpeed));
   }
 
   void _handlePointerSignal(PointerSignalEvent event) {
@@ -1065,6 +1118,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
               onPointerDown: _handlePointerDown,
               onPointerMove: _handlePointerMove,
               onPointerUp: _handlePointerUp,
+              onPointerCancel: _handlePointerCancel,
               onPointerSignal: _handlePointerSignal,
               child: Container(
                 color: AppTheme.canvasBackground,
