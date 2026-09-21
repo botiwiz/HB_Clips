@@ -32,6 +32,7 @@ class BoardClip {
   final String? textContent;
   final String? backgroundColorHex;
   final String? groupId;
+  final String? frameId;
   final String? storagePath;
   final String? localFilePath;
   final bool isBinned;
@@ -53,6 +54,7 @@ class BoardClip {
     this.textContent,
     this.backgroundColorHex,
     this.groupId,
+    this.frameId,
     this.storagePath,
     this.localFilePath,
     this.isBinned = false,
@@ -75,6 +77,7 @@ class BoardClip {
     textContent: row.textContent,
     backgroundColorHex: row.backgroundColorHex,
     groupId: row.groupId,
+    frameId: row.frameId,
     storagePath: row.storagePath,
     localFilePath: row.localFilePath,
     isBinned: row.isBinned,
@@ -94,6 +97,7 @@ class BoardClip {
     String? textContent,
     String? backgroundColorHex,
     String? groupId,
+    String? frameId,
     String? storagePath,
     bool? isBinned,
     DateTime? binnedAt,
@@ -112,6 +116,7 @@ class BoardClip {
       textContent: textContent ?? this.textContent,
       backgroundColorHex: backgroundColorHex ?? this.backgroundColorHex,
       groupId: groupId ?? this.groupId,
+      frameId: frameId ?? this.frameId,
       storagePath: storagePath ?? this.storagePath,
       localFilePath: localFilePath,
       isBinned: isBinned ?? this.isBinned,

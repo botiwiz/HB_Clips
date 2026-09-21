@@ -19,7 +19,17 @@ class PillGroup extends StatelessWidget {
       shadowColor: Colors.black54,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 2),
-        child: Row(mainAxisSize: MainAxisSize.min, children: children),
+        // The number of icons here grows with app state (selection,
+        // frame-selected, etc.) and has no fixed upper bound - without
+        // this, a pill wide enough to exceed the available window width
+        // just gets silently clipped by the outer Stack, making trailing
+        // buttons (e.g. "Add text note") invisible with no error and no
+        // way to reach them. Scrolling instead of wrapping/shrinking keeps
+        // every icon at a constant, predictable size.
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(mainAxisSize: MainAxisSize.min, children: children),
+        ),
       ),
     );
   }

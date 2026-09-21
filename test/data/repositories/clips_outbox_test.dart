@@ -126,4 +126,28 @@ void main() {
     expect(newEntries.map((e) => e.entityId).toSet(), {clip1.id, clip2.id});
     expect(newEntries.every((e) => e.operation == 'upsert'), isTrue);
   });
+
+  test('setFrameId enqueues an upsert entry and marks the row dirty', () async {
+    final clip = await repo.addTextNote(
+      id: _uuid.v4(),
+      boardId: kLocalBoardId,
+      textContent: 'hello',
+      x: 0,
+      y: 0,
+    );
+
+    await repo.setFrameId(clip.id, 'frame-1');
+
+    final row = await (db.select(
+      db.clips,
+    )..where((c) => c.id.equals(clip.id))).getSingle();
+    expect(row.dirty, isTrue);
+    expect(row.frameId, 'frame-1');
+
+    await repo.setFrameId(clip.id, null);
+    final reverted = await (db.select(
+      db.clips,
+    )..where((c) => c.id.equals(clip.id))).getSingle();
+    expect(reverted.frameId, isNull);
+  });
 }

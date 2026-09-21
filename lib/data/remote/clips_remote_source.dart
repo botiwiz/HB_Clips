@@ -41,6 +41,7 @@ class SupabaseClipsRemoteSource implements ClipsRemoteSource {
       'text_content': clip.textContent,
       'background_color_hex': clip.backgroundColorHex,
       'group_id': clip.groupId,
+      'frame_id': clip.frameId,
       'storage_path': clip.storagePath,
       'is_binned': clip.isBinned,
       'binned_at': clip.binnedAt?.toIso8601String(),

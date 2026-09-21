@@ -29,6 +29,12 @@ class Clips extends Table {
   /// clip in a group selects (and then drags) every clip sharing this id.
   TextColumn get groupId => text().nullable()();
 
+  /// The frame this clip is currently nested inside, or null. Set/cleared
+  /// automatically when a clip is dragged into/out of a frame's bounds
+  /// (Miro's frame-containment behavior) - moving a frame moves every clip
+  /// with a matching `frameId` along with it.
+  TextColumn get frameId => text().nullable()();
+
   TextColumn get textContent => text().nullable()();
 
   /// Custom background color for a text note, as `#RRGGBB`. Null uses the

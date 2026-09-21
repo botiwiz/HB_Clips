@@ -226,6 +226,7 @@ class RealtimeListener {
             textContent: Value(r['text_content'] as String?),
             backgroundColorHex: Value(r['background_color_hex'] as String?),
             groupId: Value(r['group_id'] as String?),
+            frameId: Value(r['frame_id'] as String?),
             storagePath: Value(storagePath),
             // localFilePath is deliberately not set here - left absent so
             // an existing row's already-cached download isn't clobbered;
@@ -287,6 +288,7 @@ class RealtimeListener {
             y: Value((r['y'] as num).toDouble()),
             width: Value((r['width'] as num).toDouble()),
             height: Value((r['height'] as num).toDouble()),
+            backgroundColorHex: Value(r['background_color_hex'] as String?),
             createdAt: Value(DateTime.parse(r['created_at'] as String)),
             updatedAt: Value(remoteUpdatedAt),
             dirty: const Value(false),

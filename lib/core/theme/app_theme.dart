@@ -26,11 +26,12 @@ class AppTheme {
   static const Color accent = red;
   static const Color danger = red;
 
-  /// Text notes stay a light card (still grayscale - no hue) rather than
-  /// going dark-on-dark, so they're still visually distinct from image
-  /// clips against the dark canvas at a glance.
-  static const Color textNoteSurface = Color(0xFFEDEDED);
-  static const Color textNoteText = Color(0xFF1A1A1A);
+  /// Text notes have no background card by default - just white text
+  /// floating directly on the canvas - so they read as annotations rather
+  /// than image-like tiles. A custom `backgroundColorHex` still overrides
+  /// this per-note via the style popover's swatches.
+  static const Color textNoteSurface = Color(0x00000000);
+  static const Color textNoteText = Colors.white;
 
   static ThemeData get dark {
     final scheme = ColorScheme.dark(

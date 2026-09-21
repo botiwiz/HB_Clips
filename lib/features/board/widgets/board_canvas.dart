@@ -117,6 +117,13 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
   Rect? _frameDragStartRect;
   Offset? _frameGestureStartPointerBoard;
 
+  // Board-space start position of every clip nested inside the frame being
+  // dragged (Miro's "contents move with the frame") - null during a resize
+  // or when the dragged frame has no children. Populated at frame-drag
+  // start, applied by the same delta as the frame on every move, and
+  // committed to the repository on pointer-up alongside the frame itself.
+  Map<String, Offset>? _frameChildStartPositions;
+
   Size _canvasSize = Size.zero;
 
   @override
@@ -200,6 +207,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     _frameResizing = false;
     _frameDragStartRect = null;
     _frameGestureStartPointerBoard = null;
+    _frameChildStartPositions = null;
 
     // Middle-mouse-button or Space+drag always pans, regardless of what's
     // under the cursor - checked before any hit-testing so it takes
@@ -366,6 +374,29 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       _frameDragStartRect = FrameGeometry.boardRect(hitFrame);
       _frameGestureStartPointerBoard = boardPos;
       ref.read(frameDragRectProvider.notifier).state = _frameDragStartRect;
+
+      // Every clip currently nested in this frame moves with it - seed the
+      // same ephemeral drag map clip-drags use, keyed by each child's own
+      // start position so the per-move delta below is additive per-clip.
+      final children = clips.where((c) => c.frameId == hitFrame.id).toList();
+      if (children.isNotEmpty) {
+        _frameChildStartPositions = {
+          for (final c in children) c.id: Offset(c.x, c.y),
+        };
+        ref.read(groupDragProvider.notifier).state = {
+          for (final c in children)
+            c.id: DraggingClip(
+              id: c.id,
+              x: c.x,
+              y: c.y,
+              width: c.width,
+              height: c.height,
+              rotation: c.rotation,
+            ),
+        };
+      } else {
+        _frameChildStartPositions = null;
+      }
       return;
     }
     if (selectedFrameId != null) {
@@ -505,6 +536,21 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       final delta = boardPos - _frameGestureStartPointerBoard!;
       ref.read(frameDragRectProvider.notifier).state = _frameDragStartRect!
           .shift(delta);
+      if (_frameChildStartPositions != null) {
+        final currentMap = ref.read(groupDragProvider);
+        if (currentMap != null) {
+          final updated = <String, DraggingClip>{
+            for (final entry in currentMap.entries)
+              entry.key: _frameChildStartPositions!.containsKey(entry.key)
+                  ? entry.value.copyWith(
+                      x: _frameChildStartPositions![entry.key]!.dx + delta.dx,
+                      y: _frameChildStartPositions![entry.key]!.dy + delta.dy,
+                    )
+                  : entry.value,
+          };
+          ref.read(groupDragProvider.notifier).state = updated;
+        }
+      }
       return;
     }
 
@@ -561,8 +607,26 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
           }
           ref.read(selectedClipIdsProvider.notifier).state = {};
         } else {
+          final frames = ref.read(boardFramesProvider).valueOrNull ?? [];
+          final clipsNow = ref.read(activeClipsProvider).valueOrNull ?? [];
           for (final entry in dragMap.entries) {
             repo.updateTransform(entry.key, x: entry.value.x, y: entry.value.y);
+
+            // Miro-style frame containment: whichever frame now contains
+            // this clip's center becomes its parent (moving with the frame
+            // from here on); dragging it out clears that back to null.
+            final center = Offset(
+              entry.value.x + entry.value.width / 2,
+              entry.value.y + entry.value.height / 2,
+            );
+            final containingFrame = _hitTestFrame(frames, center);
+            final currentFrameId = ClipGeometry.findById(
+              clipsNow,
+              entry.key,
+            )?.frameId;
+            if (containingFrame?.id != currentFrameId) {
+              repo.setFrameId(entry.key, containingFrame?.id);
+            }
           }
         }
       } else if (!_groupDragMoved && _pendingCollapseId != null) {
@@ -617,11 +681,23 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
               height: rect.height,
             );
       }
+      if (_frameChildStartPositions != null) {
+        final dragMap = ref.read(groupDragProvider);
+        if (dragMap != null) {
+          for (final entry in dragMap.entries) {
+            if (_frameChildStartPositions!.containsKey(entry.key)) {
+              repo.updateTransform(entry.key, x: entry.value.x, y: entry.value.y);
+            }
+          }
+        }
+        ref.read(groupDragProvider.notifier).state = null;
+      }
       ref.read(frameDragRectProvider.notifier).state = null;
       _frameDragId = null;
       _frameResizing = false;
       _frameDragStartRect = null;
       _frameGestureStartPointerBoard = null;
+      _frameChildStartPositions = null;
       return;
     }
 

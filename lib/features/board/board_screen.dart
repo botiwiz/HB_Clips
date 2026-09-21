@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../core/constants.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/widgets/color_swatch_button.dart';
 import '../../data/local/database.dart' show FrameRow;
 import '../../data/models/clip.dart';
 import '../../data/providers.dart';
@@ -15,6 +16,7 @@ import '../../data/repositories/clips_repository.dart';
 import '../about/about_screen.dart';
 import '../annotation/controllers/annotation_controller.dart';
 import '../annotation/draw_toolbar.dart';
+import '../annotation/stroke_painter.dart' show hexToColor;
 import '../bin/bin_screen.dart';
 import 'controllers/board_controller.dart';
 import 'controllers/crop_controller.dart';
@@ -79,10 +81,7 @@ class BoardScreen extends ConsumerWidget {
         .writeBytes(pickedBytes, extension: ext);
 
     if (!context.mounted) return;
-    final center = _viewportCenterBoardPoint(
-      ref,
-      MediaQuery.sizeOf(context),
-    );
+    final center = _viewportCenterBoardPoint(ref, MediaQuery.sizeOf(context));
 
     final clipSize = clipSizeForImageBytes(pickedBytes);
     try {
@@ -253,10 +252,7 @@ class BoardScreen extends ConsumerWidget {
     if (!context.mounted) return;
 
     final id = _uuid.v4();
-    final center = _viewportCenterBoardPoint(
-      ref,
-      MediaQuery.sizeOf(context),
-    );
+    final center = _viewportCenterBoardPoint(ref, MediaQuery.sizeOf(context));
     await ref
         .read(clipsRepositoryProvider)
         .addTextNote(
@@ -307,7 +303,8 @@ class BoardScreen extends ConsumerWidget {
 
   void _applyZOrder(
     WidgetRef ref,
-    Future<void> Function(ClipsRepository repo, String id, String boardId) action,
+    Future<void> Function(ClipsRepository repo, String id, String boardId)
+    action,
   ) {
     final selection = ref.read(selectedClipIdsProvider);
     if (selection.isEmpty) return;
@@ -336,7 +333,10 @@ class BoardScreen extends ConsumerWidget {
         : null;
   }
 
-  Future<void> _showDevicePairingMenu(BuildContext context, WidgetRef ref) async {
+  Future<void> _showDevicePairingMenu(
+    BuildContext context,
+    WidgetRef ref,
+  ) async {
     final choice = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
@@ -395,9 +395,11 @@ class BoardScreen extends ConsumerWidget {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Enter this code on your other device, under '
-                      '"Sync to another device" → "Enter a pairing '
-                      'code":'),
+                  const Text(
+                    'Enter this code on your other device, under '
+                    '"Sync to another device" → "Enter a pairing '
+                    'code":',
+                  ),
                   const SizedBox(height: 12),
                   Center(
                     child: SelectableText(
@@ -472,7 +474,9 @@ class BoardScreen extends ConsumerWidget {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Paired - this device now shares the other one\'s boards.'),
+          content: Text(
+            'Paired - this device now shares the other one\'s boards.',
+          ),
         ),
       );
     } catch (e) {
@@ -559,6 +563,48 @@ class BoardScreen extends ConsumerWidget {
     ref.read(selectedFrameIdProvider.notifier).state = null;
   }
 
+  Future<void> _setFrameColor(
+    BuildContext context,
+    WidgetRef ref,
+    FrameRow frame,
+  ) async {
+    final repo = ref.read(framesRepositoryProvider);
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Frame color'),
+        content: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ColorSwatchButton(
+              color: AppTheme.textSecondary,
+              selected: frame.backgroundColorHex == null,
+              onTap: () {
+                repo.updateColor(frame.id, null);
+                Navigator.of(context).pop();
+              },
+            ),
+            for (final colorHex in kStrokeColorPalette)
+              ColorSwatchButton(
+                color: hexToColor(colorHex),
+                selected: frame.backgroundColorHex == colorHex,
+                onTap: () {
+                  repo.updateColor(frame.id, colorHex);
+                  Navigator.of(context).pop();
+                },
+              ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final selection = ref.watch(selectedClipIdsProvider);
@@ -623,14 +669,23 @@ class BoardScreen extends ConsumerWidget {
               _nudgeSelection(ref, const Offset(0, -_nudgeStep)),
           const SingleActivator(LogicalKeyboardKey.arrowDown): () =>
               _nudgeSelection(ref, const Offset(0, _nudgeStep)),
-          const SingleActivator(LogicalKeyboardKey.arrowLeft, shift: true):
-              () => _nudgeSelection(ref, const Offset(-_nudgeStepFast, 0)),
-          const SingleActivator(LogicalKeyboardKey.arrowRight, shift: true):
-              () => _nudgeSelection(ref, const Offset(_nudgeStepFast, 0)),
+          const SingleActivator(
+            LogicalKeyboardKey.arrowLeft,
+            shift: true,
+          ): () =>
+              _nudgeSelection(ref, const Offset(-_nudgeStepFast, 0)),
+          const SingleActivator(
+            LogicalKeyboardKey.arrowRight,
+            shift: true,
+          ): () =>
+              _nudgeSelection(ref, const Offset(_nudgeStepFast, 0)),
           const SingleActivator(LogicalKeyboardKey.arrowUp, shift: true): () =>
               _nudgeSelection(ref, const Offset(0, -_nudgeStepFast)),
-          const SingleActivator(LogicalKeyboardKey.arrowDown, shift: true):
-              () => _nudgeSelection(ref, const Offset(0, _nudgeStepFast)),
+          const SingleActivator(
+            LogicalKeyboardKey.arrowDown,
+            shift: true,
+          ): () =>
+              _nudgeSelection(ref, const Offset(0, _nudgeStepFast)),
         },
         child: Stack(
           children: [
@@ -644,115 +699,125 @@ class BoardScreen extends ConsumerWidget {
                 children: [
                   const BoardSwitcher(),
                   const SizedBox(width: 8),
-                  PillGroup(
-                    children: [
-                      PillIconButton(
-                        tooltip: isDrawMode
-                            ? 'Exit draw mode'
-                            : 'Draw / annotate',
-                        icon: isDrawMode ? Icons.edit : Icons.edit_outlined,
-                        color: isDrawMode ? AppTheme.red : null,
-                        onPressed: () => _toggleDrawMode(ref),
-                      ),
-                      PillIconButton(
-                        tooltip: snapToGrid
-                            ? 'Disable snap to grid'
-                            : 'Snap to grid',
-                        icon: snapToGrid ? Icons.grid_on : Icons.grid_off,
-                        color: snapToGrid ? AppTheme.red : null,
-                        onPressed: () => ref
-                            .read(snapToGridProvider.notifier)
-                            .state = !snapToGrid,
-                      ),
-                      if (!isDrawMode && hasSelection) ...[
-                        if (canGroup)
-                          PillIconButton(
-                            tooltip: 'Group',
-                            icon: Icons.group_work_outlined,
-                            onPressed: () => _groupSelection(ref),
-                          ),
-                        if (canUngroup)
-                          PillIconButton(
-                            tooltip: 'Ungroup',
-                            icon: Icons.group_off_outlined,
-                            onPressed: () =>
-                                _ungroupSelection(ref, commonGroupId),
-                          ),
-                        if (canCrop || isCropMode)
-                          PillIconButton(
-                            tooltip: isCropMode ? 'Exit crop' : 'Crop image',
-                            icon: Icons.crop,
-                            color: isCropMode ? AppTheme.red : null,
-                            onPressed: () => _toggleCropMode(ref),
-                          ),
+                  Flexible(
+                    child: PillGroup(
+                      children: [
                         PillIconButton(
-                          tooltip: 'Bring to front',
-                          icon: Icons.flip_to_front_outlined,
-                          onPressed: () => _applyZOrder(
-                            ref,
-                            (repo, id, boardId) =>
-                                repo.bringToFront(id, boardId),
-                          ),
+                          tooltip: isDrawMode
+                              ? 'Exit draw mode'
+                              : 'Draw / annotate',
+                          icon: isDrawMode ? Icons.edit : Icons.edit_outlined,
+                          color: isDrawMode ? AppTheme.red : null,
+                          onPressed: () => _toggleDrawMode(ref),
                         ),
                         PillIconButton(
-                          tooltip: 'Send to back',
-                          icon: Icons.flip_to_back_outlined,
-                          onPressed: () => _applyZOrder(
-                            ref,
-                            (repo, id, boardId) =>
-                                repo.sendToBack(id, boardId),
-                          ),
-                        ),
-                        PillIconButton(
-                          tooltip: 'Bin selected',
-                          icon: Icons.delete_sweep_outlined,
-                          onPressed: () => _binSelected(ref),
-                        ),
-                      ],
-                      if (selectedFrame != null) ...[
-                        PillIconButton(
-                          tooltip: 'Rename frame',
-                          icon: Icons.edit_outlined,
+                          tooltip: snapToGrid
+                              ? 'Disable snap to grid'
+                              : 'Snap to grid',
+                          icon: snapToGrid ? Icons.grid_on : Icons.grid_off,
+                          color: snapToGrid ? AppTheme.red : null,
                           onPressed: () =>
-                              _renameFrame(context, ref, selectedFrame!),
+                              ref.read(snapToGridProvider.notifier).state =
+                                  !snapToGrid,
+                        ),
+                        if (!isDrawMode && hasSelection) ...[
+                          if (canGroup)
+                            PillIconButton(
+                              tooltip: 'Group',
+                              icon: Icons.group_work_outlined,
+                              onPressed: () => _groupSelection(ref),
+                            ),
+                          if (canUngroup)
+                            PillIconButton(
+                              tooltip: 'Ungroup',
+                              icon: Icons.group_off_outlined,
+                              onPressed: () =>
+                                  _ungroupSelection(ref, commonGroupId),
+                            ),
+                          if (canCrop || isCropMode)
+                            PillIconButton(
+                              tooltip: isCropMode ? 'Exit crop' : 'Crop image',
+                              icon: Icons.crop,
+                              color: isCropMode ? AppTheme.red : null,
+                              onPressed: () => _toggleCropMode(ref),
+                            ),
+                          PillIconButton(
+                            tooltip: 'Bring to front',
+                            icon: Icons.flip_to_front_outlined,
+                            onPressed: () => _applyZOrder(
+                              ref,
+                              (repo, id, boardId) =>
+                                  repo.bringToFront(id, boardId),
+                            ),
+                          ),
+                          PillIconButton(
+                            tooltip: 'Send to back',
+                            icon: Icons.flip_to_back_outlined,
+                            onPressed: () => _applyZOrder(
+                              ref,
+                              (repo, id, boardId) =>
+                                  repo.sendToBack(id, boardId),
+                            ),
+                          ),
+                          PillIconButton(
+                            tooltip: 'Bin selected',
+                            icon: Icons.delete_sweep_outlined,
+                            onPressed: () => _binSelected(ref),
+                          ),
+                        ],
+                        if (selectedFrame != null) ...[
+                          PillIconButton(
+                            tooltip: 'Rename frame',
+                            icon: Icons.edit_outlined,
+                            onPressed: () =>
+                                _renameFrame(context, ref, selectedFrame!),
+                          ),
+                          PillIconButton(
+                            tooltip: 'Frame color',
+                            icon: Icons.palette_outlined,
+                            onPressed: () =>
+                                _setFrameColor(context, ref, selectedFrame!),
+                          ),
+                          PillIconButton(
+                            tooltip: 'Delete frame',
+                            icon: Icons.delete_outline,
+                            onPressed: () =>
+                                _deleteFrame(ref, selectedFrame!.id),
+                          ),
+                        ],
+                        PillIconButton(
+                          tooltip: 'New frame',
+                          icon: Icons.crop_5_4_outlined,
+                          onPressed: () => _addFrame(context, ref),
                         ),
                         PillIconButton(
-                          tooltip: 'Delete frame',
-                          icon: Icons.delete_outline,
-                          onPressed: () => _deleteFrame(ref, selectedFrame!.id),
+                          tooltip: 'Paste image (Ctrl+V)',
+                          icon: Icons.content_paste_outlined,
+                          onPressed: () =>
+                              pasteImageFromClipboard(context, ref),
+                        ),
+                        PillIconButton(
+                          tooltip: 'Add text note',
+                          icon: Icons.note_add_outlined,
+                          onPressed: () => _addTextNote(context, ref),
+                        ),
+                        PillIconButton(
+                          tooltip: 'Add image clip',
+                          icon: Icons.add_photo_alternate_outlined,
+                          onPressed: () => _addImageClip(context, ref),
+                        ),
+                        PillIconButton(
+                          tooltip: 'Import PureRef (.pur) file',
+                          icon: Icons.file_open_outlined,
+                          onPressed: () => _importPurFile(context, ref),
+                        ),
+                        PillIconButton(
+                          tooltip: 'Export board as .pur',
+                          icon: Icons.file_download_outlined,
+                          onPressed: () => _exportPurFile(context, ref),
                         ),
                       ],
-                      PillIconButton(
-                        tooltip: 'New frame',
-                        icon: Icons.crop_5_4_outlined,
-                        onPressed: () => _addFrame(context, ref),
-                      ),
-                      PillIconButton(
-                        tooltip: 'Paste image (Ctrl+V)',
-                        icon: Icons.content_paste_outlined,
-                        onPressed: () => pasteImageFromClipboard(context, ref),
-                      ),
-                      PillIconButton(
-                        tooltip: 'Add text note',
-                        icon: Icons.note_add_outlined,
-                        onPressed: () => _addTextNote(context, ref),
-                      ),
-                      PillIconButton(
-                        tooltip: 'Add image clip',
-                        icon: Icons.add_photo_alternate_outlined,
-                        onPressed: () => _addImageClip(context, ref),
-                      ),
-                      PillIconButton(
-                        tooltip: 'Import PureRef (.pur) file',
-                        icon: Icons.file_open_outlined,
-                        onPressed: () => _importPurFile(context, ref),
-                      ),
-                      PillIconButton(
-                        tooltip: 'Export board as .pur',
-                        icon: Icons.file_download_outlined,
-                        onPressed: () => _exportPurFile(context, ref),
-                      ),
-                    ],
+                    ),
                   ),
                   const Spacer(),
                   Row(

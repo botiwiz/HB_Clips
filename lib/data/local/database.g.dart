@@ -122,6 +122,17 @@ class $ClipsTable extends Clips with TableInfo<$ClipsTable, ClipRow> {
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _frameIdMeta = const VerificationMeta(
+    'frameId',
+  );
+  @override
+  late final GeneratedColumn<String> frameId = GeneratedColumn<String>(
+    'frame_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _textContentMeta = const VerificationMeta(
     'textContent',
   );
@@ -242,6 +253,7 @@ class $ClipsTable extends Clips with TableInfo<$ClipsTable, ClipRow> {
     zIndex,
     opacity,
     groupId,
+    frameId,
     textContent,
     backgroundColorHex,
     storagePath,
@@ -325,6 +337,12 @@ class $ClipsTable extends Clips with TableInfo<$ClipsTable, ClipRow> {
       context.handle(
         _groupIdMeta,
         groupId.isAcceptableOrUnknown(data['group_id']!, _groupIdMeta),
+      );
+    }
+    if (data.containsKey('frame_id')) {
+      context.handle(
+        _frameIdMeta,
+        frameId.isAcceptableOrUnknown(data['frame_id']!, _frameIdMeta),
       );
     }
     if (data.containsKey('text_content')) {
@@ -446,6 +464,10 @@ class $ClipsTable extends Clips with TableInfo<$ClipsTable, ClipRow> {
         DriftSqlType.string,
         data['${effectivePrefix}group_id'],
       ),
+      frameId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}frame_id'],
+      ),
       textContent: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}text_content'],
@@ -511,6 +533,12 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
   /// Shared by every clip in a group; null when ungrouped. Clicking any
   /// clip in a group selects (and then drags) every clip sharing this id.
   final String? groupId;
+
+  /// The frame this clip is currently nested inside, or null. Set/cleared
+  /// automatically when a clip is dragged into/out of a frame's bounds
+  /// (Miro's frame-containment behavior) - moving a frame moves every clip
+  /// with a matching `frameId` along with it.
+  final String? frameId;
   final String? textContent;
 
   /// Custom background color for a text note, as `#RRGGBB`. Null uses the
@@ -542,6 +570,7 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
     required this.zIndex,
     required this.opacity,
     this.groupId,
+    this.frameId,
     this.textContent,
     this.backgroundColorHex,
     this.storagePath,
@@ -567,6 +596,9 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
     map['opacity'] = Variable<double>(opacity);
     if (!nullToAbsent || groupId != null) {
       map['group_id'] = Variable<String>(groupId);
+    }
+    if (!nullToAbsent || frameId != null) {
+      map['frame_id'] = Variable<String>(frameId);
     }
     if (!nullToAbsent || textContent != null) {
       map['text_content'] = Variable<String>(textContent);
@@ -605,6 +637,9 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
       groupId: groupId == null && nullToAbsent
           ? const Value.absent()
           : Value(groupId),
+      frameId: frameId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(frameId),
       textContent: textContent == null && nullToAbsent
           ? const Value.absent()
           : Value(textContent),
@@ -644,6 +679,7 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
       zIndex: serializer.fromJson<int>(json['zIndex']),
       opacity: serializer.fromJson<double>(json['opacity']),
       groupId: serializer.fromJson<String?>(json['groupId']),
+      frameId: serializer.fromJson<String?>(json['frameId']),
       textContent: serializer.fromJson<String?>(json['textContent']),
       backgroundColorHex: serializer.fromJson<String?>(
         json['backgroundColorHex'],
@@ -672,6 +708,7 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
       'zIndex': serializer.toJson<int>(zIndex),
       'opacity': serializer.toJson<double>(opacity),
       'groupId': serializer.toJson<String?>(groupId),
+      'frameId': serializer.toJson<String?>(frameId),
       'textContent': serializer.toJson<String?>(textContent),
       'backgroundColorHex': serializer.toJson<String?>(backgroundColorHex),
       'storagePath': serializer.toJson<String?>(storagePath),
@@ -696,6 +733,7 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
     int? zIndex,
     double? opacity,
     Value<String?> groupId = const Value.absent(),
+    Value<String?> frameId = const Value.absent(),
     Value<String?> textContent = const Value.absent(),
     Value<String?> backgroundColorHex = const Value.absent(),
     Value<String?> storagePath = const Value.absent(),
@@ -717,6 +755,7 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
     zIndex: zIndex ?? this.zIndex,
     opacity: opacity ?? this.opacity,
     groupId: groupId.present ? groupId.value : this.groupId,
+    frameId: frameId.present ? frameId.value : this.frameId,
     textContent: textContent.present ? textContent.value : this.textContent,
     backgroundColorHex: backgroundColorHex.present
         ? backgroundColorHex.value
@@ -744,6 +783,7 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
       zIndex: data.zIndex.present ? data.zIndex.value : this.zIndex,
       opacity: data.opacity.present ? data.opacity.value : this.opacity,
       groupId: data.groupId.present ? data.groupId.value : this.groupId,
+      frameId: data.frameId.present ? data.frameId.value : this.frameId,
       textContent: data.textContent.present
           ? data.textContent.value
           : this.textContent,
@@ -778,6 +818,7 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
           ..write('zIndex: $zIndex, ')
           ..write('opacity: $opacity, ')
           ..write('groupId: $groupId, ')
+          ..write('frameId: $frameId, ')
           ..write('textContent: $textContent, ')
           ..write('backgroundColorHex: $backgroundColorHex, ')
           ..write('storagePath: $storagePath, ')
@@ -792,7 +833,7 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
   }
 
   @override
-  int get hashCode => Object.hash(
+  int get hashCode => Object.hashAll([
     id,
     boardId,
     type,
@@ -804,6 +845,7 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
     zIndex,
     opacity,
     groupId,
+    frameId,
     textContent,
     backgroundColorHex,
     storagePath,
@@ -813,7 +855,7 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
     dirty,
     createdAt,
     updatedAt,
-  );
+  ]);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -829,6 +871,7 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
           other.zIndex == this.zIndex &&
           other.opacity == this.opacity &&
           other.groupId == this.groupId &&
+          other.frameId == this.frameId &&
           other.textContent == this.textContent &&
           other.backgroundColorHex == this.backgroundColorHex &&
           other.storagePath == this.storagePath &&
@@ -852,6 +895,7 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
   final Value<int> zIndex;
   final Value<double> opacity;
   final Value<String?> groupId;
+  final Value<String?> frameId;
   final Value<String?> textContent;
   final Value<String?> backgroundColorHex;
   final Value<String?> storagePath;
@@ -874,6 +918,7 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
     this.zIndex = const Value.absent(),
     this.opacity = const Value.absent(),
     this.groupId = const Value.absent(),
+    this.frameId = const Value.absent(),
     this.textContent = const Value.absent(),
     this.backgroundColorHex = const Value.absent(),
     this.storagePath = const Value.absent(),
@@ -897,6 +942,7 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
     this.zIndex = const Value.absent(),
     this.opacity = const Value.absent(),
     this.groupId = const Value.absent(),
+    this.frameId = const Value.absent(),
     this.textContent = const Value.absent(),
     this.backgroundColorHex = const Value.absent(),
     this.storagePath = const Value.absent(),
@@ -922,6 +968,7 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
     Expression<int>? zIndex,
     Expression<double>? opacity,
     Expression<String>? groupId,
+    Expression<String>? frameId,
     Expression<String>? textContent,
     Expression<String>? backgroundColorHex,
     Expression<String>? storagePath,
@@ -945,6 +992,7 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
       if (zIndex != null) 'z_index': zIndex,
       if (opacity != null) 'opacity': opacity,
       if (groupId != null) 'group_id': groupId,
+      if (frameId != null) 'frame_id': frameId,
       if (textContent != null) 'text_content': textContent,
       if (backgroundColorHex != null)
         'background_color_hex': backgroundColorHex,
@@ -971,6 +1019,7 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
     Value<int>? zIndex,
     Value<double>? opacity,
     Value<String?>? groupId,
+    Value<String?>? frameId,
     Value<String?>? textContent,
     Value<String?>? backgroundColorHex,
     Value<String?>? storagePath,
@@ -994,6 +1043,7 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
       zIndex: zIndex ?? this.zIndex,
       opacity: opacity ?? this.opacity,
       groupId: groupId ?? this.groupId,
+      frameId: frameId ?? this.frameId,
       textContent: textContent ?? this.textContent,
       backgroundColorHex: backgroundColorHex ?? this.backgroundColorHex,
       storagePath: storagePath ?? this.storagePath,
@@ -1043,6 +1093,9 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
     if (groupId.present) {
       map['group_id'] = Variable<String>(groupId.value);
     }
+    if (frameId.present) {
+      map['frame_id'] = Variable<String>(frameId.value);
+    }
     if (textContent.present) {
       map['text_content'] = Variable<String>(textContent.value);
     }
@@ -1090,6 +1143,7 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
           ..write('zIndex: $zIndex, ')
           ..write('opacity: $opacity, ')
           ..write('groupId: $groupId, ')
+          ..write('frameId: $frameId, ')
           ..write('textContent: $textContent, ')
           ..write('backgroundColorHex: $backgroundColorHex, ')
           ..write('storagePath: $storagePath, ')
@@ -2907,6 +2961,17 @@ class $FramesTable extends Frames with TableInfo<$FramesTable, FrameRow> {
     requiredDuringInsert: false,
     defaultValue: const Constant(240),
   );
+  static const VerificationMeta _backgroundColorHexMeta =
+      const VerificationMeta('backgroundColorHex');
+  @override
+  late final GeneratedColumn<String> backgroundColorHex =
+      GeneratedColumn<String>(
+        'background_color_hex',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -2953,6 +3018,7 @@ class $FramesTable extends Frames with TableInfo<$FramesTable, FrameRow> {
     y,
     width,
     height,
+    backgroundColorHex,
     createdAt,
     updatedAt,
     dirty,
@@ -3004,6 +3070,15 @@ class $FramesTable extends Frames with TableInfo<$FramesTable, FrameRow> {
       context.handle(
         _heightMeta,
         height.isAcceptableOrUnknown(data['height']!, _heightMeta),
+      );
+    }
+    if (data.containsKey('background_color_hex')) {
+      context.handle(
+        _backgroundColorHexMeta,
+        backgroundColorHex.isAcceptableOrUnknown(
+          data['background_color_hex']!,
+          _backgroundColorHexMeta,
+        ),
       );
     }
     if (data.containsKey('created_at')) {
@@ -3061,6 +3136,10 @@ class $FramesTable extends Frames with TableInfo<$FramesTable, FrameRow> {
         DriftSqlType.double,
         data['${effectivePrefix}height'],
       )!,
+      backgroundColorHex: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}background_color_hex'],
+      ),
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
@@ -3090,6 +3169,11 @@ class FrameRow extends DataClass implements Insertable<FrameRow> {
   final double y;
   final double width;
   final double height;
+
+  /// Custom accent color for this frame's border/label/subtle fill, as
+  /// `#RRGGBB`. Null uses the default neutral gray - same
+  /// null-means-default convention as `Clips.backgroundColorHex`.
+  final String? backgroundColorHex;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -3104,6 +3188,7 @@ class FrameRow extends DataClass implements Insertable<FrameRow> {
     required this.y,
     required this.width,
     required this.height,
+    this.backgroundColorHex,
     required this.createdAt,
     required this.updatedAt,
     required this.dirty,
@@ -3118,6 +3203,9 @@ class FrameRow extends DataClass implements Insertable<FrameRow> {
     map['y'] = Variable<double>(y);
     map['width'] = Variable<double>(width);
     map['height'] = Variable<double>(height);
+    if (!nullToAbsent || backgroundColorHex != null) {
+      map['background_color_hex'] = Variable<String>(backgroundColorHex);
+    }
     map['created_at'] = Variable<DateTime>(createdAt);
     map['updated_at'] = Variable<DateTime>(updatedAt);
     map['dirty'] = Variable<bool>(dirty);
@@ -3133,6 +3221,9 @@ class FrameRow extends DataClass implements Insertable<FrameRow> {
       y: Value(y),
       width: Value(width),
       height: Value(height),
+      backgroundColorHex: backgroundColorHex == null && nullToAbsent
+          ? const Value.absent()
+          : Value(backgroundColorHex),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
       dirty: Value(dirty),
@@ -3152,6 +3243,9 @@ class FrameRow extends DataClass implements Insertable<FrameRow> {
       y: serializer.fromJson<double>(json['y']),
       width: serializer.fromJson<double>(json['width']),
       height: serializer.fromJson<double>(json['height']),
+      backgroundColorHex: serializer.fromJson<String?>(
+        json['backgroundColorHex'],
+      ),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
       dirty: serializer.fromJson<bool>(json['dirty']),
@@ -3168,6 +3262,7 @@ class FrameRow extends DataClass implements Insertable<FrameRow> {
       'y': serializer.toJson<double>(y),
       'width': serializer.toJson<double>(width),
       'height': serializer.toJson<double>(height),
+      'backgroundColorHex': serializer.toJson<String?>(backgroundColorHex),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
       'dirty': serializer.toJson<bool>(dirty),
@@ -3182,6 +3277,7 @@ class FrameRow extends DataClass implements Insertable<FrameRow> {
     double? y,
     double? width,
     double? height,
+    Value<String?> backgroundColorHex = const Value.absent(),
     DateTime? createdAt,
     DateTime? updatedAt,
     bool? dirty,
@@ -3193,6 +3289,9 @@ class FrameRow extends DataClass implements Insertable<FrameRow> {
     y: y ?? this.y,
     width: width ?? this.width,
     height: height ?? this.height,
+    backgroundColorHex: backgroundColorHex.present
+        ? backgroundColorHex.value
+        : this.backgroundColorHex,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
     dirty: dirty ?? this.dirty,
@@ -3206,6 +3305,9 @@ class FrameRow extends DataClass implements Insertable<FrameRow> {
       y: data.y.present ? data.y.value : this.y,
       width: data.width.present ? data.width.value : this.width,
       height: data.height.present ? data.height.value : this.height,
+      backgroundColorHex: data.backgroundColorHex.present
+          ? data.backgroundColorHex.value
+          : this.backgroundColorHex,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
       dirty: data.dirty.present ? data.dirty.value : this.dirty,
@@ -3222,6 +3324,7 @@ class FrameRow extends DataClass implements Insertable<FrameRow> {
           ..write('y: $y, ')
           ..write('width: $width, ')
           ..write('height: $height, ')
+          ..write('backgroundColorHex: $backgroundColorHex, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('dirty: $dirty')
@@ -3238,6 +3341,7 @@ class FrameRow extends DataClass implements Insertable<FrameRow> {
     y,
     width,
     height,
+    backgroundColorHex,
     createdAt,
     updatedAt,
     dirty,
@@ -3253,6 +3357,7 @@ class FrameRow extends DataClass implements Insertable<FrameRow> {
           other.y == this.y &&
           other.width == this.width &&
           other.height == this.height &&
+          other.backgroundColorHex == this.backgroundColorHex &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt &&
           other.dirty == this.dirty);
@@ -3266,6 +3371,7 @@ class FramesCompanion extends UpdateCompanion<FrameRow> {
   final Value<double> y;
   final Value<double> width;
   final Value<double> height;
+  final Value<String?> backgroundColorHex;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
   final Value<bool> dirty;
@@ -3278,6 +3384,7 @@ class FramesCompanion extends UpdateCompanion<FrameRow> {
     this.y = const Value.absent(),
     this.width = const Value.absent(),
     this.height = const Value.absent(),
+    this.backgroundColorHex = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.dirty = const Value.absent(),
@@ -3291,6 +3398,7 @@ class FramesCompanion extends UpdateCompanion<FrameRow> {
     this.y = const Value.absent(),
     this.width = const Value.absent(),
     this.height = const Value.absent(),
+    this.backgroundColorHex = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.dirty = const Value.absent(),
@@ -3305,6 +3413,7 @@ class FramesCompanion extends UpdateCompanion<FrameRow> {
     Expression<double>? y,
     Expression<double>? width,
     Expression<double>? height,
+    Expression<String>? backgroundColorHex,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
     Expression<bool>? dirty,
@@ -3318,6 +3427,8 @@ class FramesCompanion extends UpdateCompanion<FrameRow> {
       if (y != null) 'y': y,
       if (width != null) 'width': width,
       if (height != null) 'height': height,
+      if (backgroundColorHex != null)
+        'background_color_hex': backgroundColorHex,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (dirty != null) 'dirty': dirty,
@@ -3333,6 +3444,7 @@ class FramesCompanion extends UpdateCompanion<FrameRow> {
     Value<double>? y,
     Value<double>? width,
     Value<double>? height,
+    Value<String?>? backgroundColorHex,
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
     Value<bool>? dirty,
@@ -3346,6 +3458,7 @@ class FramesCompanion extends UpdateCompanion<FrameRow> {
       y: y ?? this.y,
       width: width ?? this.width,
       height: height ?? this.height,
+      backgroundColorHex: backgroundColorHex ?? this.backgroundColorHex,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       dirty: dirty ?? this.dirty,
@@ -3377,6 +3490,9 @@ class FramesCompanion extends UpdateCompanion<FrameRow> {
     if (height.present) {
       map['height'] = Variable<double>(height.value);
     }
+    if (backgroundColorHex.present) {
+      map['background_color_hex'] = Variable<String>(backgroundColorHex.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
@@ -3402,6 +3518,7 @@ class FramesCompanion extends UpdateCompanion<FrameRow> {
           ..write('y: $y, ')
           ..write('width: $width, ')
           ..write('height: $height, ')
+          ..write('backgroundColorHex: $backgroundColorHex, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('dirty: $dirty, ')
@@ -3449,6 +3566,7 @@ typedef $$ClipsTableCreateCompanionBuilder =
       Value<int> zIndex,
       Value<double> opacity,
       Value<String?> groupId,
+      Value<String?> frameId,
       Value<String?> textContent,
       Value<String?> backgroundColorHex,
       Value<String?> storagePath,
@@ -3473,6 +3591,7 @@ typedef $$ClipsTableUpdateCompanionBuilder =
       Value<int> zIndex,
       Value<double> opacity,
       Value<String?> groupId,
+      Value<String?> frameId,
       Value<String?> textContent,
       Value<String?> backgroundColorHex,
       Value<String?> storagePath,
@@ -3545,6 +3664,11 @@ class $$ClipsTableFilterComposer extends Composer<_$AppDatabase, $ClipsTable> {
 
   ColumnFilters<String> get groupId => $composableBuilder(
     column: $table.groupId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get frameId => $composableBuilder(
+    column: $table.frameId,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -3658,6 +3782,11 @@ class $$ClipsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get frameId => $composableBuilder(
+    column: $table.frameId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get textContent => $composableBuilder(
     column: $table.textContent,
     builder: (column) => ColumnOrderings(column),
@@ -3746,6 +3875,9 @@ class $$ClipsTableAnnotationComposer
   GeneratedColumn<String> get groupId =>
       $composableBuilder(column: $table.groupId, builder: (column) => column);
 
+  GeneratedColumn<String> get frameId =>
+      $composableBuilder(column: $table.frameId, builder: (column) => column);
+
   GeneratedColumn<String> get textContent => $composableBuilder(
     column: $table.textContent,
     builder: (column) => column,
@@ -3821,6 +3953,7 @@ class $$ClipsTableTableManager
                 Value<int> zIndex = const Value.absent(),
                 Value<double> opacity = const Value.absent(),
                 Value<String?> groupId = const Value.absent(),
+                Value<String?> frameId = const Value.absent(),
                 Value<String?> textContent = const Value.absent(),
                 Value<String?> backgroundColorHex = const Value.absent(),
                 Value<String?> storagePath = const Value.absent(),
@@ -3843,6 +3976,7 @@ class $$ClipsTableTableManager
                 zIndex: zIndex,
                 opacity: opacity,
                 groupId: groupId,
+                frameId: frameId,
                 textContent: textContent,
                 backgroundColorHex: backgroundColorHex,
                 storagePath: storagePath,
@@ -3867,6 +4001,7 @@ class $$ClipsTableTableManager
                 Value<int> zIndex = const Value.absent(),
                 Value<double> opacity = const Value.absent(),
                 Value<String?> groupId = const Value.absent(),
+                Value<String?> frameId = const Value.absent(),
                 Value<String?> textContent = const Value.absent(),
                 Value<String?> backgroundColorHex = const Value.absent(),
                 Value<String?> storagePath = const Value.absent(),
@@ -3889,6 +4024,7 @@ class $$ClipsTableTableManager
                 zIndex: zIndex,
                 opacity: opacity,
                 groupId: groupId,
+                frameId: frameId,
                 textContent: textContent,
                 backgroundColorHex: backgroundColorHex,
                 storagePath: storagePath,
@@ -4836,6 +4972,7 @@ typedef $$FramesTableCreateCompanionBuilder =
       Value<double> y,
       Value<double> width,
       Value<double> height,
+      Value<String?> backgroundColorHex,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
       Value<bool> dirty,
@@ -4850,6 +4987,7 @@ typedef $$FramesTableUpdateCompanionBuilder =
       Value<double> y,
       Value<double> width,
       Value<double> height,
+      Value<String?> backgroundColorHex,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
       Value<bool> dirty,
@@ -4897,6 +5035,11 @@ class $$FramesTableFilterComposer
 
   ColumnFilters<double> get height => $composableBuilder(
     column: $table.height,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get backgroundColorHex => $composableBuilder(
+    column: $table.backgroundColorHex,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -4960,6 +5103,11 @@ class $$FramesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get backgroundColorHex => $composableBuilder(
+    column: $table.backgroundColorHex,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
@@ -5006,6 +5154,11 @@ class $$FramesTableAnnotationComposer
   GeneratedColumn<double> get height =>
       $composableBuilder(column: $table.height, builder: (column) => column);
 
+  GeneratedColumn<String> get backgroundColorHex => $composableBuilder(
+    column: $table.backgroundColorHex,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
 
@@ -5051,6 +5204,7 @@ class $$FramesTableTableManager
                 Value<double> y = const Value.absent(),
                 Value<double> width = const Value.absent(),
                 Value<double> height = const Value.absent(),
+                Value<String?> backgroundColorHex = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<bool> dirty = const Value.absent(),
@@ -5063,6 +5217,7 @@ class $$FramesTableTableManager
                 y: y,
                 width: width,
                 height: height,
+                backgroundColorHex: backgroundColorHex,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 dirty: dirty,
@@ -5077,6 +5232,7 @@ class $$FramesTableTableManager
                 Value<double> y = const Value.absent(),
                 Value<double> width = const Value.absent(),
                 Value<double> height = const Value.absent(),
+                Value<String?> backgroundColorHex = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<bool> dirty = const Value.absent(),
@@ -5089,6 +5245,7 @@ class $$FramesTableTableManager
                 y: y,
                 width: width,
                 height: height,
+                backgroundColorHex: backgroundColorHex,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 dirty: dirty,

@@ -15,6 +15,11 @@ class Frames extends Table {
   RealColumn get width => real().withDefault(const Constant(320))();
   RealColumn get height => real().withDefault(const Constant(240))();
 
+  /// Custom accent color for this frame's border/label/subtle fill, as
+  /// `#RRGGBB`. Null uses the default neutral gray - same
+  /// null-means-default convention as `Clips.backgroundColorHex`.
+  TextColumn get backgroundColorHex => text().nullable()();
+
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
 

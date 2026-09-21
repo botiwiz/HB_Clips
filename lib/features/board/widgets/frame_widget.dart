@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_theme.dart';
 import '../../../data/local/database.dart' show FrameRow;
+import '../../annotation/stroke_painter.dart' show hexToColor;
 
 /// Renders one frame's rectangle, name label, and (when selected) its
 /// single bottom-right resize handle. Purely presentational - all pointer
@@ -17,7 +18,14 @@ class FrameWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final accentColor = selected ? AppTheme.red : AppTheme.textSecondary;
+    final customColor = frame.backgroundColorHex != null
+        ? hexToColor(frame.backgroundColorHex!)
+        : null;
+    // Selection always reads as red, matching every other selectable object
+    // on the board - a custom frame color only shows up while unselected.
+    final accentColor = selected
+        ? AppTheme.red
+        : (customColor ?? AppTheme.textSecondary);
     return IgnorePointer(
       child: Stack(
         clipBehavior: Clip.none,
@@ -25,8 +33,13 @@ class FrameWidget extends StatelessWidget {
           Positioned.fill(
             child: DecoratedBox(
               decoration: BoxDecoration(
+                color: !selected && customColor != null
+                    ? customColor.withValues(alpha: 0.08)
+                    : null,
                 border: Border.all(
-                  color: selected ? AppTheme.red : AppTheme.border,
+                  color: selected
+                      ? AppTheme.red
+                      : (customColor ?? AppTheme.border),
                   width: selected ? 2 : 1.5,
                 ),
                 borderRadius: BorderRadius.circular(4),

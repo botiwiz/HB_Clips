@@ -29,6 +29,7 @@ class SupabaseFramesRemoteSource implements FramesRemoteSource {
       'y': frame.y,
       'width': frame.width,
       'height': frame.height,
+      'background_color_hex': frame.backgroundColorHex,
       'updated_at': frame.updatedAt.toIso8601String(),
     });
   }

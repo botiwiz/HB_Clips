@@ -234,6 +234,22 @@ class ClipsRepository {
     });
   }
 
+  /// Sets or clears which frame this clip is nested inside - called
+  /// whenever a clip drag ends and its new center point has entered or
+  /// left a frame's bounds (Miro's frame-containment behavior).
+  Future<void> setFrameId(String id, String? frameId) {
+    return _db.transaction(() async {
+      await (_db.update(_db.clips)..where((c) => c.id.equals(id))).write(
+        ClipsCompanion(
+          frameId: Value(frameId),
+          updatedAt: Value(DateTime.now()),
+          dirty: const Value(true),
+        ),
+      );
+      await enqueueOutbox(_db, entityType: 'clip', entityId: id, operation: 'upsert');
+    });
+  }
+
   Future<void> bringToFront(String id, String boardId) {
     return _db.transaction(() async {
       final zIndex = await _nextZIndex(boardId);
