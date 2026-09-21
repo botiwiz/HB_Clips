@@ -132,6 +132,15 @@ class PurFile {
   final List<PurImage> images;
   final List<PurTextItem> text;
 
+  /// How many images this file references (PureRef 2.x only - always 0 for
+  /// the old format) whose pixel data couldn't be recovered at all, so they
+  /// were dropped from [images] rather than imported at a guessed size or
+  /// position. See `PurReader._readV2` for why this happens: a 2.x file can
+  /// reference an image purely by its original source URL with no local
+  /// embedded copy, and this importer never fetches an external URL to fill
+  /// that gap.
+  final int unrecoverableImageCount;
+
   const PurFile({
     required this.canvas,
     required this.zoom,
@@ -140,6 +149,7 @@ class PurFile {
     required this.folderLocation,
     required this.images,
     required this.text,
+    this.unrecoverableImageCount = 0,
   });
 }
 

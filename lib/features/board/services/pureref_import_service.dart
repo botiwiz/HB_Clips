@@ -23,10 +23,17 @@ class PurImportSummary {
   final int textNotesImported;
   final int imagesSkippedAtCap;
 
+  /// PureRef 2.x only: images this file references but whose pixel data
+  /// couldn't be recovered at all (no local embedded copy, only an
+  /// external source URL this importer doesn't fetch) - always 0 for the
+  /// old format. See `PurFile.unrecoverableImageCount`.
+  final int imagesUnrecoverable;
+
   const PurImportSummary({
     required this.imagesImported,
     required this.textNotesImported,
     required this.imagesSkippedAtCap,
+    this.imagesUnrecoverable = 0,
   });
 }
 
@@ -114,6 +121,7 @@ Future<PurImportSummary?> importPurFile(
     imagesImported: imagesImported,
     textNotesImported: textNotesImported,
     imagesSkippedAtCap: imagesSkippedAtCap,
+    imagesUnrecoverable: parsed.unrecoverableImageCount,
   );
 }
 

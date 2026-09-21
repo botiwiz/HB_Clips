@@ -90,8 +90,8 @@ void main() {
   });
 
   test(
-    'a real PureRef 2.x file (magic 6) gets a clear "newer format" '
-    'message, not the generic "not a .pur file" one',
+    'a PureRef 2.x file (magic 6) with no readable embedded database gets '
+    'a clear message instead of the generic "not a .pur file" one',
     () {
       final bytes = Uint8List(300);
       ByteData.view(bytes.buffer).setUint32(0, 6, Endian.big);
@@ -99,7 +99,7 @@ void main() {
         PurReader(bytes).read();
         fail('expected a PurFormatException');
       } on PurFormatException catch (e) {
-        expect(e.message, contains('PureRef 2.0 or later'));
+        expect(e.message, contains("doesn't contain a readable"));
       }
     },
   );

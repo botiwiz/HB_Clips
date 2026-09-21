@@ -147,6 +147,12 @@ class BoardScreen extends ConsumerWidget {
         '${summary.imagesSkippedAtCap} image${summary.imagesSkippedAtCap == 1 ? '' : 's'} skipped (30-image limit reached)',
       );
     }
+    if (summary.imagesUnrecoverable > 0) {
+      parts.add(
+        "${summary.imagesUnrecoverable} image${summary.imagesUnrecoverable == 1 ? '' : 's'} "
+        "couldn't be recovered (no local copy embedded in this file)",
+      );
+    }
 
     await showDialog<void>(
       context: context,
