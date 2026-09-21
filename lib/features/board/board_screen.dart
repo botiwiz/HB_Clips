@@ -20,6 +20,7 @@ import 'controllers/board_controller.dart';
 import 'controllers/crop_controller.dart';
 import 'geometry/selection_geometry.dart';
 import 'services/clipboard_paste_service.dart';
+import 'services/image_size_service.dart';
 import 'services/pureref_import_service.dart';
 import 'services/save_file_service.dart';
 import 'widgets/board_canvas.dart';
@@ -83,6 +84,7 @@ class BoardScreen extends ConsumerWidget {
       MediaQuery.sizeOf(context),
     );
 
+    final clipSize = clipSizeForImageBytes(pickedBytes);
     try {
       await ref
           .read(clipsRepositoryProvider)
@@ -90,8 +92,10 @@ class BoardScreen extends ConsumerWidget {
             id: id,
             boardId: ref.read(currentBoardIdProvider),
             localFilePath: destPath,
-            x: center.dx - kDefaultClipWidth / 2,
-            y: center.dy - kDefaultClipHeight / 2,
+            x: center.dx - clipSize.width / 2,
+            y: center.dy - clipSize.height / 2,
+            width: clipSize.width,
+            height: clipSize.height,
           );
     } on ClipCapExceededException {
       if (!context.mounted) return;

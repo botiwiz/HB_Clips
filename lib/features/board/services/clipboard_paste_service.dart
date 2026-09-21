@@ -11,6 +11,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../data/providers.dart';
 import '../../../data/repositories/clips_repository.dart';
 import '../controllers/board_controller.dart';
+import 'image_size_service.dart';
 
 const _uuid = Uuid();
 
@@ -102,6 +103,7 @@ Future<void> pasteImageFromClipboard(BuildContext context, WidgetRef ref) async 
   final view = ref.read(boardViewProvider);
   final center = (screenCenter - view.panOffset) / view.scale;
 
+  final clipSize = clipSizeForImageBytes(bytes);
   try {
     await ref
         .read(clipsRepositoryProvider)
@@ -109,8 +111,10 @@ Future<void> pasteImageFromClipboard(BuildContext context, WidgetRef ref) async 
           id: id,
           boardId: ref.read(currentBoardIdProvider),
           localFilePath: destPath,
-          x: center.dx - kDefaultClipWidth / 2,
-          y: center.dy - kDefaultClipHeight / 2,
+          x: center.dx - clipSize.width / 2,
+          y: center.dy - clipSize.height / 2,
+          width: clipSize.width,
+          height: clipSize.height,
         );
   } on ClipCapExceededException {
     if (!context.mounted) return;
