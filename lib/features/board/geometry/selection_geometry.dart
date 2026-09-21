@@ -40,6 +40,26 @@ class ClipGeometry {
     return null;
   }
 
+  /// Union of every clip's plain axis-aligned rect (rotation ignored
+  /// deliberately - callers that need this, like Arrange-selection, reset
+  /// rotation to 0 on every clip they touch anyway, so using each clip's
+  /// unrotated rect as input is simpler and correct). [clips] must be
+  /// non-empty.
+  static Rect boardBoundingBox(List<BoardClip> clips) {
+    var rect = Rect.fromLTWH(
+      clips.first.x,
+      clips.first.y,
+      clips.first.width,
+      clips.first.height,
+    );
+    for (final clip in clips.skip(1)) {
+      rect = rect.expandToInclude(
+        Rect.fromLTWH(clip.x, clip.y, clip.width, clip.height),
+      );
+    }
+    return rect;
+  }
+
   static Offset clipCenter(BoardClip clip) =>
       Offset(clip.x + clip.width / 2, clip.y + clip.height / 2);
 

@@ -21,6 +21,7 @@ import '../geometry/crop_geometry.dart';
 import '../geometry/frame_geometry.dart';
 import '../geometry/selection_geometry.dart';
 import '../services/eyedropper_service.dart';
+import 'arrange_selection_button.dart';
 import 'bin_drop_target.dart';
 import 'board_minimap.dart';
 import 'clip_style_popover.dart';
@@ -46,7 +47,8 @@ const _uuid = Uuid();
 ///
 /// Gesture priority per pointer-down, most specific first: (1) a handle on
 /// the sole selected clip, (2) a clip body (rotation-aware), (3) empty
-/// canvas - Shift-held starts a marquee, otherwise pans.
+/// canvas - middle-mouse-button or Space held pans, otherwise plain
+/// left-drag starts a marquee.
 class BoardCanvas extends ConsumerStatefulWidget {
   const BoardCanvas({super.key});
 
@@ -185,10 +187,10 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     final boardPos = _screenToBoard(event.localPosition, view);
 
     // 0. A click landing on the floating clip-style popover (opacity
-    // slider / text-note color swatches) is left entirely to that widget's
-    // own tap/drag handling - otherwise this canvas would see it as an
-    // empty-canvas click and clear the very selection the popover depends
-    // on to render at all.
+    // slider / text-note color swatches) or the Arrange-selection button is
+    // left entirely to that widget's own tap/drag handling - otherwise this
+    // canvas would see it as an empty-canvas click and clear the very
+    // selection those widgets depend on to render at all.
     if (selection.length == 1) {
       final selectedClip = ClipGeometry.findById(clips, selection.first);
       if (selectedClip != null &&
@@ -197,6 +199,21 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
             view,
           ).contains(event.localPosition)) {
         return;
+      }
+    }
+    if (selection.length >= 2) {
+      final selectedClips = [
+        for (final c in clips)
+          if (selection.contains(c.id)) c,
+      ];
+      if (selectedClips.length >= 2) {
+        final boardRect = ClipGeometry.boardBoundingBox(selectedClips);
+        if (ArrangeSelectionButton.screenRectFor(
+          boardRect,
+          view,
+        ).contains(event.localPosition)) {
+          return;
+        }
       }
     }
 
@@ -330,19 +347,23 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       ref.read(selectedFrameIdProvider.notifier).state = null;
     }
 
-    // 3. Empty canvas: Shift starts a marquee, otherwise pan (unchanged).
-    if (HardwareKeyboard.instance.isShiftPressed) {
-      _marqueeStartBoard = boardPos;
-      ref.read(marqueeRectProvider.notifier).state = Rect.fromPoints(
-        boardPos,
-        boardPos,
-      );
-    } else {
+    // 3. Empty canvas: middle-mouse-button drag or Space+drag pans; plain
+    // left-drag starts a marquee.
+    final isPanGesture =
+        (event.buttons & kMiddleMouseButton != 0) ||
+        HardwareKeyboard.instance.isLogicalKeyPressed(LogicalKeyboardKey.space);
+    if (isPanGesture) {
       _panPointerStart = event.localPosition;
       _panOffsetStart = view.panOffset;
       _panVelocitySamples
         ..clear()
         ..add(_TimedPoint(DateTime.now(), event.localPosition));
+    } else {
+      _marqueeStartBoard = boardPos;
+      ref.read(marqueeRectProvider.notifier).state = Rect.fromPoints(
+        boardPos,
+        boardPos,
+      );
     }
   }
 
@@ -556,6 +577,12 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
               .toSet();
           ref.read(selectedClipIdsProvider.notifier).state = hits;
         }
+      } else {
+        // A plain click-no-drag on empty canvas clears the current
+        // selection - this used to live on the pan-up branch below, back
+        // when plain left-click started a pan; now plain left-click starts
+        // a marquee, so the click-clears-selection behavior moved here.
+        ref.read(selectedClipIdsProvider.notifier).state = {};
       }
       ref.read(marqueeRectProvider.notifier).state = null;
       _marqueeStartBoard = null;
@@ -585,9 +612,12 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     }
 
     if (_panPointerStart != null) {
-      if (!_didPanMove) {
-        ref.read(selectedClipIdsProvider.notifier).state = {};
-      } else {
+      // A middle-click/Space-click with no drag is a non-primary-button
+      // "click" and shouldn't clear an unrelated selection - unlike the old
+      // plain-left-click-starts-a-pan behavior, this branch no longer needs
+      // (or wants) a deselect-on-no-move case; see the marquee-up branch
+      // above for where that moved to.
+      if (_didPanMove) {
         _maybeStartFling();
       }
       _panPointerStart = null;
@@ -974,6 +1004,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
                       const MarqueeOverlay(),
                       const SelectionHandles(),
                       const ClipStylePopover(),
+                      const ArrangeSelectionButton(),
                     ],
                     Positioned(
                       right: 24,
