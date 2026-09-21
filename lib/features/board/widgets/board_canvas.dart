@@ -45,10 +45,12 @@ const _uuid = Uuid();
 /// its resize/rotate handles) ourselves keeps every one of those gestures
 /// deterministic instead of arena-dependent.
 ///
-/// Gesture priority per pointer-down, most specific first: (1) a handle on
-/// the sole selected clip, (2) a clip body (rotation-aware), (3) empty
-/// canvas - middle-mouse-button or Space held pans, otherwise plain
-/// left-drag starts a marquee.
+/// Gesture priority per pointer-down, most specific first: (0) MMB or
+/// Space+drag always pans, regardless of what's underneath the cursor, and
+/// a plain right-click is a no-op (reserved for a future context menu) -
+/// both checked before any hit-testing; then, for an ordinary left-click,
+/// (1) a handle on the sole selected clip, (2) a clip body (rotation-aware),
+/// (3) empty canvas starts a marquee.
 class BoardCanvas extends ConsumerStatefulWidget {
   const BoardCanvas({super.key});
 
@@ -182,9 +184,47 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       return;
     }
     final view = ref.read(boardViewProvider);
+    final boardPos = _screenToBoard(event.localPosition, view);
+
+    _didPanMove = false;
+    _marqueeMoved = false;
+    _groupDragMoved = false;
+    // Cleared unconditionally so a miss below (e.g. a click on a toolbar
+    // button, which this canvas's raw Listener also receives as a
+    // full-screen sibling) can't leave a stale handle for a later,
+    // unrelated gesture's pointer-move to misinterpret as a resize/rotate
+    // still in progress.
+    _activeHandle = null;
+    _handleStartClip = null;
+    _frameDragId = null;
+    _frameResizing = false;
+    _frameDragStartRect = null;
+    _frameGestureStartPointerBoard = null;
+
+    // Middle-mouse-button or Space+drag always pans, regardless of what's
+    // under the cursor - checked before any hit-testing so it takes
+    // priority over grabbing a clip/handle/frame underneath the cursor
+    // (previously this lived down in step 3, empty-canvas-only, so a
+    // pan-drag starting on top of a clip fell through to dragging it).
+    final isPanGesture =
+        (event.buttons & kMiddleMouseButton != 0) ||
+        HardwareKeyboard.instance.isLogicalKeyPressed(LogicalKeyboardKey.space);
+    if (isPanGesture) {
+      _panPointerStart = event.localPosition;
+      _panOffsetStart = view.panOffset;
+      _panVelocitySamples
+        ..clear()
+        ..add(_TimedPoint(DateTime.now(), event.localPosition));
+      return;
+    }
+
+    // A plain right-click isn't wired to anything yet (reserved for a
+    // future context menu) - it shouldn't select or drag whatever's
+    // underneath it either.
+    if (event.buttons & kPrimaryMouseButton == 0) return;
+
     final selection = ref.read(selectedClipIdsProvider);
     final clips = ref.read(activeClipsProvider).valueOrNull ?? [];
-    final boardPos = _screenToBoard(event.localPosition, view);
 
     // 0. A click landing on the floating clip-style popover (opacity
     // slider / text-note color swatches) or the Arrange-selection button is
@@ -216,21 +256,6 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
         }
       }
     }
-
-    _didPanMove = false;
-    _marqueeMoved = false;
-    _groupDragMoved = false;
-    // Cleared unconditionally so a miss below (e.g. a click on a toolbar
-    // button, which this canvas's raw Listener also receives as a
-    // full-screen sibling) can't leave a stale handle for a later,
-    // unrelated gesture's pointer-move to misinterpret as a resize/rotate
-    // still in progress.
-    _activeHandle = null;
-    _handleStartClip = null;
-    _frameDragId = null;
-    _frameResizing = false;
-    _frameDragStartRect = null;
-    _frameGestureStartPointerBoard = null;
 
     // 1. A handle on the sole selected clip takes priority over everything.
     if (selection.length == 1) {
@@ -347,24 +372,13 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       ref.read(selectedFrameIdProvider.notifier).state = null;
     }
 
-    // 3. Empty canvas: middle-mouse-button drag or Space+drag pans; plain
-    // left-drag starts a marquee.
-    final isPanGesture =
-        (event.buttons & kMiddleMouseButton != 0) ||
-        HardwareKeyboard.instance.isLogicalKeyPressed(LogicalKeyboardKey.space);
-    if (isPanGesture) {
-      _panPointerStart = event.localPosition;
-      _panOffsetStart = view.panOffset;
-      _panVelocitySamples
-        ..clear()
-        ..add(_TimedPoint(DateTime.now(), event.localPosition));
-    } else {
-      _marqueeStartBoard = boardPos;
-      ref.read(marqueeRectProvider.notifier).state = Rect.fromPoints(
-        boardPos,
-        boardPos,
-      );
-    }
+    // 3. Empty canvas: always a marquee now (pan was already handled above,
+    // before any hit-testing even started).
+    _marqueeStartBoard = boardPos;
+    ref.read(marqueeRectProvider.notifier).state = Rect.fromPoints(
+      boardPos,
+      boardPos,
+    );
   }
 
   void _handlePointerMove(PointerMoveEvent event) {
@@ -658,9 +672,13 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
           .read(boardViewProvider.notifier)
           .setPan(panAtFlingStart + direction * traveled);
     });
-    // Same friction constant Flutter's own ClampingScrollSimulation uses
-    // for touch-scroll deceleration - already tuned to feel natural.
-    controller.animateWith(FrictionSimulation(0.135, 0, speed));
+    // FrictionSimulation's total travel distance and its time-to-decay are
+    // both proportional to 1/|ln(drag)| for a fixed initial speed, so
+    // squaring Flutter's own ClampingScrollSimulation drag constant (0.135)
+    // doubles |ln(drag)| and halves *both* quantities together - a shorter
+    // coast with the same decay shape, not a different feel.
+    const flingDrag = 0.135 * 0.135;
+    controller.animateWith(FrictionSimulation(flingDrag, 0, speed));
   }
 
   void _handlePointerSignal(PointerSignalEvent event) {

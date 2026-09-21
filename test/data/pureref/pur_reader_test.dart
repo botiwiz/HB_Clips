@@ -88,4 +88,19 @@ void main() {
       throwsA(isA<PurFormatException>()),
     );
   });
+
+  test(
+    'a real PureRef 2.x file (magic 6) gets a clear "newer format" '
+    'message, not the generic "not a .pur file" one',
+    () {
+      final bytes = Uint8List(300);
+      ByteData.view(bytes.buffer).setUint32(0, 6, Endian.big);
+      try {
+        PurReader(bytes).read();
+        fail('expected a PurFormatException');
+      } on PurFormatException catch (e) {
+        expect(e.message, contains('PureRef 2.0 or later'));
+      }
+    },
+  );
 }

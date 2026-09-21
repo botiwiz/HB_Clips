@@ -202,6 +202,20 @@ class PurReader {
       );
     }
     final magic = _view.getUint32(0, Endian.big);
+    if (magic == 6) {
+      // Confirmed by hex-inspecting a real PureRef 2.x export: its header
+      // self-declares file-format version "2.1" (in this same fixed slot,
+      // decoded below) but uses magic 6 instead of the old format's 8, so
+      // this check has to catch it before the version-string comparison
+      // ever runs - otherwise it falls through to the generic "not a .pur
+      // file" message below, which is misleading for a genuine PureRef
+      // file that's just a newer, unsupported version.
+      throw const PurFormatException(
+        'This .pur file was saved by PureRef 2.0 or later, which uses a '
+        'different, undocumented format - HB_Clips can only import the '
+        'older PureRef 1.10/1.11.1 format for now.',
+      );
+    }
     if (magic != 8) {
       throw const PurFormatException(
         "This doesn't look like a PureRef .pur file.",
