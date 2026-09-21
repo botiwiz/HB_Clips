@@ -1,9 +1,6 @@
-import 'dart:math' as math;
-
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/physics.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
@@ -86,13 +83,6 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
   // Canvas pan.
   Offset? _panPointerStart;
   Offset? _panOffsetStart;
-  bool _didPanMove = false;
-
-  // Recent (time, position) samples while panning, used to estimate
-  // release velocity for the inertial fling below - only the last ~100ms
-  // is kept so a slow-down right before release isn't averaged away.
-  final List<_TimedPoint> _panVelocitySamples = [];
-  AnimationController? _flingController;
 
   // Debounces wheel-zoom steps: an isolated tick (gap since the last one
   // exceeds the threshold) gets an eased transition; a rapid stream of
@@ -148,7 +138,6 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     if (kIsWeb) {
       BrowserContextMenu.enableContextMenu();
     }
-    _flingController?.dispose();
     _zoomEaseController?.dispose();
     _focusNode.dispose();
     super.dispose();
@@ -218,7 +207,6 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     _marqueeMoved = false;
     _panPointerStart = null;
     _panOffsetStart = null;
-    _didPanMove = false;
     _frameDragId = null;
     _frameResizing = false;
     _frameDragStartRect = null;
@@ -235,8 +223,6 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
 
   void _handlePointerDown(PointerDownEvent event) {
     _focusNode.requestFocus();
-    // Any new touch takes over from an in-flight fling.
-    _flingController?.stop();
     if (ref.read(isDrawModeProvider)) {
       _handleDrawPointerDown(event);
       return;
@@ -264,9 +250,6 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     if (isPanGesture) {
       _panPointerStart = event.localPosition;
       _panOffsetStart = view.panOffset;
-      _panVelocitySamples
-        ..clear()
-        ..add(_TimedPoint(DateTime.now(), event.localPosition));
       return;
     }
 
@@ -600,13 +583,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
 
     if (_panPointerStart != null) {
       final delta = event.localPosition - _panPointerStart!;
-      if (delta.distance > 2) _didPanMove = true;
       ref.read(boardViewProvider.notifier).setPan(_panOffsetStart! + delta);
-      final now = DateTime.now();
-      _panVelocitySamples.add(_TimedPoint(now, event.localPosition));
-      _panVelocitySamples.removeWhere(
-        (s) => now.difference(s.time) > const Duration(milliseconds: 100),
-      );
     }
   }
 
@@ -747,67 +724,11 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
 
     if (_panPointerStart != null) {
       // A middle-click/Space-click with no drag is a non-primary-button
-      // "click" and shouldn't clear an unrelated selection - unlike the old
-      // plain-left-click-starts-a-pan behavior, this branch no longer needs
-      // (or wants) a deselect-on-no-move case; see the marquee-up branch
-      // above for where that moved to.
-      if (_didPanMove) {
-        _maybeStartFling();
-      }
+      // "click" and shouldn't clear an unrelated selection - see the
+      // marquee-up branch above for where that deselect-on-no-move case
+      // lives instead.
       _panPointerStart = null;
     }
-  }
-
-  /// Kicks off a decelerating fling continuing the pan in the direction (and
-  /// roughly the speed) the pointer was moving at release, using the same
-  /// friction-based simulation `ScrollPhysics` uses for touch scrolling -
-  /// the single biggest thing that makes the board feel like Miro instead
-  /// of a bare pan/zoom widget. A slow release (below [kMinFlingVelocity],
-  /// Flutter's own fling-vs-drag threshold) doesn't fling at all.
-  void _maybeStartFling() {
-    if (_panVelocitySamples.length < 2) return;
-    final first = _panVelocitySamples.first;
-    final last = _panVelocitySamples.last;
-    final dtSeconds = last.time.difference(first.time).inMicroseconds / 1e6;
-    if (dtSeconds <= 0) return;
-
-    final velocity = (last.point - first.point) / dtSeconds;
-    final speed = velocity.distance;
-    if (speed < kMinFlingVelocity) return;
-
-    final direction = velocity / speed;
-    final panAtFlingStart = ref.read(boardViewProvider).panOffset;
-
-    _flingController?.dispose();
-    // The friction simulation's output is a pixel distance (often well over
-    // 1.0), not a 0..1 progress value - a plain AnimationController clamps
-    // .value to [0, 1] by default, which would silently cap the fling
-    // after a single pixel. `.unbounded` is exactly Flutter's documented
-    // pattern for driving a Simulation like this.
-    final controller = AnimationController.unbounded(vsync: this);
-    _flingController = controller;
-    controller.addListener(() {
-      final traveled = controller.value;
-      ref
-          .read(boardViewProvider.notifier)
-          .setPan(panAtFlingStart + direction * traveled);
-    });
-    // FrictionSimulation's total travel distance and its time-to-decay are
-    // both proportional to 1/|ln(drag)| for a fixed initial speed, so
-    // squaring Flutter's own ClampingScrollSimulation drag constant (0.135)
-    // halves both quantities together - applied twice here (a quarter of
-    // the original pre-fix feel) since a single halving still coasted
-    // noticeably further than Miro's near-immediate stop on release.
-    const flingDrag = 0.135 * 0.135 * 0.135 * 0.135;
-    // FrictionSimulation's total travel distance (decaying to a stop at
-    // t=infinity) is exactly speed / |ln(drag)| - so capping the speed fed
-    // into it at maxFlingDistance * |ln(flingDrag)| guarantees the fling
-    // can never travel past maxFlingDistance, however hard the physical
-    // flick was, instead of only ever shortening the *typical* case.
-    const maxFlingDistance = 120.0;
-    final speedCap = maxFlingDistance * -math.log(flingDrag);
-    final effectiveSpeed = math.min(speed, speedCap);
-    controller.animateWith(FrictionSimulation(flingDrag, 0, effectiveSpeed));
   }
 
   void _handlePointerSignal(PointerSignalEvent event) {
@@ -1256,13 +1177,4 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       ),
     );
   }
-}
-
-/// A screen position sampled at a point in time - used to estimate release
-/// velocity for the inertial pan fling.
-class _TimedPoint {
-  final DateTime time;
-  final Offset point;
-
-  const _TimedPoint(this.time, this.point);
 }
