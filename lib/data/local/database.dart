@@ -7,13 +7,10 @@ import 'tables/clips_table.dart';
 import 'tables/frames_table.dart';
 import 'tables/local_blobs_table.dart';
 import 'tables/strokes_table.dart';
-import 'tables/sync_queue_table.dart';
 
 part 'database.g.dart';
 
-@DriftDatabase(
-  tables: [Clips, Strokes, SyncQueueEntries, Boards, LocalBlobs, Frames],
-)
+@DriftDatabase(tables: [Clips, Strokes, Boards, LocalBlobs, Frames])
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
@@ -21,7 +18,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 11;
+  int get schemaVersion => 12;
 
   Future<void> _seedDefaultBoard(Migrator m) {
     return into(boards).insert(
@@ -53,9 +50,6 @@ class AppDatabase extends _$AppDatabase {
         await m.createTable(boards);
         await _seedDefaultBoard(m);
       }
-      if (from < 7) {
-        await m.addColumn(boards, boards.dirty);
-      }
       if (from < 8) {
         await m.createTable(localBlobs);
       }
@@ -68,15 +62,28 @@ class AppDatabase extends _$AppDatabase {
       if (from < 11) {
         await m.addColumn(clips, clips.frameId);
       }
+      if (from < 12) {
+        // Drops the cloud-sync-only columns/table this version removes
+        // (`dirty` on clips/boards/frames/strokes, `storagePath` on
+        // clips, and the whole `sync_queue_entries` table) - TableMigration
+        // rebuilds each table from its current (sync-free) Dart definition
+        // and copies over only the columns that still exist, rather than
+        // relying on `ALTER TABLE ... DROP COLUMN` support.
+        await m.alterTable(TableMigration(clips));
+        await m.alterTable(TableMigration(boards));
+        await m.alterTable(TableMigration(frames));
+        await m.alterTable(TableMigration(strokes));
+        await m.deleteTable('sync_queue_entries');
+      }
     },
   );
 }
 
 /// `driftDatabase()` picks the right backend per platform: a native SQLite
 /// file (via `getApplicationDocumentsDirectory()`) on desktop/mobile, or a
-/// WASM+IndexedDB-backed database in the browser on web - the same
-/// offline-capable, fully-synced database either way, no separate code path
-/// for web. The web backend needs `sqlite3.wasm` and `drift_worker.js`
+/// WASM+IndexedDB-backed database in the browser on web - the same local
+/// database either way, no separate code path for web. The web backend
+/// needs `sqlite3.wasm` and `drift_worker.js`
 /// present in `web/`, downloaded from the `sqlite3`/`drift` GitHub releases
 /// matching this project's installed package versions - re-download and
 /// replace both if those package versions are ever bumped.

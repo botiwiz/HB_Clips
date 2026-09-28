@@ -5,20 +5,10 @@ import 'local/database.dart';
 import 'local_blob_store.dart';
 import 'models/clip.dart';
 import 'models/stroke.dart';
-import 'remote/boards_remote_source.dart';
-import 'remote/clips_remote_source.dart';
-import 'remote/frames_remote_source.dart';
-import 'remote/pairing_service.dart';
-import 'remote/storage_source.dart';
-import 'remote/strokes_remote_source.dart';
-import 'remote/supabase_client_provider.dart';
 import 'repositories/boards_repository.dart';
 import 'repositories/clips_repository.dart';
 import 'repositories/frames_repository.dart';
 import 'repositories/strokes_repository.dart';
-import 'sync/realtime_listener.dart';
-import 'sync/sync_engine.dart';
-import 'sync/sync_queue_drainer.dart';
 
 final databaseProvider = Provider<AppDatabase>((ref) {
   final db = AppDatabase();
@@ -79,54 +69,4 @@ final framesRepositoryProvider = Provider<FramesRepository>((ref) {
 final boardFramesProvider = StreamProvider<List<FrameRow>>((ref) {
   final boardId = ref.watch(currentBoardIdProvider);
   return ref.watch(framesRepositoryProvider).watchFrames(boardId);
-});
-
-/// Null when sync isn't configured (no [supabaseClientProvider]) - the app
-/// then behaves exactly as it did before this feature, fully local-only.
-/// Read once (`ref.read(syncEngineProvider)?.start()`) at app startup, in
-/// `app.dart` - never on the critical path of any UI-facing repository
-/// call, and never `ref.watch`-ed, since nothing should rebuild off it.
-final syncEngineProvider = Provider<SyncEngine?>((ref) {
-  final client = ref.watch(supabaseClientProvider);
-  if (client == null) return null;
-
-  final db = ref.watch(databaseProvider);
-  final blobStore = ref.watch(localBlobStoreProvider);
-  final clipsRemote = SupabaseClipsRemoteSource(client);
-  final strokesRemote = SupabaseStrokesRemoteSource(client);
-  final boardsRemote = SupabaseBoardsRemoteSource(client);
-  final framesRemote = SupabaseFramesRemoteSource(client);
-  final storage = SupabaseStorageSource(client, blobStore);
-
-  final drainer = SyncQueueDrainer(
-    db,
-    () => client.auth.currentUser!.id,
-    clipsRemote,
-    strokesRemote,
-    boardsRemote,
-    framesRemote,
-    storage,
-    blobStore,
-  );
-  final realtime = RealtimeListener(db, client, storage);
-  final engine = SyncEngine(
-    db,
-    drainer,
-    realtime,
-    clipsRemote,
-    strokesRemote,
-    boardsRemote,
-    framesRemote,
-  );
-  ref.onDispose(() => engine.stop());
-  return engine;
-});
-
-/// Null when sync isn't configured, same as [syncEngineProvider] - the
-/// device-pairing UI in `board_screen.dart` only shows up when this is
-/// non-null.
-final pairingServiceProvider = Provider<PairingService?>((ref) {
-  final client = ref.watch(supabaseClientProvider);
-  if (client == null) return null;
-  return PairingService(client);
 });

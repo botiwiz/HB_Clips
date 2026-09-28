@@ -1,10 +1,9 @@
 import 'package:drift/drift.dart';
 
-/// Local-only cache of clip image bytes, backing the web `LocalBlobStore`
+/// Local cache of clip image bytes, backing the web `LocalBlobStore`
 /// implementation in place of real files on disk (`dart:io` doesn't
-/// compile for Flutter Web at all). Never synced - no `user_id`, no
-/// outbox entries; native platforms never populate this table since they
-/// still cache to real files instead, exactly as before.
+/// compile for Flutter Web at all) - native platforms still cache to real
+/// files instead and never populate this table.
 class LocalBlobs extends Table {
   TextColumn get id => text()();
   BlobColumn get bytes => blob()();

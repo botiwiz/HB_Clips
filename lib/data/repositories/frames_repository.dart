@@ -1,9 +1,8 @@
 import 'package:drift/drift.dart';
 
 import '../local/database.dart';
-import '../sync/outbox.dart';
 
-/// Local-first read/write API for frames - same pattern as
+/// Local read/write API for frames - same pattern as
 /// [BoardsRepository]/[ClipsRepository]/[StrokesRepository].
 class FramesRepository {
   final AppDatabase _db;
@@ -26,45 +25,25 @@ class FramesRepository {
     required double width,
     required double height,
   }) {
-    return _db.transaction(() async {
-      await _db
-          .into(_db.frames)
-          .insert(
-            FramesCompanion.insert(
-              id: id,
-              boardId: boardId,
-              name: Value(name),
-              x: Value(x),
-              y: Value(y),
-              width: Value(width),
-              height: Value(height),
-            ),
-          );
-      await enqueueOutbox(
-        _db,
-        entityType: 'frame',
-        entityId: id,
-        operation: 'upsert',
-      );
-    });
+    return _db
+        .into(_db.frames)
+        .insert(
+          FramesCompanion.insert(
+            id: id,
+            boardId: boardId,
+            name: Value(name),
+            x: Value(x),
+            y: Value(y),
+            width: Value(width),
+            height: Value(height),
+          ),
+        );
   }
 
   Future<void> renameFrame(String id, String name) {
-    return _db.transaction(() async {
-      await (_db.update(_db.frames)..where((f) => f.id.equals(id))).write(
-        FramesCompanion(
-          name: Value(name),
-          updatedAt: Value(DateTime.now()),
-          dirty: const Value(true),
-        ),
-      );
-      await enqueueOutbox(
-        _db,
-        entityType: 'frame',
-        entityId: id,
-        operation: 'upsert',
-      );
-    });
+    return (_db.update(_db.frames)..where((f) => f.id.equals(id))).write(
+      FramesCompanion(name: Value(name), updatedAt: Value(DateTime.now())),
+    );
   }
 
   Future<void> updateTransform(
@@ -74,42 +53,24 @@ class FramesRepository {
     double? width,
     double? height,
   }) {
-    return _db.transaction(() async {
-      await (_db.update(_db.frames)..where((f) => f.id.equals(id))).write(
-        FramesCompanion(
-          x: x != null ? Value(x) : const Value.absent(),
-          y: y != null ? Value(y) : const Value.absent(),
-          width: width != null ? Value(width) : const Value.absent(),
-          height: height != null ? Value(height) : const Value.absent(),
-          updatedAt: Value(DateTime.now()),
-          dirty: const Value(true),
-        ),
-      );
-      await enqueueOutbox(
-        _db,
-        entityType: 'frame',
-        entityId: id,
-        operation: 'upsert',
-      );
-    });
+    return (_db.update(_db.frames)..where((f) => f.id.equals(id))).write(
+      FramesCompanion(
+        x: x != null ? Value(x) : const Value.absent(),
+        y: y != null ? Value(y) : const Value.absent(),
+        width: width != null ? Value(width) : const Value.absent(),
+        height: height != null ? Value(height) : const Value.absent(),
+        updatedAt: Value(DateTime.now()),
+      ),
+    );
   }
 
   Future<void> updateColor(String id, String? colorHex) {
-    return _db.transaction(() async {
-      await (_db.update(_db.frames)..where((f) => f.id.equals(id))).write(
-        FramesCompanion(
-          backgroundColorHex: Value(colorHex),
-          updatedAt: Value(DateTime.now()),
-          dirty: const Value(true),
-        ),
-      );
-      await enqueueOutbox(
-        _db,
-        entityType: 'frame',
-        entityId: id,
-        operation: 'upsert',
-      );
-    });
+    return (_db.update(_db.frames)..where((f) => f.id.equals(id))).write(
+      FramesCompanion(
+        backgroundColorHex: Value(colorHex),
+        updatedAt: Value(DateTime.now()),
+      ),
+    );
   }
 
   Future<void> deleteFrame(String id) {
@@ -126,24 +87,11 @@ class FramesRepository {
               ClipsCompanion(
                 frameId: const Value(null),
                 updatedAt: Value(DateTime.now()),
-                dirty: const Value(true),
               ),
             );
-        await enqueueOutbox(
-          _db,
-          entityType: 'clip',
-          entityId: child.id,
-          operation: 'upsert',
-        );
       }
 
       await (_db.delete(_db.frames)..where((f) => f.id.equals(id))).go();
-      await enqueueOutbox(
-        _db,
-        entityType: 'frame',
-        entityId: id,
-        operation: 'delete',
-      );
     });
   }
 }

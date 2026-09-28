@@ -339,163 +339,6 @@ class BoardScreen extends ConsumerWidget {
         : null;
   }
 
-  Future<void> _showDevicePairingMenu(
-    BuildContext context,
-    WidgetRef ref,
-  ) async {
-    final choice = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Sync to another device'),
-        content: const Text(
-          'HB_Clips has no login - pairing just tells a second device to '
-          'share this one\'s account, so the same boards sync to both.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop('redeem'),
-            child: const Text('Enter a pairing code'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop('create'),
-            child: const Text('Add another device'),
-          ),
-        ],
-      ),
-    );
-    if (!context.mounted) return;
-    if (choice == 'create') {
-      await _showCreatePairingCodeDialog(context, ref);
-    } else if (choice == 'redeem') {
-      await _showRedeemPairingCodeDialog(context, ref);
-    }
-  }
-
-  Future<void> _showCreatePairingCodeDialog(
-    BuildContext context,
-    WidgetRef ref,
-  ) async {
-    final pairing = ref.read(pairingServiceProvider);
-    if (pairing == null) return;
-
-    String? code;
-    String? error;
-    try {
-      code = await pairing.createPairingCode();
-    } catch (e) {
-      error = e.toString();
-    }
-    if (!context.mounted) return;
-
-    await showDialog<void>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Add another device'),
-        content: error != null
-            ? Text('Could not generate a code: $error')
-            : Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Enter this code on your other device, under '
-                    '"Sync to another device" → "Enter a pairing '
-                    'code":',
-                  ),
-                  const SizedBox(height: 12),
-                  Center(
-                    child: SelectableText(
-                      code!,
-                      style: const TextStyle(
-                        fontSize: 28,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 4,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  const Text(
-                    'Expires in 5 minutes and can only be used once. Note: '
-                    'keeping several devices paired long-term can '
-                    'occasionally cause a sync error weeks later (a known '
-                    'limitation of the underlying auth server sharing one '
-                    'session across devices) - if that happens, just pair '
-                    'again.',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: AppTheme.textSecondary,
-                    ),
-                  ),
-                ],
-              ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Close'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _showRedeemPairingCodeDialog(
-    BuildContext context,
-    WidgetRef ref,
-  ) async {
-    final pairing = ref.read(pairingServiceProvider);
-    if (pairing == null) return;
-
-    final controller = TextEditingController();
-    final code = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Enter a pairing code'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          textCapitalization: TextCapitalization.characters,
-          decoration: const InputDecoration(hintText: 'e.g. BMUVDM'),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(controller.text),
-            child: const Text('Pair'),
-          ),
-        ],
-      ),
-    );
-    if (code == null || code.trim().isEmpty) return;
-    if (!context.mounted) return;
-
-    try {
-      await pairing.redeemPairingCode(code.trim());
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Paired - this device now shares the other one\'s boards.',
-          ),
-        ),
-      );
-    } catch (e) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Pairing failed: $e'),
-          backgroundColor: AppTheme.danger,
-        ),
-      );
-    }
-  }
-
   Future<void> _addFrame(BuildContext context, WidgetRef ref) async {
     final controller = TextEditingController(text: 'Frame');
     final name = await showDialog<String>(
@@ -618,7 +461,6 @@ class BoardScreen extends ConsumerWidget {
     final isDrawMode = ref.watch(isDrawModeProvider);
     final isCropMode = ref.watch(isCropModeProvider);
     final snapToGrid = ref.watch(snapToGridProvider);
-    final syncConfigured = ref.watch(pairingServiceProvider) != null;
     final selectedFrameId = ref.watch(selectedFrameIdProvider);
     final frames = ref.watch(boardFramesProvider).valueOrNull ?? [];
     FrameRow? selectedFrame;
@@ -832,13 +674,6 @@ class BoardScreen extends ConsumerWidget {
                       const SizedBox(width: 8),
                       PillGroup(
                         children: [
-                          if (syncConfigured)
-                            PillIconButton(
-                              tooltip: 'Sync to another device',
-                              icon: Icons.devices_outlined,
-                              onPressed: () =>
-                                  _showDevicePairingMenu(context, ref),
-                            ),
                           PillIconButton(
                             tooltip: 'Bin',
                             icon: Icons.delete_outline,

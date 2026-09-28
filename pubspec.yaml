@@ -1,5 +1,5 @@
 name: hb_clips
-description: "HB_Clips - a PureRef-inspired synced visual clipboard by Boti Harko"
+description: "HB_Clips - a PureRef-inspired local visual clipboard by Boti Harko"
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -46,15 +46,10 @@ dependencies:
   # Android/Windows native builds fetch the sqlite3 amalgamation from
   # sqlite.org, which this sandbox's network policy blocks, and Linux
   # already has a system libsqlite3 that `package:sqlite3` opens by default.
-  # Add it back (`flutter pub add sqlite3_flutter_libs`) before Phase 8/9
-  # (Android/Windows builds), which will happen on a machine with normal
-  # internet access - Android/Windows don't ship libsqlite3 the way Linux
-  # does, so it's required there.
-
-  # Cloud sync backend (added ahead of Phase 5 wiring)
-  supabase_flutter: ^2.8.1
-  connectivity_plus: ^6.1.2
-  flutter_dotenv: ^5.2.1
+  # Add it back (`flutter pub add sqlite3_flutter_libs`) for a Windows/
+  # Android build, which will happen on a machine with normal internet
+  # access - Android/Windows don't ship libsqlite3 the way Linux does, so
+  # it's required there.
 
   # Clip creation
   uuid: ^4.5.1
@@ -91,9 +86,6 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
-
-  assets:
-    - .env
 
   # To add assets to your application, add an assets section, like this:
   # assets:

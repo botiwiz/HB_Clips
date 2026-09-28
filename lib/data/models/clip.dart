@@ -17,7 +17,7 @@ extension ClipTypeStorage on ClipType {
 
 /// Domain-level clip used by the board UI and controllers. Kept separate
 /// from the Drift-generated [ClipRow] so UI code doesn't depend on
-/// persistence details (nullable sync columns, etc.).
+/// persistence details.
 class BoardClip {
   final String id;
   final String boardId;
@@ -33,7 +33,6 @@ class BoardClip {
   final String? backgroundColorHex;
   final String? groupId;
   final String? frameId;
-  final String? storagePath;
   final String? localFilePath;
   final bool isBinned;
   final DateTime? binnedAt;
@@ -55,7 +54,6 @@ class BoardClip {
     this.backgroundColorHex,
     this.groupId,
     this.frameId,
-    this.storagePath,
     this.localFilePath,
     this.isBinned = false,
     this.binnedAt,
@@ -78,7 +76,6 @@ class BoardClip {
     backgroundColorHex: row.backgroundColorHex,
     groupId: row.groupId,
     frameId: row.frameId,
-    storagePath: row.storagePath,
     localFilePath: row.localFilePath,
     isBinned: row.isBinned,
     binnedAt: row.binnedAt,
@@ -98,7 +95,6 @@ class BoardClip {
     String? backgroundColorHex,
     String? groupId,
     String? frameId,
-    String? storagePath,
     bool? isBinned,
     DateTime? binnedAt,
   }) {
@@ -117,7 +113,6 @@ class BoardClip {
       backgroundColorHex: backgroundColorHex ?? this.backgroundColorHex,
       groupId: groupId ?? this.groupId,
       frameId: frameId ?? this.frameId,
-      storagePath: storagePath ?? this.storagePath,
       localFilePath: localFilePath,
       isBinned: isBinned ?? this.isBinned,
       binnedAt: binnedAt ?? this.binnedAt,

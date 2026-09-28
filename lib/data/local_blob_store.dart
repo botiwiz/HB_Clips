@@ -3,9 +3,8 @@
 // `dart:io` does not compile for Flutter Web at all.
 //
 // On native platforms this writes real files under the app's documents
-// directory, exactly as before. On web, bytes are cached in a
-// local-only Drift table (`LocalBlobs`) instead - never synced, the
-// remote copy of an image always lives in Supabase Storage.
+// directory. On web, bytes are cached in a local Drift table
+// (`LocalBlobs`) instead.
 //
 // Every variant exports an identically-shaped `LocalBlobStore` class
 // (same constructor, same three methods) - callers only ever import this
