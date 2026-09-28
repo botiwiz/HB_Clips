@@ -32,6 +32,7 @@ import 'clip_widget.dart';
 import 'crop_overlay.dart';
 import 'dot_grid_background.dart';
 import 'frame_widget.dart';
+import 'group_scale_handles.dart';
 import 'marquee_overlay.dart';
 import 'selection_handles.dart';
 
@@ -52,8 +53,10 @@ const _uuid = Uuid();
 /// Space+drag always pans, regardless of what's underneath the cursor, and
 /// a plain right-click is a no-op (reserved for a future context menu) -
 /// both checked before any hit-testing; then, for an ordinary left-click,
-/// (1) a handle on the sole selected clip, (2) a clip body (rotation-aware),
-/// (3) empty canvas starts a marquee.
+/// (1) a handle on the sole selected clip, (1.5) a handle on a multi-clip
+/// selection's bounding box (group scale - only when every selected clip
+/// is unrotated), (2) a clip body (rotation-aware), (3) empty canvas
+/// starts a marquee.
 class BoardCanvas extends ConsumerStatefulWidget {
   const BoardCanvas({super.key});
 
@@ -68,6 +71,11 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
   // Resize/rotate handle drag.
   HandleKind? _activeHandle;
   BoardClip? _handleStartClip;
+
+  // Group scale (multi-select resize) drag.
+  HandleKind? _activeGroupScaleHandle;
+  Map<String, BoardClip>? _groupScaleStartClips;
+  Rect? _groupScaleStartRect;
 
   // Group move drag.
   Map<String, Offset>? _groupDragStartPositions;
@@ -201,6 +209,9 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
   void _resetGestureState() {
     _activeHandle = null;
     _handleStartClip = null;
+    _activeGroupScaleHandle = null;
+    _groupScaleStartClips = null;
+    _groupScaleStartRect = null;
     _groupDragStartPositions = null;
     _groupDragPrimaryId = null;
     _groupDragMoved = false;
@@ -317,6 +328,45 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
               height: selectedClip.height,
               rotation: selectedClip.rotation,
             ),
+          };
+          return;
+        }
+      }
+    }
+
+    // 1.5. A handle on a multi-clip selection's bounding box (group scale)
+    // - only offered when every selected clip is currently unrotated (see
+    // GroupScaleHandles's doc comment for why).
+    if (selection.length >= 2) {
+      final selectedClips = [
+        for (final c in clips)
+          if (selection.contains(c.id)) c,
+      ];
+      if (selectedClips.length >= 2 &&
+          selectedClips.every((c) => c.rotation == 0)) {
+        final groupRect = ClipGeometry.boardBoundingBox(selectedClips);
+        final handle = ClipGeometry.hitTestRectHandle(
+          groupRect,
+          view,
+          event.localPosition,
+        );
+        if (handle != null) {
+          _activeGroupScaleHandle = handle;
+          _groupScaleStartClips = {
+            for (final c in selectedClips) c.id: c,
+          };
+          _groupScaleStartRect = groupRect;
+          _gestureStartPointerBoard = boardPos;
+          ref.read(groupDragProvider.notifier).state = {
+            for (final c in selectedClips)
+              c.id: DraggingClip(
+                id: c.id,
+                x: c.x,
+                y: c.y,
+                width: c.width,
+                height: c.height,
+                rotation: c.rotation,
+              ),
           };
           return;
         }
@@ -495,6 +545,53 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       return;
     }
 
+    if (_activeGroupScaleHandle != null &&
+        _groupScaleStartClips != null &&
+        _groupScaleStartRect != null) {
+      final results = ClipGeometry.scaleGroup(
+        startClips: _groupScaleStartClips!,
+        startGroupRect: _groupScaleStartRect!,
+        corner: _activeGroupScaleHandle!,
+        pointerBoard: boardPos,
+      );
+      final snap = ref.read(snapToGridProvider);
+      final currentMap = ref.read(groupDragProvider);
+      if (currentMap == null) return;
+      final updated = <String, DraggingClip>{
+        for (final entry in currentMap.entries)
+          entry.key: results.containsKey(entry.key)
+              ? entry.value.copyWith(
+                  x: snap
+                      ? ClipGeometry.snap(
+                          results[entry.key]!.x,
+                          kBoardGridSpacing,
+                        )
+                      : results[entry.key]!.x,
+                  y: snap
+                      ? ClipGeometry.snap(
+                          results[entry.key]!.y,
+                          kBoardGridSpacing,
+                        )
+                      : results[entry.key]!.y,
+                  width: snap
+                      ? ClipGeometry.snap(
+                          results[entry.key]!.width,
+                          kBoardGridSpacing,
+                        )
+                      : results[entry.key]!.width,
+                  height: snap
+                      ? ClipGeometry.snap(
+                          results[entry.key]!.height,
+                          kBoardGridSpacing,
+                        )
+                      : results[entry.key]!.height,
+                )
+              : entry.value,
+      };
+      ref.read(groupDragProvider.notifier).state = updated;
+      return;
+    }
+
     if (_groupDragStartPositions != null) {
       final delta = boardPos - _gestureStartPointerBoard!;
       if (delta.distance > 2) _groupDragMoved = true;
@@ -617,6 +714,27 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       ref.read(groupDragProvider.notifier).state = null;
       _activeHandle = null;
       _handleStartClip = null;
+      _gestureStartPointerBoard = null;
+      return;
+    }
+
+    if (_activeGroupScaleHandle != null && _groupScaleStartClips != null) {
+      final dragMap = ref.read(groupDragProvider);
+      if (dragMap != null) {
+        for (final entry in dragMap.entries) {
+          repo.updateTransform(
+            entry.key,
+            x: entry.value.x,
+            y: entry.value.y,
+            width: entry.value.width,
+            height: entry.value.height,
+          );
+        }
+      }
+      ref.read(groupDragProvider.notifier).state = null;
+      _activeGroupScaleHandle = null;
+      _groupScaleStartClips = null;
+      _groupScaleStartRect = null;
       _gestureStartPointerBoard = null;
       return;
     }
@@ -1132,6 +1250,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
                       ] else if (!isDrawMode) ...[
                         const MarqueeOverlay(),
                         const SelectionHandles(),
+                        const GroupScaleHandles(),
                         const ClipStylePopover(),
                         const ArrangeSelectionButton(),
                       ],

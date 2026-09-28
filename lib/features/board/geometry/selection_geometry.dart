@@ -225,4 +225,100 @@ class ClipGeometry {
   ) {
     return startPositions.map((id, pos) => MapEntry(id, pos + delta));
   }
+
+  /// Screen-space positions of the 4 corners of an unrotated board-space
+  /// [rect] - the group-scale equivalent of [handleScreenPositions], for a
+  /// selection's bounding box rather than a single clip. No rotate handle:
+  /// group scale doesn't offer one.
+  static Map<HandleKind, Offset> rectHandleScreenPositions(
+    Rect rect,
+    BoardViewState view,
+  ) {
+    return {
+      HandleKind.resizeTL: _boardToScreen(rect.topLeft, view),
+      HandleKind.resizeTR: _boardToScreen(rect.topRight, view),
+      HandleKind.resizeBR: _boardToScreen(rect.bottomRight, view),
+      HandleKind.resizeBL: _boardToScreen(rect.bottomLeft, view),
+    };
+  }
+
+  /// Returns which corner handle (if any) of [rect] is under screen-space
+  /// [screenPoint], mirroring [hitTestHandle] but for a bounding box.
+  static HandleKind? hitTestRectHandle(
+    Rect rect,
+    BoardViewState view,
+    Offset screenPoint,
+  ) {
+    for (final entry in rectHandleScreenPositions(rect, view).entries) {
+      if ((entry.value - screenPoint).distance <= handleHitRadius) {
+        return entry.key;
+      }
+    }
+    return null;
+  }
+
+  /// Uniformly scales every clip in [startClips] (gesture-start snapshots,
+  /// keyed by id) as a rigid group, anchored at [startGroupRect]'s corner
+  /// opposite [corner]. A single scale factor is derived from how far
+  /// [pointerBoard] has moved that corner relative to the anchor, along
+  /// whichever axis moved proportionally more of the group rect's own
+  /// width/height - so the group scales uniformly (locked aspect ratio)
+  /// rather than independently per axis like single-clip [resize]. The
+  /// factor is then clamped so the smallest clip in the group never drops
+  /// below [minClipSize] on its narrower edge; every clip is scaled by
+  /// that same clamped factor so relative spacing stays proportional even
+  /// at the floor.
+  ///
+  /// v1 restriction (enforced by callers, not here): only meaningful when
+  /// every clip in [startClips] has rotation == 0 - see
+  /// `GroupScaleHandles`'s doc comment for why.
+  static Map<String, ({double x, double y, double width, double height})>
+  scaleGroup({
+    required Map<String, BoardClip> startClips,
+    required Rect startGroupRect,
+    required HandleKind corner,
+    required Offset pointerBoard,
+  }) {
+    assert(corner != HandleKind.rotate);
+    assert(startClips.isNotEmpty);
+
+    final anchor = switch (corner) {
+      HandleKind.resizeTL => startGroupRect.bottomRight,
+      HandleKind.resizeTR => startGroupRect.bottomLeft,
+      HandleKind.resizeBR => startGroupRect.topLeft,
+      HandleKind.resizeBL => startGroupRect.topRight,
+      HandleKind.rotate =>
+        throw ArgumentError('scaleGroup() called with rotate handle'),
+    };
+
+    final rawWidth = (pointerBoard.dx - anchor.dx).abs();
+    final rawHeight = (pointerBoard.dy - anchor.dy).abs();
+    final scaleX = startGroupRect.width == 0
+        ? 1.0
+        : rawWidth / startGroupRect.width;
+    final scaleY = startGroupRect.height == 0
+        ? 1.0
+        : rawHeight / startGroupRect.height;
+    var scale = math.max(scaleX, scaleY);
+    if (scale <= 0) scale = 0.01;
+
+    var minEdge = double.infinity;
+    for (final clip in startClips.values) {
+      minEdge = math.min(minEdge, math.min(clip.width, clip.height));
+    }
+    if (minEdge.isFinite && minEdge * scale < minClipSize) {
+      scale = minClipSize / minEdge;
+    }
+
+    return startClips.map((id, clip) {
+      final newX = anchor.dx + (clip.x - anchor.dx) * scale;
+      final newY = anchor.dy + (clip.y - anchor.dy) * scale;
+      return MapEntry(id, (
+        x: newX,
+        y: newY,
+        width: clip.width * scale,
+        height: clip.height * scale,
+      ));
+    });
+  }
 }
