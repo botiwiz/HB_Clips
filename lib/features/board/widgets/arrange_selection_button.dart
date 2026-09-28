@@ -95,6 +95,7 @@ class ArrangeSelectionButton extends ConsumerWidget {
       aspectRatios: [for (final c in images) c.width / c.height],
       containerWidth: boardRect.width,
       targetTotalHeight: boardRect.height,
+      gap: 2,
     );
 
     final repo = ref.read(clipsRepositoryProvider);

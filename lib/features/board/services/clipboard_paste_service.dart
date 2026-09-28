@@ -1,57 +1,12 @@
-import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:super_clipboard/super_clipboard.dart';
-import 'package:uuid/uuid.dart';
 
-import '../../../core/constants.dart';
-import '../../../core/theme/app_theme.dart';
-import '../../../data/providers.dart';
-import '../../../data/repositories/clips_repository.dart';
 import '../controllers/board_controller.dart';
-import 'image_size_service.dart';
-
-const _uuid = Uuid();
-
-const _imageFormats = <SimpleFileFormat, String>{
-  Formats.png: '.png',
-  Formats.jpeg: '.jpg',
-  Formats.gif: '.gif',
-  Formats.webp: '.webp',
-  Formats.bmp: '.bmp',
-  Formats.tiff: '.tiff',
-};
-
-/// `getFile` is callback-based even on the async `ClipboardReader` - only
-/// `readValue` is natively `Future`-based - so this wraps it the same way
-/// the super_clipboard example app does.
-Future<Uint8List?> _readFileBytes(ClipboardReader reader, FileFormat format) {
-  final completer = Completer<Uint8List?>();
-  final progress = reader.getFile(
-    format,
-    (file) async {
-      try {
-        completer.complete(await file.readAll());
-      } catch (error) {
-        completer.completeError(error);
-      }
-    },
-    onError: completer.completeError,
-  );
-  if (progress == null) completer.complete(null);
-  return completer.future;
-}
-
-void _showSnack(BuildContext context, String message, {bool isError = false}) {
-  ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(
-      content: Text(message),
-      backgroundColor: isError ? AppTheme.danger : null,
-    ),
-  );
-}
+import 'add_image_service.dart';
+import 'image_file_formats.dart';
 
 /// Reads an image off the OS clipboard (e.g. a pasted screenshot) and adds
 /// it as a new image clip, mirroring how file-picker imports are handled in
@@ -60,69 +15,42 @@ void _showSnack(BuildContext context, String message, {bool isError = false}) {
 Future<void> pasteImageFromClipboard(BuildContext context, WidgetRef ref) async {
   final clipboard = SystemClipboard.instance;
   if (clipboard == null) {
-    _showSnack(context, 'Clipboard access is not available on this platform.');
+    showBoardSnack(context, 'Clipboard access is not available on this platform.');
     return;
   }
 
   final reader = await clipboard.read();
   if (!context.mounted) return;
-  SimpleFileFormat? matchedFormat;
-  for (final format in _imageFormats.keys) {
-    if (reader.canProvide(format)) {
-      matchedFormat = format;
-      break;
-    }
-  }
+  final matchedFormat = matchImageFormat(reader);
   if (matchedFormat == null) {
-    _showSnack(context, 'No image found on the clipboard.');
+    showBoardSnack(context, 'No image found on the clipboard.');
     return;
   }
 
   final Uint8List? bytes;
   try {
-    bytes = await _readFileBytes(reader, matchedFormat);
+    bytes = await readImageFileBytes(reader, matchedFormat);
   } catch (_) {
     if (!context.mounted) return;
-    _showSnack(context, "Couldn't read the image from the clipboard.", isError: true);
+    showBoardSnack(context, "Couldn't read the image from the clipboard.", isError: true);
     return;
   }
-  if (bytes == null || bytes.isEmpty) {
-    if (!context.mounted) return;
-    _showSnack(context, 'No image found on the clipboard.');
-    return;
-  }
-
-  final id = _uuid.v4();
-  final destPath = await ref
-      .read(localBlobStoreProvider)
-      .writeBytes(bytes, extension: _imageFormats[matchedFormat]!);
-
   if (!context.mounted) return;
+  if (bytes == null || bytes.isEmpty) {
+    showBoardSnack(context, 'No image found on the clipboard.');
+    return;
+  }
+
   final size = MediaQuery.sizeOf(context);
   final screenCenter = Offset(size.width / 2, size.height / 2);
   final view = ref.read(boardViewProvider);
-  final center = (screenCenter - view.panOffset) / view.scale;
+  final boardCenter = (screenCenter - view.panOffset) / view.scale;
 
-  final clipSize = clipSizeForImageBytes(bytes);
-  try {
-    await ref
-        .read(clipsRepositoryProvider)
-        .addImageClip(
-          id: id,
-          boardId: ref.read(currentBoardIdProvider),
-          localFilePath: destPath,
-          x: center.dx - clipSize.width / 2,
-          y: center.dy - clipSize.height / 2,
-          width: clipSize.width,
-          height: clipSize.height,
-        );
-  } on ClipCapExceededException {
-    if (!context.mounted) return;
-    _showSnack(
-      context,
-      'You\'ve reached the $kMaxImageClips image clip limit. '
-      'Bin or delete one to add another.',
-      isError: true,
-    );
-  }
+  await addImageClipFromBytes(
+    context,
+    ref,
+    bytes: bytes,
+    extension: imageFileFormats[matchedFormat]!,
+    boardCenter: boardCenter,
+  );
 }

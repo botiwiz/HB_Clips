@@ -3,6 +3,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:super_drag_and_drop/super_drag_and_drop.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../core/constants.dart';
@@ -20,7 +21,9 @@ import '../controllers/crop_controller.dart';
 import '../geometry/crop_geometry.dart';
 import '../geometry/frame_geometry.dart';
 import '../geometry/selection_geometry.dart';
+import '../services/add_image_service.dart';
 import '../services/eyedropper_service.dart';
+import '../services/image_file_formats.dart';
 import 'arrange_selection_button.dart';
 import 'bin_drop_target.dart';
 import 'board_minimap.dart';
@@ -1002,6 +1005,58 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     _cropDragStartRect = null;
   }
 
+  // ---- Drag-and-drop (Explorer files, or an image dragged out of a
+  // browser) -----------------------------------------------------------
+
+  /// Accepts the drop only once at least one dragged item's reader can
+  /// actually provide one of the image formats this app knows how to read -
+  /// `dataReader` is "gradually populated" on desktop per super_clipboard's
+  /// own docs, so this re-checks on every hover tick rather than only once.
+  DropOperation _handleDropOver(DropOverEvent event) {
+    for (final item in event.session.items) {
+      final reader = item.dataReader;
+      if (reader != null && matchImageFormat(reader) != null) {
+        return DropOperation.copy;
+      }
+    }
+    return DropOperation.none;
+  }
+
+  /// Reads every recognizably-image item in the drop and adds each as a
+  /// clip, centered on where it landed - a second (or third...) item in the
+  /// same drop cascades a little further down-right so a multi-file drop
+  /// (selecting several files in Explorer and dragging them together)
+  /// doesn't stack every clip exactly on top of the others.
+  Future<void> _handlePerformDrop(PerformDropEvent event) async {
+    if (ref.read(isDrawModeProvider) || ref.read(isCropModeProvider)) return;
+    final view = ref.read(boardViewProvider);
+    final dropCenter = _screenToBoard(event.position.local, view);
+
+    const cascadeStep = 24.0;
+    var placed = 0;
+    for (final item in event.session.items) {
+      final reader = item.dataReader;
+      if (reader == null) continue;
+      final format = matchImageFormat(reader);
+      if (format == null) continue;
+      final bytes = await readImageFileBytes(reader, format);
+      if (!mounted) return;
+      if (bytes == null || bytes.isEmpty) continue;
+
+      final center = dropCenter + Offset(cascadeStep, cascadeStep) * placed.toDouble();
+      final ok = await addImageClipFromBytes(
+        context,
+        ref,
+        bytes: bytes,
+        extension: imageFileFormats[format]!,
+        boardCenter: center,
+      );
+      if (!mounted) return;
+      if (!ok) return; // hit the image cap - a snackbar was already shown.
+      placed++;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final clipsAsync = ref.watch(activeClipsProvider);
@@ -1025,76 +1080,82 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       strokesByClip.putIfAbsent(clipId, () => []).add(stroke);
     }
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        _canvasSize = constraints.biggest;
-        return Focus(
-          focusNode: _focusNode,
-          autofocus: true,
-          child: MouseRegion(
-            cursor: isDrawMode
-                ? SystemMouseCursors.precise
-                : SystemMouseCursors.basic,
-            child: Listener(
-              onPointerDown: _handlePointerDown,
-              onPointerMove: _handlePointerMove,
-              onPointerUp: _handlePointerUp,
-              onPointerCancel: _handlePointerCancel,
-              onPointerSignal: _handlePointerSignal,
-              child: Container(
-                color: AppTheme.canvasBackground,
-                width: double.infinity,
-                height: double.infinity,
-                child: Stack(
-                  clipBehavior: Clip.hardEdge,
-                  children: [
-                    Positioned.fill(
-                      child: CustomPaint(painter: DotGridPainter(view)),
-                    ),
-                    for (final frame in frames)
-                      _positionedFrame(
-                        frame,
-                        frame.id == selectedFrameId ? frameDragRect : null,
-                        frame.id == selectedFrameId,
-                        view,
+    return DropRegion(
+      formats: [...imageFileFormats.keys],
+      hitTestBehavior: HitTestBehavior.opaque,
+      onDropOver: _handleDropOver,
+      onPerformDrop: _handlePerformDrop,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          _canvasSize = constraints.biggest;
+          return Focus(
+            focusNode: _focusNode,
+            autofocus: true,
+            child: MouseRegion(
+              cursor: isDrawMode
+                  ? SystemMouseCursors.precise
+                  : SystemMouseCursors.basic,
+              child: Listener(
+                onPointerDown: _handlePointerDown,
+                onPointerMove: _handlePointerMove,
+                onPointerUp: _handlePointerUp,
+                onPointerCancel: _handlePointerCancel,
+                onPointerSignal: _handlePointerSignal,
+                child: Container(
+                  color: AppTheme.canvasBackground,
+                  width: double.infinity,
+                  height: double.infinity,
+                  child: Stack(
+                    clipBehavior: Clip.hardEdge,
+                    children: [
+                      Positioned.fill(
+                        child: CustomPaint(painter: DotGridPainter(view)),
                       ),
-                    for (final clip in sorted)
-                      _positionedClip(
-                        clip,
-                        dragging,
-                        selection,
-                        view,
-                        strokesByClip[clip.id] ?? const [],
+                      for (final frame in frames)
+                        _positionedFrame(
+                          frame,
+                          frame.id == selectedFrameId ? frameDragRect : null,
+                          frame.id == selectedFrameId,
+                          view,
+                        ),
+                      for (final clip in sorted)
+                        _positionedClip(
+                          clip,
+                          dragging,
+                          selection,
+                          view,
+                          strokesByClip[clip.id] ?? const [],
+                        ),
+                      const Positioned.fill(child: DrawingOverlay()),
+                      if (isCropMode) ...[
+                        const CropOverlay(),
+                      ] else if (!isDrawMode) ...[
+                        const MarqueeOverlay(),
+                        const SelectionHandles(),
+                        const ClipStylePopover(),
+                        const ArrangeSelectionButton(),
+                      ],
+                      Positioned(
+                        right: 24,
+                        bottom: 24,
+                        child: BinDropTarget(
+                          highlighted: overBin,
+                          onTap: () {},
+                        ),
                       ),
-                    const Positioned.fill(child: DrawingOverlay()),
-                    if (isCropMode) ...[
-                      const CropOverlay(),
-                    ] else if (!isDrawMode) ...[
-                      const MarqueeOverlay(),
-                      const SelectionHandles(),
-                      const ClipStylePopover(),
-                      const ArrangeSelectionButton(),
+                      const Positioned(
+                        left: 24,
+                        bottom: 24,
+                        child: BoardMinimap(),
+                      ),
                     ],
-                    Positioned(
-                      right: 24,
-                      bottom: 24,
-                      child: BinDropTarget(
-                        highlighted: overBin,
-                        onTap: () {},
-                      ),
-                    ),
-                    const Positioned(
-                      left: 24,
-                      bottom: 24,
-                      child: BoardMinimap(),
-                    ),
-                  ],
+                  ),
                 ),
               ),
             ),
-          ),
-        );
-      },
+          );
+        },
+      ),
     );
   }
 
