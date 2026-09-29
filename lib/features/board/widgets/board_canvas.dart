@@ -156,6 +156,12 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
 
   Size _canvasSize = Size.zero;
 
+  // Space-tap-to-focus: distinguishes a plain tap (fit the viewport to the
+  // selection) from Space held through a pan-drag (the existing
+  // hand-tool behavior, unaffected) - see _handleKeyEvent.
+  bool _spaceKeyDown = false;
+  bool _spacePanMoved = false;
+
   @override
   void initState() {
     super.initState();
@@ -285,6 +291,61 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
 
   void _handlePointerCancel(PointerCancelEvent event) {
     _resetGestureState();
+  }
+
+  /// Distinguishes a plain tap of Space (fit the viewport to the current
+  /// selection) from Space held through a pan-drag (the existing hand-tool
+  /// behavior, unaffected - see the `_spacePanMoved = true` line in the
+  /// pan branch of `_handlePointerMove`). Returned `ignored` always: this
+  /// only observes the event, it never needs to consume it -
+  /// `HardwareKeyboard.instance`'s pressed-key bookkeeping (what the
+  /// existing space-to-pan check reads) is engine-level global state,
+  /// unaffected by whether a widget "handles" the key event.
+  KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
+    if (event.logicalKey != LogicalKeyboardKey.space) {
+      return KeyEventResult.ignored;
+    }
+    if (event is KeyDownEvent) {
+      _spaceKeyDown = true;
+      _spacePanMoved = false;
+    } else if (event is KeyUpEvent) {
+      if (_spaceKeyDown && !_spacePanMoved) {
+        _focusOnSelection();
+      }
+      _spaceKeyDown = false;
+      _spacePanMoved = false;
+    }
+    return KeyEventResult.ignored;
+  }
+
+  /// Pans/zooms the viewport to fit the current clip selection, or - if no
+  /// clips are selected - the selected frame, if any. A no-op if neither
+  /// is selected.
+  void _focusOnSelection() {
+    final selection = ref.read(selectedClipIdsProvider);
+    final clips = ref.read(activeClipsProvider).valueOrNull ?? [];
+    final selectedClips = [
+      for (final c in clips)
+        if (selection.contains(c.id)) c,
+    ];
+    if (selectedClips.isNotEmpty) {
+      ref
+          .read(boardViewProvider.notifier)
+          .fitRect(ClipGeometry.boardBoundingBox(selectedClips), _canvasSize);
+      return;
+    }
+
+    final selectedFrameId = ref.read(selectedFrameIdProvider);
+    if (selectedFrameId == null) return;
+    final frame = _findFrameById(
+      ref.read(boardFramesProvider).valueOrNull ?? [],
+      selectedFrameId,
+    );
+    if (frame != null) {
+      ref
+          .read(boardViewProvider.notifier)
+          .fitRect(FrameGeometry.boardRect(frame), _canvasSize);
+    }
   }
 
   void _handlePointerDown(PointerDownEvent event) {
@@ -868,6 +929,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     if (_panPointerStart != null) {
       final delta = event.localPosition - _panPointerStart!;
       ref.read(boardViewProvider.notifier).setPan(_panOffsetStart! + delta);
+      _spacePanMoved = true;
     }
   }
 
@@ -1515,6 +1577,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
           return Focus(
             focusNode: _focusNode,
             autofocus: true,
+            onKeyEvent: _handleKeyEvent,
             child: MouseRegion(
               cursor: isDrawMode
                   ? SystemMouseCursors.precise
