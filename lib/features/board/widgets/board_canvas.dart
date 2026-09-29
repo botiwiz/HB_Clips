@@ -32,6 +32,7 @@ import 'clip_widget.dart';
 import 'crop_overlay.dart';
 import 'dot_grid_background.dart';
 import 'frame_widget.dart';
+import 'frames_panel.dart';
 import 'group_scale_handles.dart';
 import 'marquee_overlay.dart';
 import 'selection_handles.dart';
@@ -127,6 +128,12 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
   // start, applied by the same delta as the frame on every move, and
   // committed to the repository on pointer-up alongside the frame itself.
   Map<String, Offset>? _frameChildStartPositions;
+
+  // Same idea as _frameChildStartPositions, but for a frame resize: full
+  // start-of-gesture snapshots (width/height too, not just position) so
+  // FrameGeometry.scaleChildren can scale each child to match the frame's
+  // new size. Null during a move or when the resized frame has no children.
+  Map<String, BoardClip>? _frameResizeChildStart;
 
   Size _canvasSize = Size.zero;
 
@@ -226,6 +233,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     _frameDragStartRect = null;
     _frameGestureStartPointerBoard = null;
     _frameChildStartPositions = null;
+    _frameResizeChildStart = null;
     ref.read(groupDragProvider.notifier).state = null;
     ref.read(marqueeRectProvider.notifier).state = null;
     ref.read(frameDragRectProvider.notifier).state = null;
@@ -444,6 +452,31 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
         _frameDragId = selectedFrame.id;
         _frameDragStartRect = FrameGeometry.boardRect(selectedFrame);
         ref.read(frameDragRectProvider.notifier).state = _frameDragStartRect;
+
+        // Same "contents follow the frame" contract as a plain frame move
+        // (see below), but the resize branch needs each child's full
+        // width/height too so FrameGeometry.scaleChildren can scale them.
+        final resizingChildren = clips
+            .where((c) => c.frameId == selectedFrame.id)
+            .toList();
+        if (resizingChildren.isNotEmpty) {
+          _frameResizeChildStart = {
+            for (final c in resizingChildren) c.id: c,
+          };
+          ref.read(groupDragProvider.notifier).state = {
+            for (final c in resizingChildren)
+              c.id: DraggingClip(
+                id: c.id,
+                x: c.x,
+                y: c.y,
+                width: c.width,
+                height: c.height,
+                rotation: c.rotation,
+              ),
+          };
+        } else {
+          _frameResizeChildStart = null;
+        }
         return;
       }
     }
@@ -654,6 +687,24 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
         pointerBoard: boardPos,
       );
       ref.read(frameDragRectProvider.notifier).state = resized;
+      if (_frameResizeChildStart != null && _frameResizeChildStart!.isNotEmpty) {
+        final results = FrameGeometry.scaleChildren(
+          startClips: _frameResizeChildStart!,
+          startRect: _frameDragStartRect!,
+          newRect: resized,
+        );
+        ref.read(groupDragProvider.notifier).state = {
+          for (final entry in results.entries)
+            entry.key: DraggingClip(
+              id: entry.key,
+              x: entry.value.x,
+              y: entry.value.y,
+              width: entry.value.width,
+              height: entry.value.height,
+              rotation: _frameResizeChildStart![entry.key]!.rotation,
+            ),
+        };
+      }
       return;
     }
 
@@ -834,12 +885,30 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
         }
         ref.read(groupDragProvider.notifier).state = null;
       }
+      if (_frameResizeChildStart != null) {
+        final dragMap = ref.read(groupDragProvider);
+        if (dragMap != null) {
+          for (final entry in dragMap.entries) {
+            if (_frameResizeChildStart!.containsKey(entry.key)) {
+              repo.updateTransform(
+                entry.key,
+                x: entry.value.x,
+                y: entry.value.y,
+                width: entry.value.width,
+                height: entry.value.height,
+              );
+            }
+          }
+        }
+        ref.read(groupDragProvider.notifier).state = null;
+      }
       ref.read(frameDragRectProvider.notifier).state = null;
       _frameDragId = null;
       _frameResizing = false;
       _frameDragStartRect = null;
       _frameGestureStartPointerBoard = null;
       _frameChildStartPositions = null;
+      _frameResizeChildStart = null;
       return;
     }
 
@@ -1162,15 +1231,13 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       if (bytes == null || bytes.isEmpty) continue;
 
       final center = dropCenter + Offset(cascadeStep, cascadeStep) * placed.toDouble();
-      final ok = await addImageClipFromBytes(
-        context,
+      await addImageClipFromBytes(
         ref,
         bytes: bytes,
         extension: imageFileFormats[format]!,
         boardCenter: center,
       );
       if (!mounted) return;
-      if (!ok) return; // hit the image cap - a snackbar was already shown.
       placed++;
     }
   }
@@ -1187,6 +1254,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     final frames = ref.watch(boardFramesProvider).valueOrNull ?? [];
     final selectedFrameId = ref.watch(selectedFrameIdProvider);
     final frameDragRect = ref.watch(frameDragRectProvider);
+    final framesPanelOpen = ref.watch(framesPanelOpenProvider);
 
     final clips = clipsAsync.valueOrNull ?? [];
     final sorted = [...clips]..sort((a, b) => a.zIndex.compareTo(b.zIndex));
@@ -1267,6 +1335,12 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
                         bottom: 24,
                         child: BoardMinimap(),
                       ),
+                      if (framesPanelOpen)
+                        const Positioned(
+                          top: 76,
+                          right: 24,
+                          child: FramesPanel(),
+                        ),
                     ],
                   ),
                 ),

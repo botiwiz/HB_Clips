@@ -1,6 +1,7 @@
 import 'package:flutter/rendering.dart';
 
 import '../../../data/local/database.dart' show FrameRow;
+import '../../../data/models/clip.dart';
 import '../controllers/board_controller.dart';
 
 /// Pure geometry for frame hit-testing/resizing - a strict subset of
@@ -49,5 +50,38 @@ class FrameGeometry {
         ? minFrameSize
         : pointerBoard.dy - startRect.top;
     return Rect.fromLTWH(startRect.left, startRect.top, width, height);
+  }
+
+  /// Scales every clip in [startClips] (gesture-start snapshots, keyed by
+  /// id) to match a frame resize from [startRect] to [newRect], anchored at
+  /// the frame's fixed top-left corner (matching [resize] itself, which
+  /// only ever moves the bottom-right corner). Independent per-axis scale
+  /// factors, not locked to a single uniform value - a frame resize is
+  /// already free-form via its single corner handle, so its children follow
+  /// the same non-uniform stretch. No minimum-size clamp: a frame's
+  /// children shrinking proportionally with their container is the whole
+  /// point, not an edge case to guard against.
+  static Map<String, ({double x, double y, double width, double height})>
+  scaleChildren({
+    required Map<String, BoardClip> startClips,
+    required Rect startRect,
+    required Rect newRect,
+  }) {
+    final scaleX = startRect.width == 0 ? 1.0 : newRect.width / startRect.width;
+    final scaleY = startRect.height == 0
+        ? 1.0
+        : newRect.height / startRect.height;
+    final anchor = startRect.topLeft;
+
+    return startClips.map((id, clip) {
+      final newX = anchor.dx + (clip.x - anchor.dx) * scaleX;
+      final newY = anchor.dy + (clip.y - anchor.dy) * scaleY;
+      return MapEntry(id, (
+        x: newX,
+        y: newY,
+        width: clip.width * scaleX,
+        height: clip.height * scaleY,
+      ));
+    });
   }
 }

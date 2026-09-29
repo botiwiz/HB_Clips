@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -53,6 +55,23 @@ class BoardViewNotifier extends StateNotifier<BoardViewState> {
   }
 
   void reset() => state = const BoardViewState();
+
+  /// Pans and zooms so [boardRect] fills [screenSize] with [padding] screen
+  /// pixels of margin on every side ("frame it to fit the screen/window").
+  /// Padding is in screen pixels rather than board units, so the visual
+  /// margin stays constant regardless of zoom level.
+  void fitRect(Rect boardRect, Size screenSize, {double padding = 40}) {
+    final availableWidth = math.max(screenSize.width - padding * 2, 1.0);
+    final availableHeight = math.max(screenSize.height - padding * 2, 1.0);
+    final fitScale = math.min(
+      availableWidth / boardRect.width,
+      availableHeight / boardRect.height,
+    );
+    final scale = fitScale.clamp(minScale, maxScale);
+    final screenCenter = Offset(screenSize.width / 2, screenSize.height / 2);
+    final panOffset = screenCenter - boardRect.center * scale;
+    setView(panOffset, scale);
+  }
 }
 
 final boardViewProvider =
@@ -132,3 +151,6 @@ final selectedFrameIdProvider = StateProvider<String?>((ref) => null);
 /// or resized - same "render this instead of the DB value, write on
 /// pointer-up" role [groupDragProvider] plays for clips.
 final frameDragRectProvider = StateProvider<Rect?>((ref) => null);
+
+/// Whether the frames-list navigation panel is docked open over the canvas.
+final framesPanelOpenProvider = StateProvider<bool>((ref) => false);

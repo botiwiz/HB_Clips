@@ -28,7 +28,6 @@ import 'services/save_file_service.dart';
 import 'widgets/board_canvas.dart';
 import 'widgets/board_switcher.dart';
 import 'widgets/board_toolbar.dart';
-import 'widgets/clip_counter_badge.dart';
 import 'widgets/crop_toolbar.dart';
 import 'widgets/gif_playback_toolbar.dart';
 
@@ -84,30 +83,17 @@ class BoardScreen extends ConsumerWidget {
     final center = _viewportCenterBoardPoint(ref, MediaQuery.sizeOf(context));
 
     final clipSize = clipSizeForImageBytes(pickedBytes);
-    try {
-      await ref
-          .read(clipsRepositoryProvider)
-          .addImageClip(
-            id: id,
-            boardId: ref.read(currentBoardIdProvider),
-            localFilePath: destPath,
-            x: center.dx - clipSize.width / 2,
-            y: center.dy - clipSize.height / 2,
-            width: clipSize.width,
-            height: clipSize.height,
-          );
-    } on ClipCapExceededException {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'You\'ve reached the $kMaxImageClips image clip limit. '
-            'Bin or delete one to add another.',
-          ),
-          backgroundColor: AppTheme.danger,
-        ),
-      );
-    }
+    await ref
+        .read(clipsRepositoryProvider)
+        .addImageClip(
+          id: id,
+          boardId: ref.read(currentBoardIdProvider),
+          localFilePath: destPath,
+          x: center.dx - clipSize.width / 2,
+          y: center.dy - clipSize.height / 2,
+          width: clipSize.width,
+          height: clipSize.height,
+        );
   }
 
   Future<void> _importPurFile(BuildContext context, WidgetRef ref) async {
@@ -142,11 +128,6 @@ class BoardScreen extends ConsumerWidget {
       '${summary.imagesImported} image${summary.imagesImported == 1 ? '' : 's'}',
       '${summary.textNotesImported} text note${summary.textNotesImported == 1 ? '' : 's'}',
     ];
-    if (summary.imagesSkippedAtCap > 0) {
-      parts.add(
-        '${summary.imagesSkippedAtCap} image${summary.imagesSkippedAtCap == 1 ? '' : 's'} skipped (30-image limit reached)',
-      );
-    }
     if (summary.imagesUnrecoverable > 0) {
       parts.add(
         "${summary.imagesUnrecoverable} image${summary.imagesUnrecoverable == 1 ? '' : 's'} "
@@ -461,6 +442,7 @@ class BoardScreen extends ConsumerWidget {
     final isDrawMode = ref.watch(isDrawModeProvider);
     final isCropMode = ref.watch(isCropModeProvider);
     final snapToGrid = ref.watch(snapToGridProvider);
+    final framesPanelOpen = ref.watch(framesPanelOpenProvider);
     final selectedFrameId = ref.watch(selectedFrameIdProvider);
     final frames = ref.watch(boardFramesProvider).valueOrNull ?? [];
     FrameRow? selectedFrame;
@@ -639,6 +621,16 @@ class BoardScreen extends ConsumerWidget {
                           onPressed: () => _addFrame(context, ref),
                         ),
                         PillIconButton(
+                          tooltip: framesPanelOpen
+                              ? 'Hide frames panel'
+                              : 'Show frames panel',
+                          icon: Icons.view_list_outlined,
+                          color: framesPanelOpen ? AppTheme.red : null,
+                          onPressed: () =>
+                              ref.read(framesPanelOpenProvider.notifier).state =
+                                  !framesPanelOpen,
+                        ),
+                        PillIconButton(
                           tooltip: 'Paste image (Ctrl+V)',
                           icon: Icons.content_paste_outlined,
                           onPressed: () =>
@@ -670,8 +662,6 @@ class BoardScreen extends ConsumerWidget {
                   const Spacer(),
                   Row(
                     children: [
-                      const ClipCounterBadge(),
-                      const SizedBox(width: 8),
                       PillGroup(
                         children: [
                           PillIconButton(
