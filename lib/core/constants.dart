@@ -20,3 +20,10 @@ const double kBoardGridSpacing = 32;
 /// on-board frame (double-click a clip to enter this mode). Never below
 /// 1.0 - see `ImagePanZoomGeometry`.
 const double kMaxImageZoom = 8.0;
+
+/// Screen-space distance (logical pixels, regardless of zoom) within which
+/// a dragged selection's edge snaps to align with a nearby clip's or
+/// frame's edge - see `SnapGeometry`. Converted to board units by the
+/// caller (dividing by the current view scale) before comparing against
+/// board-space positions.
+const double kEdgeSnapThresholdPx = 8;

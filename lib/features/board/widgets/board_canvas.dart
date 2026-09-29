@@ -20,6 +20,7 @@ import '../controllers/board_controller.dart';
 import '../geometry/frame_geometry.dart';
 import '../geometry/image_pan_zoom_geometry.dart';
 import '../geometry/selection_geometry.dart';
+import '../geometry/snap_geometry.dart';
 import '../geometry/view_focus_geometry.dart';
 import '../services/add_image_service.dart';
 import '../services/eyedropper_service.dart';
@@ -865,12 +866,49 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       final delta = boardPos - _gestureStartPointerBoard!;
       if (delta.distance > 2) _groupDragMoved = true;
       final snap = ref.read(snapToGridProvider);
-      final newPositions = ClipGeometry.applyGroupDelta(
-        _groupDragStartPositions!,
-        delta,
-      );
       final currentMap = ref.read(groupDragProvider);
       if (currentMap == null) return;
+
+      // Smart-guide edge snapping (Figma/Miro-style) is a distinct concern
+      // from grid-snap and mutually exclusive with it - only active when
+      // the grid-snap toggle is off.
+      var effectiveDelta = delta;
+      if (!snap) {
+        final draggedIds = _groupDragStartPositions!.keys.toSet();
+        final startRects = [
+          for (final entry in _groupDragStartPositions!.entries)
+            if (currentMap[entry.key] != null)
+              Rect.fromLTWH(
+                entry.value.dx,
+                entry.value.dy,
+                currentMap[entry.key]!.width,
+                currentMap[entry.key]!.height,
+              ),
+        ];
+        if (startRects.isNotEmpty) {
+          final draggedBounds = startRects.reduce(
+            (a, b) => a.expandToInclude(b),
+          );
+          final others = [
+            for (final c in ref.read(activeClipsProvider).valueOrNull ?? [])
+              if (!draggedIds.contains(c.id))
+                Rect.fromLTWH(c.x, c.y, c.width, c.height),
+            for (final f in ref.read(boardFramesProvider).valueOrNull ?? [])
+              FrameGeometry.boardRect(f),
+          ];
+          effectiveDelta = SnapGeometry.snapDelta(
+            draggedBoundsBeforeDelta: draggedBounds,
+            delta: delta,
+            others: others,
+            threshold: kEdgeSnapThresholdPx / view.scale,
+          );
+        }
+      }
+
+      final newPositions = ClipGeometry.applyGroupDelta(
+        _groupDragStartPositions!,
+        effectiveDelta,
+      );
       final updated = <String, DraggingClip>{
         for (final entry in currentMap.entries)
           entry.key: newPositions.containsKey(entry.key)
