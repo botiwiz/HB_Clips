@@ -10,6 +10,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/widgets/color_swatch_button.dart';
 import '../../data/local/database.dart' show FrameRow;
 import '../../data/models/clip.dart';
+import '../../data/pdf/pdf_writer.dart';
 import '../../data/providers.dart';
 import '../../data/pureref/pur_writer.dart';
 import '../../data/repositories/clips_repository.dart';
@@ -19,6 +20,8 @@ import '../annotation/draw_toolbar.dart';
 import '../annotation/stroke_painter.dart' show hexToColor;
 import '../bin/bin_screen.dart';
 import 'controllers/board_controller.dart';
+import 'geometry/frame_geometry.dart';
+import 'geometry/frame_presets.dart';
 import 'geometry/selection_geometry.dart';
 import 'services/clipboard_paste_service.dart';
 import 'services/image_size_service.dart';
@@ -188,6 +191,83 @@ class BoardScreen extends ConsumerWidget {
     final parts = <String>[
       '${summary.imagesExported} image${summary.imagesExported == 1 ? '' : 's'}',
       '${summary.textNotesExported} text note${summary.textNotesExported == 1 ? '' : 's'}',
+    ];
+    if (summary.imagesSkipped > 0) {
+      parts.add(
+        '${summary.imagesSkipped} image${summary.imagesSkipped == 1 ? '' : 's'} skipped (unreadable file)',
+      );
+    }
+
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Export complete'),
+        content: Text('Exported ${parts.join(', ')}.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _exportPdfFile(BuildContext context, WidgetRef ref) async {
+    final clips = ref.read(activeClipsProvider).valueOrNull ?? [];
+    final frames = ref.read(boardFramesProvider).valueOrNull ?? [];
+    final strokes = ref.read(boardStrokesProvider).valueOrNull ?? [];
+    final blobStore = ref.read(localBlobStoreProvider);
+    final result = await writePdfFile(
+      frames: frames,
+      clips: clips,
+      strokes: strokes,
+      readBytes: blobStore.readBytes,
+    );
+    if (!context.mounted) return;
+
+    if (result == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Nothing to export.')),
+      );
+      return;
+    }
+
+    String? savePath;
+    try {
+      savePath = await FilePicker.platform.saveFile(
+        dialogTitle: 'Export board as .pdf',
+        fileName: 'board.pdf',
+        type: FileType.custom,
+        allowedExtensions: ['pdf'],
+        bytes: result.bytes,
+      );
+    } catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            "Couldn't open the save dialog. On Linux this needs zenity "
+            '(or kdialog) installed.',
+          ),
+          backgroundColor: AppTheme.danger,
+        ),
+      );
+      return;
+    }
+    if (savePath == null) return;
+    if (!savePath.toLowerCase().endsWith('.pdf')) {
+      savePath = '$savePath.pdf';
+    }
+    await writeBytesToPath(savePath, result.bytes);
+    if (!context.mounted) return;
+
+    final summary = result.summary;
+    final pageCount =
+        summary.framePages + (summary.hasOverviewPage ? 1 : 0);
+    final parts = <String>[
+      '$pageCount page${pageCount == 1 ? '' : 's'}',
+      '${summary.imagesDrawn} image${summary.imagesDrawn == 1 ? '' : 's'}',
     ];
     if (summary.imagesSkipped > 0) {
       parts.add(
@@ -426,6 +506,77 @@ class BoardScreen extends ConsumerWidget {
     );
   }
 
+  Future<void> _applyFramePreset(
+    WidgetRef ref,
+    FrameRow frame,
+    FramePreset preset,
+  ) async {
+    final startRect = FrameGeometry.boardRect(frame);
+    final newRect = Rect.fromLTWH(
+      startRect.left,
+      startRect.top,
+      preset.width,
+      preset.height,
+    );
+    final clips = ref.read(activeClipsProvider).valueOrNull ?? [];
+    final children = {
+      for (final c in clips)
+        if (c.frameId == frame.id) c.id: c,
+    };
+    final scaled = FrameGeometry.scaleChildren(
+      startClips: children,
+      startRect: startRect,
+      newRect: newRect,
+    );
+
+    await ref
+        .read(framesRepositoryProvider)
+        .updateTransform(frame.id, width: preset.width, height: preset.height);
+    for (final entry in scaled.entries) {
+      await ref
+          .read(clipsRepositoryProvider)
+          .updateTransform(
+            entry.key,
+            x: entry.value.x,
+            y: entry.value.y,
+            width: entry.value.width,
+            height: entry.value.height,
+          );
+    }
+  }
+
+  Future<void> _pickFramePreset(
+    BuildContext context,
+    WidgetRef ref,
+    FrameRow frame,
+  ) async {
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Frame size preset'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final preset in kFramePresets)
+              ListTile(
+                title: Text(preset.label),
+                onTap: () {
+                  _applyFramePreset(ref, frame, preset);
+                  Navigator.of(context).pop();
+                },
+              ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final selection = ref.watch(selectedClipIdsProvider);
@@ -589,6 +740,12 @@ class BoardScreen extends ConsumerWidget {
                                 _setFrameColor(context, ref, selectedFrame!),
                           ),
                           PillIconButton(
+                            tooltip: 'Frame size preset',
+                            icon: Icons.aspect_ratio,
+                            onPressed: () =>
+                                _pickFramePreset(context, ref, selectedFrame!),
+                          ),
+                          PillIconButton(
                             tooltip: 'Delete frame',
                             icon: Icons.delete_outline,
                             onPressed: () =>
@@ -635,6 +792,11 @@ class BoardScreen extends ConsumerWidget {
                           tooltip: 'Export board as .pur',
                           icon: Icons.file_download_outlined,
                           onPressed: () => _exportPurFile(context, ref),
+                        ),
+                        PillIconButton(
+                          tooltip: 'Export board as .pdf',
+                          icon: Icons.picture_as_pdf_outlined,
+                          onPressed: () => _exportPdfFile(context, ref),
                         ),
                       ],
                     ),
