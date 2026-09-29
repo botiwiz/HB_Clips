@@ -154,3 +154,8 @@ final frameDragRectProvider = StateProvider<Rect?>((ref) => null);
 
 /// Whether the frames-list navigation panel is docked open over the canvas.
 final framesPanelOpenProvider = StateProvider<bool>((ref) => false);
+
+/// Ephemeral, live target rect for an in-progress arrange-drag - null when
+/// not dragging. Lets ArrangeSelectionButton track the drag instead of
+/// snapping back to the plain selection bounding box mid-gesture.
+final arrangeDragRectProvider = StateProvider<Rect?>((ref) => null);

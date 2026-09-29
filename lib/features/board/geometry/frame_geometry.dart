@@ -19,6 +19,30 @@ class FrameGeometry {
   static bool pointInFrame(Offset boardPoint, FrameRow frame) =>
       boardRect(frame).contains(boardPoint);
 
+  /// Board-space height of the clickable band directly above a frame,
+  /// covering its floating name label (which renders 22 screen px above the
+  /// frame's top-left) with real margin - lets a click near the title
+  /// reliably select/drag the frame itself, even when its interior is fully
+  /// covered by child clips (frames render behind clips, so clicking inside
+  /// the body usually hits a child instead).
+  static const double titleBandHeight = 32;
+
+  /// Like [pointInFrame], but also true for the title band above the
+  /// frame - used only for the frame *selection/drag* hit-test, deliberately
+  /// not by the clip-drop containment check, which must keep testing the
+  /// frame's exact body rect only: a clip dropped above a frame's title
+  /// should not become that frame's child.
+  static bool pointInFrameOrTitleBand(Offset boardPoint, FrameRow frame) {
+    if (pointInFrame(boardPoint, frame)) return true;
+    final band = Rect.fromLTWH(
+      frame.x,
+      frame.y - titleBandHeight,
+      frame.width,
+      titleBandHeight,
+    );
+    return band.contains(boardPoint);
+  }
+
   static Offset _boardToScreen(Offset boardPoint, BoardViewState view) =>
       boardPoint * view.scale + view.panOffset;
 

@@ -135,6 +135,17 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
   // new size. Null during a move or when the resized frame has no children.
   Map<String, BoardClip>? _frameResizeChildStart;
 
+  // Drag-to-arrange: dragging the ArrangeSelectionButton live-repacks the
+  // selected images into whatever target rect the drag defines, anchored
+  // at the selection's fixed bottom-left (the button itself sits at the
+  // opposite, top-right corner). Delta-tracked from _gestureStartPointerBoard
+  // (shared field, reused here) rather than snapping the corner straight to
+  // the pointer, so a zero-movement click reproduces the original "pack to
+  // fit the current selection" behavior exactly.
+  Offset? _arrangeAnchor;
+  Offset? _arrangeStartCorner;
+  List<BoardClip>? _arrangeImages;
+
   Size _canvasSize = Size.zero;
 
   @override
@@ -185,10 +196,24 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
   }
 
   /// Last-created-on-top, mirroring how clips default to insertion order
-  /// absent an explicit z-index concept for frames.
+  /// absent an explicit z-index concept for frames. Used for the clip-drop
+  /// containment check, which must test a frame's exact body rect only.
   FrameRow? _hitTestFrame(List<FrameRow> frames, Offset boardPoint) {
     for (final frame in frames.reversed) {
       if (FrameGeometry.pointInFrame(boardPoint, frame)) return frame;
+    }
+    return null;
+  }
+
+  /// Same as [_hitTestFrame] but also matches a frame's title band - used
+  /// only for starting a frame selection/drag, so clicking near a frame's
+  /// name label (which floats above its body, often the only part not
+  /// covered by child clips) reliably grabs the frame itself.
+  FrameRow? _hitTestFrameForSelection(List<FrameRow> frames, Offset boardPoint) {
+    for (final frame in frames.reversed) {
+      if (FrameGeometry.pointInFrameOrTitleBand(boardPoint, frame)) {
+        return frame;
+      }
     }
     return null;
   }
@@ -234,9 +259,13 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     _frameGestureStartPointerBoard = null;
     _frameChildStartPositions = null;
     _frameResizeChildStart = null;
+    _arrangeAnchor = null;
+    _arrangeStartCorner = null;
+    _arrangeImages = null;
     ref.read(groupDragProvider.notifier).state = null;
     ref.read(marqueeRectProvider.notifier).state = null;
     ref.read(frameDragRectProvider.notifier).state = null;
+    ref.read(arrangeDragRectProvider.notifier).state = null;
   }
 
   void _handlePointerCancel(PointerCancelEvent event) {
@@ -309,6 +338,31 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
           boardRect,
           view,
         ).contains(event.localPosition)) {
+          final images = [
+            for (final c in selectedClips)
+              if (c.type == ClipType.image) c,
+          ]..sort((a, b) {
+            final byY = a.y.compareTo(b.y);
+            return byY != 0 ? byY : a.x.compareTo(b.x);
+          });
+          if (images.length >= 2) {
+            _arrangeAnchor = boardRect.bottomLeft;
+            _arrangeStartCorner = boardRect.topRight;
+            _arrangeImages = images;
+            _gestureStartPointerBoard = boardPos;
+            ref.read(arrangeDragRectProvider.notifier).state = boardRect;
+            ref.read(groupDragProvider.notifier).state = {
+              for (final c in images)
+                c.id: DraggingClip(
+                  id: c.id,
+                  x: c.x,
+                  y: c.y,
+                  width: c.width,
+                  height: c.height,
+                  rotation: c.rotation,
+                ),
+            };
+          }
           return;
         }
       }
@@ -480,7 +534,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
         return;
       }
     }
-    final hitFrame = _hitTestFrame(frames, boardPos);
+    final hitFrame = _hitTestFrameForSelection(frames, boardPos);
     if (hitFrame != null) {
       ref.read(selectedFrameIdProvider.notifier).state = hitFrame.id;
       _frameDragId = hitFrame.id;
@@ -575,6 +629,33 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
           ),
         };
       }
+      return;
+    }
+
+    if (_arrangeAnchor != null &&
+        _arrangeStartCorner != null &&
+        _arrangeImages != null) {
+      final delta = boardPos - _gestureStartPointerBoard!;
+      final draggedCorner = _arrangeStartCorner! + delta;
+      final newRect = Rect.fromPoints(_arrangeAnchor!, draggedCorner);
+      final results = ArrangeSelectionButton.packImages(
+        _arrangeImages!,
+        newRect,
+      );
+      if (results != null) {
+        ref.read(groupDragProvider.notifier).state = {
+          for (final entry in results.entries)
+            entry.key: DraggingClip(
+              id: entry.key,
+              x: entry.value.x,
+              y: entry.value.y,
+              width: entry.value.width,
+              height: entry.value.height,
+              rotation: 0,
+            ),
+        };
+      }
+      ref.read(arrangeDragRectProvider.notifier).state = newRect;
       return;
     }
 
@@ -786,6 +867,29 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       _activeGroupScaleHandle = null;
       _groupScaleStartClips = null;
       _groupScaleStartRect = null;
+      _gestureStartPointerBoard = null;
+      return;
+    }
+
+    if (_arrangeAnchor != null) {
+      final dragMap = ref.read(groupDragProvider);
+      if (dragMap != null) {
+        for (final entry in dragMap.entries) {
+          repo.updateTransform(
+            entry.key,
+            x: entry.value.x,
+            y: entry.value.y,
+            width: entry.value.width,
+            height: entry.value.height,
+            rotation: 0,
+          );
+        }
+      }
+      ref.read(groupDragProvider.notifier).state = null;
+      ref.read(arrangeDragRectProvider.notifier).state = null;
+      _arrangeAnchor = null;
+      _arrangeStartCorner = null;
+      _arrangeImages = null;
       _gestureStartPointerBoard = null;
       return;
     }

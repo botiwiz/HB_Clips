@@ -1,7 +1,29 @@
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:hb_clips/data/local/database.dart';
 import 'package:hb_clips/data/models/clip.dart';
 import 'package:hb_clips/features/board/geometry/frame_geometry.dart';
+
+FrameRow _frame({
+  required double x,
+  required double y,
+  required double width,
+  required double height,
+}) {
+  final now = DateTime(2026);
+  return FrameRow(
+    id: 'frame-1',
+    boardId: 'board',
+    name: 'Frame',
+    x: x,
+    y: y,
+    width: width,
+    height: height,
+    backgroundColorHex: null,
+    createdAt: now,
+    updatedAt: now,
+  );
+}
 
 BoardClip _clip({
   required String id,
@@ -26,6 +48,34 @@ BoardClip _clip({
 }
 
 void main() {
+  group('pointInFrameOrTitleBand', () {
+    test('a point inside the frame body counts', () {
+      final frame = _frame(x: 0, y: 0, width: 200, height: 100);
+      expect(FrameGeometry.pointInFrameOrTitleBand(const Offset(50, 50), frame), isTrue);
+    });
+
+    test('a point in the title band above the frame counts', () {
+      final frame = _frame(x: 0, y: 100, width: 200, height: 100);
+      // 10px above the frame's top edge - within the 32px band.
+      expect(FrameGeometry.pointInFrameOrTitleBand(const Offset(50, 90), frame), isTrue);
+    });
+
+    test('a point above the band (too far up) does not count', () {
+      final frame = _frame(x: 0, y: 100, width: 200, height: 100);
+      expect(FrameGeometry.pointInFrameOrTitleBand(const Offset(50, 50), frame), isFalse);
+    });
+
+    test('a point beside the frame (same y as body, outside x range) does not count', () {
+      final frame = _frame(x: 0, y: 0, width: 200, height: 100);
+      expect(FrameGeometry.pointInFrameOrTitleBand(const Offset(300, 50), frame), isFalse);
+    });
+
+    test('pointInFrame itself stays band-unaware (used for drop containment)', () {
+      final frame = _frame(x: 0, y: 100, width: 200, height: 100);
+      expect(FrameGeometry.pointInFrame(const Offset(50, 90), frame), isFalse);
+    });
+  });
+
   group('scaleChildren', () {
     test('growing a frame scales children from its fixed top-left anchor', () {
       final startRect = const Rect.fromLTWH(0, 0, 100, 100);
