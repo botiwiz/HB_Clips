@@ -38,6 +38,7 @@ import 'frames_panel.dart';
 import 'group_scale_handles.dart';
 import 'marquee_overlay.dart';
 import 'selection_handles.dart';
+import 'snap_guides_overlay.dart';
 
 const _uuid = Uuid();
 
@@ -302,6 +303,16 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     ref.read(arrangeDragRectProvider.notifier).state = null;
     ref.read(panZoomLiveProvider.notifier).state = null;
     ref.read(defineFrameRectProvider.notifier).state = null;
+    ref.read(snapGuidesProvider.notifier).state = (x: null, y: null);
+  }
+
+  /// Updates [snapGuidesProvider] only when it actually changed, avoiding a
+  /// rebuild of [SnapGuidesOverlay] on every pointer-move frame where the
+  /// snapped edge (or lack of one) hasn't moved.
+  void _setSnapGuides(({double? x, double? y}) guides) {
+    if (ref.read(snapGuidesProvider) != guides) {
+      ref.read(snapGuidesProvider.notifier).state = guides;
+    }
   }
 
   void _handlePointerCancel(PointerCancelEvent event) {
@@ -762,12 +773,30 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
           id: current.copyWith(rotation: newRotation),
         };
       } else {
+        final snap = ref.read(snapToGridProvider);
+        var resizePointer = boardPos;
+        if (!snap) {
+          final others = [
+            for (final c in ref.read(activeClipsProvider).valueOrNull ?? [])
+              if (c.id != id) Rect.fromLTWH(c.x, c.y, c.width, c.height),
+            for (final f in ref.read(boardFramesProvider).valueOrNull ?? [])
+              FrameGeometry.boardRect(f),
+          ];
+          final pointSnap = SnapGeometry.snapPoint(
+            point: boardPos,
+            others: others,
+            threshold: kEdgeSnapThresholdPx / view.scale,
+          );
+          resizePointer = pointSnap.point;
+          _setSnapGuides((x: pointSnap.guideX, y: pointSnap.guideY));
+        } else {
+          _setSnapGuides((x: null, y: null));
+        }
         final result = ClipGeometry.resize(
           startClip: _handleStartClip!,
           corner: _activeHandle!,
-          pointerBoard: boardPos,
+          pointerBoard: resizePointer,
         );
-        final snap = ref.read(snapToGridProvider);
         ref.read(groupDragProvider.notifier).state = {
           id: current.copyWith(
             x: snap
@@ -818,13 +847,33 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     if (_activeGroupScaleHandle != null &&
         _groupScaleStartClips != null &&
         _groupScaleStartRect != null) {
+      final snap = ref.read(snapToGridProvider);
+      var scalePointer = boardPos;
+      if (!snap) {
+        final groupIds = _groupScaleStartClips!.keys.toSet();
+        final others = [
+          for (final c in ref.read(activeClipsProvider).valueOrNull ?? [])
+            if (!groupIds.contains(c.id))
+              Rect.fromLTWH(c.x, c.y, c.width, c.height),
+          for (final f in ref.read(boardFramesProvider).valueOrNull ?? [])
+            FrameGeometry.boardRect(f),
+        ];
+        final pointSnap = SnapGeometry.snapPoint(
+          point: boardPos,
+          others: others,
+          threshold: kEdgeSnapThresholdPx / view.scale,
+        );
+        scalePointer = pointSnap.point;
+        _setSnapGuides((x: pointSnap.guideX, y: pointSnap.guideY));
+      } else {
+        _setSnapGuides((x: null, y: null));
+      }
       final results = ClipGeometry.scaleGroup(
         startClips: _groupScaleStartClips!,
         startGroupRect: _groupScaleStartRect!,
         corner: _activeGroupScaleHandle!,
-        pointerBoard: boardPos,
+        pointerBoard: scalePointer,
       );
-      final snap = ref.read(snapToGridProvider);
       final currentMap = ref.read(groupDragProvider);
       if (currentMap == null) return;
       final updated = <String, DraggingClip>{
@@ -873,6 +922,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       // from grid-snap and mutually exclusive with it - only active when
       // the grid-snap toggle is off.
       var effectiveDelta = delta;
+      ({double? x, double? y}) guides = (x: null, y: null);
       if (!snap) {
         final draggedIds = _groupDragStartPositions!.keys.toSet();
         final startRects = [
@@ -896,14 +946,17 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
             for (final f in ref.read(boardFramesProvider).valueOrNull ?? [])
               FrameGeometry.boardRect(f),
           ];
-          effectiveDelta = SnapGeometry.snapDelta(
+          final snapResult = SnapGeometry.snap(
             draggedBoundsBeforeDelta: draggedBounds,
             delta: delta,
             others: others,
             threshold: kEdgeSnapThresholdPx / view.scale,
           );
+          effectiveDelta = snapResult.delta;
+          guides = (x: snapResult.guideX, y: snapResult.guideY);
         }
       }
+      _setSnapGuides(guides);
 
       final newPositions = ClipGeometry.applyGroupDelta(
         _groupDragStartPositions!,
@@ -1075,6 +1128,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       }
       if (!mounted) return;
       ref.read(groupDragProvider.notifier).state = null;
+      _setSnapGuides((x: null, y: null));
       _activeHandle = null;
       _handleStartClip = null;
       _gestureStartPointerBoard = null;
@@ -1097,6 +1151,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       }
       if (!mounted) return;
       ref.read(groupDragProvider.notifier).state = null;
+      _setSnapGuides((x: null, y: null));
       _activeGroupScaleHandle = null;
       _groupScaleStartClips = null;
       _groupScaleStartRect = null;
@@ -1177,6 +1232,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       }
       ref.read(groupDragProvider.notifier).state = null;
       ref.read(isDraggingOverBinProvider.notifier).state = false;
+      ref.read(snapGuidesProvider.notifier).state = (x: null, y: null);
       _groupDragStartPositions = null;
       _groupDragPrimaryId = null;
       _pendingCollapseId = null;
@@ -1758,6 +1814,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
                         ),
                       const Positioned.fill(child: DrawingOverlay()),
                       if (defineFrameRect != null) const DefineFrameOverlay(),
+                      const SnapGuidesOverlay(),
                       if (panZoomClipId == null && !isDrawMode) ...[
                         const MarqueeOverlay(),
                         const SelectionHandles(),

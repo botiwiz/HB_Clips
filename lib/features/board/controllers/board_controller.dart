@@ -198,3 +198,11 @@ final panZoomLiveProvider = StateProvider<ImagePanZoomLive?>((ref) => null);
 /// Live board-space rect of an in-progress "C"+drag frame redefinition -
 /// same ephemeral-preview role as [marqueeRectProvider]/[frameDragRectProvider].
 final defineFrameRectProvider = StateProvider<Rect?>((ref) => null);
+
+/// Board-space coordinates of the "smart guide" edge-alignment lines
+/// currently active during a group drag - see `SnapGeometry`. Null on an
+/// axis means no edge is snapped on that axis; both null means no guide
+/// line should be drawn at all. Rendered by `SnapGuidesOverlay`.
+final snapGuidesProvider = StateProvider<({double? x, double? y})>(
+  (ref) => (x: null, y: null),
+);
