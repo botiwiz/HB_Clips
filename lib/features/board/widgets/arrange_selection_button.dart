@@ -15,13 +15,12 @@ import '../geometry/selection_geometry.dart';
 /// happens in `board_canvas.dart`'s Listener, same architecture as every
 /// other draggable handle on this board. A plain click with no movement
 /// reproduces the original one-shot behavior: repacks every selected
-/// *image* clip into a masonry grid that fills the selection's current
-/// bounding-box width, each image's own height following its own aspect
-/// ratio at the shared column width - no gaps, no distortion, and no
-/// single sparse image forced to stretch across the whole width alone -
-/// see `MasonryLayout`. Text notes in the same selection are left untouched
-/// (resizing a note's box doesn't rescale its font, so shrinking it could
-/// clip text or leave dead space).
+/// *image* clip into variable-width columns that together exactly fill the
+/// selection's current bounding box - no gaps, no ragged bottom edge, no
+/// distortion, and no single sparse image forced to stretch across the
+/// whole width alone - see `MasonryLayout`. Text notes in the same
+/// selection are left untouched (resizing a note's box doesn't rescale its
+/// font, so shrinking it could clip text or leave dead space).
 class ArrangeSelectionButton extends ConsumerWidget {
   const ArrangeSelectionButton({super.key});
 

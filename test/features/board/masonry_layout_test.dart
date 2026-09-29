@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hb_clips/features/board/geometry/masonry_layout.dart';
@@ -8,6 +10,20 @@ bool _overlaps(Rect a, Rect b) {
       b.left < a.right - 1e-6 &&
       a.top < b.bottom - 1e-6 &&
       b.top < a.bottom - 1e-6;
+}
+
+/// Groups packed rects by column (shared `left`) and returns each column's
+/// exact stacked height (last item's bottom minus first item's top).
+Map<double, double> _columnHeights(List<Rect> rects) {
+  final byLeft = <double, List<Rect>>{};
+  for (final r in rects) {
+    byLeft.putIfAbsent(r.left, () => []).add(r);
+  }
+  return {
+    for (final entry in byLeft.entries)
+      entry.key: entry.value.map((r) => r.bottom).reduce(math.max) -
+          entry.value.map((r) => r.top).reduce(math.min),
+  };
 }
 
 void main() {
@@ -72,10 +88,25 @@ void main() {
     }
   });
 
+  test('every column exactly fills the target height - no ragged bottom edge', () {
+    final aspectRatios = [0.4, 0.9, 1.6, 2.4, 0.7, 1.0, 1.3, 3.0, 0.5, 1.8];
+    const targetTotalHeight = 500.0;
+    final rects = MasonryLayout.pack(
+      aspectRatios: aspectRatios,
+      containerWidth: 700,
+      targetTotalHeight: targetTotalHeight,
+      gap: 4,
+    );
+
+    for (final height in _columnHeights(rects).values) {
+      expect(height, closeTo(targetTotalHeight, 0.5));
+    }
+  });
+
   test(
-    'a lone portrait item among several landscape items is never forced to '
-    'span the whole container width (the row-based layout this replaced did '
-    'exactly that for a sparse trailing row)',
+    'no single item spans anywhere close to the whole container width - '
+    'the row-based layout this replaced did exactly that for a sparse '
+    'trailing row',
     () {
       final aspectRatios = [1.8, 1.6, 2.0, 1.5, 0.4, 1.7];
       const containerWidth = 600.0;
@@ -87,15 +118,30 @@ void main() {
       );
 
       for (final r in rects) {
-        expect(r.width, lessThan(containerWidth * 0.9));
+        expect(r.width, lessThan(containerWidth * 0.5));
       }
     },
   );
 
-  test('a portrait item ends up taller than a landscape item sharing a column width', () {
-    // Two very different aspect ratios, forced into columns of a shared
-    // width by giving the layout a lot of vertical room relative to its
-    // item count (favors fewer, wider columns).
+  test('column widths stay reasonably balanced, not dominated by one column', () {
+    final aspectRatios = [0.4, 0.9, 1.6, 2.4, 0.7, 1.0, 1.3, 3.0, 0.5, 1.8];
+    final rects = MasonryLayout.pack(
+      aspectRatios: aspectRatios,
+      containerWidth: 700,
+      targetTotalHeight: 500,
+      gap: 4,
+    );
+
+    final widths = <double>{};
+    for (final r in rects) {
+      widths.add(r.width);
+    }
+    final maxWidth = widths.reduce((a, b) => a > b ? a : b);
+    final minWidth = widths.reduce((a, b) => a < b ? a : b);
+    expect(maxWidth / minWidth, lessThan(3.0));
+  });
+
+  test('a portrait item ends up narrower than a landscape item sharing a column', () {
     final rects = MasonryLayout.pack(
       aspectRatios: [0.5, 2.0],
       containerWidth: 300,
@@ -104,9 +150,8 @@ void main() {
     );
 
     expect(rects, hasLength(2));
-    // Same column width (either the same column, or two columns of equal
-    // width) - what varies is height, driven purely by each item's own
-    // aspect ratio.
+    // Sharing one column (same width) - what varies is height, driven
+    // purely by each item's own aspect ratio.
     expect(rects[0].width, closeTo(rects[1].width, 0.5));
     expect(rects[0].height, greaterThan(rects[1].height));
   });
