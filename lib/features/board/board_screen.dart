@@ -19,7 +19,6 @@ import '../annotation/draw_toolbar.dart';
 import '../annotation/stroke_painter.dart' show hexToColor;
 import '../bin/bin_screen.dart';
 import 'controllers/board_controller.dart';
-import 'controllers/crop_controller.dart';
 import 'geometry/selection_geometry.dart';
 import 'services/clipboard_paste_service.dart';
 import 'services/image_size_service.dart';
@@ -28,7 +27,6 @@ import 'services/save_file_service.dart';
 import 'widgets/board_canvas.dart';
 import 'widgets/board_switcher.dart';
 import 'widgets/board_toolbar.dart';
-import 'widgets/crop_toolbar.dart';
 import 'widgets/gif_playback_toolbar.dart';
 
 const _uuid = Uuid();
@@ -93,6 +91,7 @@ class BoardScreen extends ConsumerWidget {
           y: center.dy - clipSize.height / 2,
           width: clipSize.width,
           height: clipSize.height,
+          imageAspectRatio: imageAspectRatioForBytes(pickedBytes),
         );
   }
 
@@ -312,14 +311,6 @@ class BoardScreen extends ConsumerWidget {
     ref.read(clipsRepositoryProvider).ungroupClips(groupId);
   }
 
-  void _toggleCropMode(WidgetRef ref) {
-    final next = !ref.read(isCropModeProvider);
-    ref.read(isCropModeProvider.notifier).state = next;
-    ref.read(cropRectProvider.notifier).state = next
-        ? const Rect.fromLTWH(0, 0, 1, 1)
-        : null;
-  }
-
   Future<void> _addFrame(BuildContext context, WidgetRef ref) async {
     final controller = TextEditingController(text: 'Frame');
     final name = await showDialog<String>(
@@ -440,7 +431,7 @@ class BoardScreen extends ConsumerWidget {
     final selection = ref.watch(selectedClipIdsProvider);
     final hasSelection = selection.isNotEmpty;
     final isDrawMode = ref.watch(isDrawModeProvider);
-    final isCropMode = ref.watch(isCropModeProvider);
+    final panZoomClipId = ref.watch(panZoomClipIdProvider);
     final snapToGrid = ref.watch(snapToGridProvider);
     final framesPanelOpen = ref.watch(framesPanelOpenProvider);
     final selectedFrameId = ref.watch(selectedFrameIdProvider);
@@ -464,13 +455,9 @@ class BoardScreen extends ConsumerWidget {
     final canUngroup =
         commonGroupId != null &&
         selectedClips.every((c) => c.groupId == commonGroupId);
-    final canCrop =
-        !isDrawMode &&
-        selectedClips.length == 1 &&
-        selectedClips.first.type == ClipType.image;
     final canPlayGif =
         !isDrawMode &&
-        !isCropMode &&
+        panZoomClipId == null &&
         selectedClips.length == 1 &&
         selectedClips.first.type == ClipType.image &&
         (selectedClips.first.localFilePath?.toLowerCase().endsWith('.gif') ??
@@ -563,13 +550,6 @@ class BoardScreen extends ConsumerWidget {
                               icon: Icons.group_off_outlined,
                               onPressed: () =>
                                   _ungroupSelection(ref, commonGroupId),
-                            ),
-                          if (canCrop || isCropMode)
-                            PillIconButton(
-                              tooltip: isCropMode ? 'Exit crop' : 'Crop image',
-                              icon: Icons.crop,
-                              color: isCropMode ? AppTheme.red : null,
-                              onPressed: () => _toggleCropMode(ref),
                             ),
                           PillIconButton(
                             tooltip: 'Bring to front',
@@ -695,13 +675,6 @@ class BoardScreen extends ConsumerWidget {
                 left: 0,
                 right: 0,
                 child: Center(child: DrawToolbar()),
-              ),
-            if (isCropMode)
-              const Positioned(
-                top: 76,
-                left: 0,
-                right: 0,
-                child: Center(child: CropToolbar()),
               ),
             if (canPlayGif)
               Positioned(

@@ -159,3 +159,33 @@ final framesPanelOpenProvider = StateProvider<bool>((ref) => false);
 /// not dragging. Lets ArrangeSelectionButton track the drag instead of
 /// snapping back to the plain selection bounding box mid-gesture.
 final arrangeDragRectProvider = StateProvider<Rect?>((ref) => null);
+
+/// Id of the image clip currently in per-clip pan/zoom mode (entered via
+/// double-click), or null. Per-clip - unlike the old crop tool's single
+/// global on/off toggle - since a double-click already identifies exactly
+/// which clip, with no "sole selection" side-channel needed.
+final panZoomClipIdProvider = StateProvider<String?>((ref) => null);
+
+/// Ephemeral pan/zoom values for the clip named by [panZoomClipIdProvider]
+/// while a drag or wheel-zoom is in progress - same "render this instead of
+/// the DB value, commit on release" role [DraggingClip]/[groupDragProvider]
+/// play for position/size.
+class ImagePanZoomLive {
+  final String clipId;
+  final double panX;
+  final double panY;
+  final double zoom;
+
+  const ImagePanZoomLive({
+    required this.clipId,
+    required this.panX,
+    required this.panY,
+    required this.zoom,
+  });
+}
+
+final panZoomLiveProvider = StateProvider<ImagePanZoomLive?>((ref) => null);
+
+/// Live board-space rect of an in-progress "C"+drag frame redefinition -
+/// same ephemeral-preview role as [marqueeRectProvider]/[frameDragRectProvider].
+final defineFrameRectProvider = StateProvider<Rect?>((ref) => null);

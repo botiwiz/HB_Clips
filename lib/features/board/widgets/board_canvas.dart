@@ -17,9 +17,8 @@ import '../../annotation/drawing_overlay.dart';
 import '../../annotation/geometry/eraser_geometry.dart';
 import '../../annotation/stroke_painter.dart';
 import '../controllers/board_controller.dart';
-import '../controllers/crop_controller.dart';
-import '../geometry/crop_geometry.dart';
 import '../geometry/frame_geometry.dart';
+import '../geometry/image_pan_zoom_geometry.dart';
 import '../geometry/selection_geometry.dart';
 import '../services/add_image_service.dart';
 import '../services/eyedropper_service.dart';
@@ -29,7 +28,7 @@ import 'bin_drop_target.dart';
 import 'board_minimap.dart';
 import 'clip_style_popover.dart';
 import 'clip_widget.dart';
-import 'crop_overlay.dart';
+import 'define_frame_overlay.dart';
 import 'dot_grid_background.dart';
 import 'frame_widget.dart';
 import 'frames_panel.dart';
@@ -108,12 +107,21 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
   // stored in that clip's local frame.
   BoardClip? _drawingClip;
 
-  // Crop mode: the clip being cropped and its crop rect at gesture-start,
-  // captured once per drag so repeated CropGeometry.updateCropRect calls
-  // stay stable (same convention as the resize-handle drag above).
-  CropHandleKind? _activeCropHandle;
-  BoardClip? _cropModeClip;
-  Rect? _cropDragStartRect;
+  // Per-clip pan/zoom mode (double-click an image clip to enter): drag
+  // repositions the image content within its fixed frame, wheel zooms it.
+  DateTime? _lastClickTime;
+  Offset? _lastClickPosition;
+  String? _lastClickedClipId;
+  BoardClip? _panZoomDragClip;
+  Offset? _panZoomDragStartPan;
+  Offset? _panZoomGestureStartBoard;
+
+  // "C"+drag frame redefinition: draws a brand-new rect (marquee-style,
+  // not anchored-corner resize) that becomes the selected image clip's new
+  // on-board frame, resetting its pan/zoom since the old values are no
+  // longer meaningful once the frame's own aspect has changed.
+  BoardClip? _defineFrameClip;
+  Offset? _defineFrameStartBoard;
 
   // Frame move/resize - only checked once a pointer-down misses every
   // clip (frames sit behind clips, see FrameGeometry's doc comment).
@@ -262,10 +270,17 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     _arrangeAnchor = null;
     _arrangeStartCorner = null;
     _arrangeImages = null;
+    _panZoomDragClip = null;
+    _panZoomDragStartPan = null;
+    _panZoomGestureStartBoard = null;
+    _defineFrameClip = null;
+    _defineFrameStartBoard = null;
     ref.read(groupDragProvider.notifier).state = null;
     ref.read(marqueeRectProvider.notifier).state = null;
     ref.read(frameDragRectProvider.notifier).state = null;
     ref.read(arrangeDragRectProvider.notifier).state = null;
+    ref.read(panZoomLiveProvider.notifier).state = null;
+    ref.read(defineFrameRectProvider.notifier).state = null;
   }
 
   void _handlePointerCancel(PointerCancelEvent event) {
@@ -278,8 +293,9 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       _handleDrawPointerDown(event);
       return;
     }
-    if (ref.read(isCropModeProvider)) {
-      _handleCropPointerDown(event);
+    final panZoomClipId = ref.read(panZoomClipIdProvider);
+    if (panZoomClipId != null) {
+      _handlePanZoomPointerDown(event, panZoomClipId);
       return;
     }
     final view = ref.read(boardViewProvider);
@@ -304,13 +320,35 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       return;
     }
 
+    final selection = ref.read(selectedClipIdsProvider);
+    final clips = ref.read(activeClipsProvider).valueOrNull ?? [];
+
+    // "C" held + left-drag draws a brand-new rectangle that becomes the
+    // sole selected image clip's on-board frame (replacing the old crop
+    // tool's "click a button, then resize the pre-seeded full rect" flow).
+    // Same "wins over whatever's under the cursor" priority as Space+drag.
+    final isDefineFrameGesture =
+        HardwareKeyboard.instance.isLogicalKeyPressed(LogicalKeyboardKey.keyC) &&
+        (event.buttons & kPrimaryMouseButton != 0);
+    if (isDefineFrameGesture) {
+      if (selection.length == 1) {
+        final clip = ClipGeometry.findById(clips, selection.first);
+        if (clip != null && clip.type == ClipType.image) {
+          _defineFrameClip = clip;
+          _defineFrameStartBoard = boardPos;
+          ref.read(defineFrameRectProvider.notifier).state = Rect.fromPoints(
+            boardPos,
+            boardPos,
+          );
+        }
+      }
+      return;
+    }
+
     // A plain right-click isn't wired to anything yet (reserved for a
     // future context menu) - it shouldn't select or drag whatever's
     // underneath it either.
     if (event.buttons & kPrimaryMouseButton == 0) return;
-
-    final selection = ref.read(selectedClipIdsProvider);
-    final clips = ref.read(activeClipsProvider).valueOrNull ?? [];
 
     // 0. A click landing on the floating clip-style popover (opacity
     // slider / text-note color swatches) or the Arrange-selection button is
@@ -438,6 +476,12 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     // 2. Clip body hit-test.
     final hit = _hitTestClip(clips, boardPos);
     if (hit != null) {
+      if (hit.type == ClipType.image &&
+          _isDoubleClickOn(hit.id, event.localPosition)) {
+        ref.read(selectedClipIdsProvider.notifier).state = {hit.id};
+        ref.read(panZoomClipIdProvider.notifier).state = hit.id;
+        return;
+      }
       if (_multiSelectModifierHeld) {
         final newSelection = {...selection};
         if (!newSelection.remove(hit.id)) newSelection.add(hit.id);
@@ -584,12 +628,20 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       _handleDrawPointerMove(event);
       return;
     }
-    if (ref.read(isCropModeProvider)) {
-      _handleCropPointerMove(event);
+    if (_panZoomDragClip != null) {
+      _handlePanZoomPointerMove(event);
       return;
     }
     final view = ref.read(boardViewProvider);
     final boardPos = _screenToBoard(event.localPosition, view);
+
+    if (_defineFrameClip != null && _defineFrameStartBoard != null) {
+      ref.read(defineFrameRectProvider.notifier).state = Rect.fromPoints(
+        _defineFrameStartBoard!,
+        boardPos,
+      );
+      return;
+    }
 
     if (_activeHandle != null && _handleStartClip != null) {
       final id = _handleStartClip!.id;
@@ -824,11 +876,42 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       _handleDrawPointerUp(event);
       return;
     }
-    if (ref.read(isCropModeProvider)) {
-      _handleCropPointerUp(event);
+    if (_panZoomDragClip != null) {
+      final drag = ref.read(panZoomLiveProvider);
+      if (drag != null) {
+        ref
+            .read(clipsRepositoryProvider)
+            .updateTransform(drag.clipId, panX: drag.panX, panY: drag.panY);
+      }
+      ref.read(panZoomLiveProvider.notifier).state = null;
+      _panZoomDragClip = null;
+      _panZoomDragStartPan = null;
+      _panZoomGestureStartBoard = null;
       return;
     }
     final repo = ref.read(clipsRepositoryProvider);
+
+    if (_defineFrameClip != null) {
+      final rect = ref.read(defineFrameRectProvider);
+      if (rect != null &&
+          rect.width >= ClipGeometry.minClipSize &&
+          rect.height >= ClipGeometry.minClipSize) {
+        repo.updateTransform(
+          _defineFrameClip!.id,
+          x: rect.left,
+          y: rect.top,
+          width: rect.width,
+          height: rect.height,
+          panX: 0.0,
+          panY: 0.0,
+          zoom: 1.0,
+        );
+      }
+      ref.read(defineFrameRectProvider.notifier).state = null;
+      _defineFrameClip = null;
+      _defineFrameStartBoard = null;
+      return;
+    }
 
     if (_activeHandle != null && _handleStartClip != null) {
       final id = _handleStartClip!.id;
@@ -1028,6 +1111,24 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
   void _handlePointerSignal(PointerSignalEvent event) {
     if (event is PointerScrollEvent) {
       final factor = event.scrollDelta.dy > 0 ? 0.9 : 1.1;
+
+      final panZoomClipId = ref.read(panZoomClipIdProvider);
+      if (panZoomClipId != null) {
+        final clip = ClipGeometry.findById(
+          ref.read(activeClipsProvider).valueOrNull ?? [],
+          panZoomClipId,
+        );
+        if (clip != null) {
+          final newZoom = ImagePanZoomGeometry.clampZoom(
+            clip.imageZoom * factor,
+          );
+          ref
+              .read(clipsRepositoryProvider)
+              .updateTransform(clip.id, zoom: newZoom);
+        }
+        return;
+      }
+
       final now = DateTime.now();
       final isIsolatedStep =
           _lastZoomSignalTime == null ||
@@ -1238,62 +1339,91 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     }
   }
 
-  void _handleCropPointerDown(PointerDownEvent event) {
-    // Unconditionally clear any previous drag state first - a miss here
-    // (e.g. a tap on the crop toolbar's own confirm/cancel buttons, which
-    // this canvas's raw Listener also receives since it's a full-screen
-    // sibling) must not leave a stale handle/rect around for the next
-    // pointer-move to misinterpret as a continuing drag.
-    _activeCropHandle = null;
-    _cropModeClip = null;
-    _cropDragStartRect = null;
-
-    final selection = ref.read(selectedClipIdsProvider);
-    if (selection.length != 1) return;
-    final clips = ref.read(activeClipsProvider).valueOrNull ?? [];
-    final clip = ClipGeometry.findById(clips, selection.first);
-    if (clip == null) return;
-    final view = ref.read(boardViewProvider);
-    final cropRect = ref.read(cropRectProvider) ?? const Rect.fromLTWH(0, 0, 1, 1);
-    final handle = CropGeometry.hitTestHandle(
-      clip,
-      view,
-      cropRect,
-      event.localPosition,
-    );
-    if (handle != null) {
-      _activeCropHandle = handle;
-      _cropModeClip = clip;
-      _cropDragStartRect = cropRect;
-    }
+  /// Reuses Flutter's own double-click timing/slop constants rather than
+  /// inventing new thresholds. Consumes the match on a hit (sets the
+  /// tracking fields to null) so a third click in quick succession isn't
+  /// misread as yet another double-click toggling back.
+  bool _isDoubleClickOn(String clipId, Offset screenPos) {
+    final now = DateTime.now();
+    final isDouble =
+        _lastClickTime != null &&
+        now.difference(_lastClickTime!) <= kDoubleTapTimeout &&
+        (screenPos - _lastClickPosition!).distance <= kDoubleTapSlop &&
+        _lastClickedClipId == clipId;
+    _lastClickTime = isDouble ? null : now;
+    _lastClickPosition = screenPos;
+    _lastClickedClipId = isDouble ? null : clipId;
+    return isDouble;
   }
 
-  void _handleCropPointerMove(PointerMoveEvent event) {
-    if (_activeCropHandle == null ||
-        _cropModeClip == null ||
-        _cropDragStartRect == null) {
-      return;
-    }
+  /// Entry point while [panZoomClipIdProvider] names an active clip:
+  /// a hit on that same clip starts a pan/zoom drag; a double-click on it
+  /// or a click anywhere else exits the mode (a click on the floating
+  /// toolbar never reaches this Listener at all - a separate widget higher
+  /// in the Stack - so "outside" here means whatever this canvas itself
+  /// can observe: empty canvas, another clip, a frame).
+  void _handlePanZoomPointerDown(PointerDownEvent event, String activeId) {
     final view = ref.read(boardViewProvider);
     final boardPos = _screenToBoard(event.localPosition, view);
-    final clip = _cropModeClip!;
-    final center = ClipGeometry.clipCenter(clip);
-    final local = ClipGeometry.rotatePoint(boardPos, center, -clip.rotation);
-    final fractional = Offset(
-      (local.dx - clip.x) / clip.width,
-      (local.dy - clip.y) / clip.height,
-    );
-    ref.read(cropRectProvider.notifier).state = CropGeometry.updateCropRect(
-      _cropDragStartRect!,
-      _activeCropHandle!,
-      fractional,
+    final clips = ref.read(activeClipsProvider).valueOrNull ?? [];
+    final clip = ClipGeometry.findById(clips, activeId);
+    if (clip == null) {
+      ref.read(panZoomClipIdProvider.notifier).state = null;
+      return;
+    }
+
+    final hitSameClip = ClipGeometry.pointInClip(boardPos, clip);
+    final isDouble = _isDoubleClickOn(activeId, event.localPosition);
+
+    if (!hitSameClip || isDouble) {
+      ref.read(panZoomClipIdProvider.notifier).state = null;
+      return;
+    }
+
+    _panZoomDragClip = clip;
+    _panZoomDragStartPan = Offset(clip.imagePanX, clip.imagePanY);
+    _panZoomGestureStartBoard = boardPos;
+    ref.read(panZoomLiveProvider.notifier).state = ImagePanZoomLive(
+      clipId: clip.id,
+      panX: clip.imagePanX,
+      panY: clip.imagePanY,
+      zoom: clip.imageZoom,
     );
   }
 
-  void _handleCropPointerUp(PointerUpEvent event) {
-    _activeCropHandle = null;
-    _cropModeClip = null;
-    _cropDragStartRect = null;
+  void _handlePanZoomPointerMove(PointerMoveEvent event) {
+    final clip = _panZoomDragClip;
+    if (clip == null) return;
+    final boardPos = _screenToBoard(
+      event.localPosition,
+      ref.read(boardViewProvider),
+    );
+    final localDelta = ClipGeometry.rotatePoint(
+      boardPos - _panZoomGestureStartBoard!,
+      Offset.zero,
+      -clip.rotation,
+    );
+
+    final r = clip.imageAspectRatio ?? (clip.width / clip.height);
+    final cover = ImagePanZoomGeometry.coverSize(clip.width, clip.height, r);
+    final scaled = ImagePanZoomGeometry.scaledSize(cover, clip.imageZoom);
+    final overflow = ImagePanZoomGeometry.overflow(
+      clip.width,
+      clip.height,
+      scaled,
+    );
+    final newPan = ImagePanZoomGeometry.applyPanDelta(
+      _panZoomDragStartPan!,
+      localDelta,
+      overflow,
+    );
+
+    ref.read(panZoomLiveProvider.notifier).state = ImagePanZoomLive(
+      clipId: clip.id,
+      panX: newPan.dx,
+      panY: newPan.dy,
+      zoom: clip.imageZoom,
+    );
   }
 
   // ---- Drag-and-drop (Explorer files, or an image dragged out of a
@@ -1319,7 +1449,9 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
   /// (selecting several files in Explorer and dragging them together)
   /// doesn't stack every clip exactly on top of the others.
   Future<void> _handlePerformDrop(PerformDropEvent event) async {
-    if (ref.read(isDrawModeProvider) || ref.read(isCropModeProvider)) return;
+    if (ref.read(isDrawModeProvider) || ref.read(panZoomClipIdProvider) != null) {
+      return;
+    }
     final view = ref.read(boardViewProvider);
     final dropCenter = _screenToBoard(event.position.local, view);
 
@@ -1354,7 +1486,9 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     final selection = ref.watch(selectedClipIdsProvider);
     final overBin = ref.watch(isDraggingOverBinProvider);
     final isDrawMode = ref.watch(isDrawModeProvider);
-    final isCropMode = ref.watch(isCropModeProvider);
+    final panZoomClipId = ref.watch(panZoomClipIdProvider);
+    final panZoomLive = ref.watch(panZoomLiveProvider);
+    final defineFrameRect = ref.watch(defineFrameRectProvider);
     final frames = ref.watch(boardFramesProvider).valueOrNull ?? [];
     final selectedFrameId = ref.watch(selectedFrameIdProvider);
     final frameDragRect = ref.watch(frameDragRectProvider);
@@ -1415,11 +1549,11 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
                           selection,
                           view,
                           strokesByClip[clip.id] ?? const [],
+                          panZoomLive?.clipId == clip.id ? panZoomLive : null,
                         ),
                       const Positioned.fill(child: DrawingOverlay()),
-                      if (isCropMode) ...[
-                        const CropOverlay(),
-                      ] else if (!isDrawMode) ...[
+                      if (defineFrameRect != null) const DefineFrameOverlay(),
+                      if (panZoomClipId == null && !isDrawMode) ...[
                         const MarqueeOverlay(),
                         const SelectionHandles(),
                         const GroupScaleHandles(),
@@ -1479,6 +1613,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     Set<String> selection,
     BoardViewState view,
     List<Stroke> strokes,
+    ImagePanZoomLive? panZoomLive,
   ) {
     final drag = dragging?[clip.id];
     final x = drag?.x ?? clip.x;
@@ -1505,6 +1640,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
                 child: ClipWidget(
                   clip: clip,
                   selected: selection.contains(clip.id),
+                  panZoomLive: panZoomLive,
                 ),
               ),
               if (strokes.isNotEmpty)

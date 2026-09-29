@@ -38,3 +38,14 @@ Size clipSizeForImageBytes(
   if (height < minEdge) height = minEdge;
   return Size(width, height);
 }
+
+/// The image's native aspect ratio (width/height), or null if it can't be
+/// decoded - paired with [clipSizeForImageBytes] for callers that also need
+/// to persist `imageAspectRatio` for the pan/zoom feature.
+double? imageAspectRatioForBytes(Uint8List bytes) {
+  final decoded = img.decodeImage(bytes);
+  if (decoded == null || decoded.width <= 0 || decoded.height <= 0) {
+    return null;
+  }
+  return decoded.width / decoded.height;
+}

@@ -34,6 +34,10 @@ class BoardClip {
   final String? groupId;
   final String? frameId;
   final String? localFilePath;
+  final double imagePanX;
+  final double imagePanY;
+  final double imageZoom;
+  final double? imageAspectRatio;
   final bool isBinned;
   final DateTime? binnedAt;
   final DateTime createdAt;
@@ -55,6 +59,10 @@ class BoardClip {
     this.groupId,
     this.frameId,
     this.localFilePath,
+    this.imagePanX = 0.0,
+    this.imagePanY = 0.0,
+    this.imageZoom = 1.0,
+    this.imageAspectRatio,
     this.isBinned = false,
     this.binnedAt,
     required this.createdAt,
@@ -77,6 +85,10 @@ class BoardClip {
     groupId: row.groupId,
     frameId: row.frameId,
     localFilePath: row.localFilePath,
+    imagePanX: row.imagePanX,
+    imagePanY: row.imagePanY,
+    imageZoom: row.imageZoom,
+    imageAspectRatio: row.imageAspectRatio,
     isBinned: row.isBinned,
     binnedAt: row.binnedAt,
     createdAt: row.createdAt,
@@ -95,6 +107,9 @@ class BoardClip {
     String? backgroundColorHex,
     String? groupId,
     String? frameId,
+    double? imagePanX,
+    double? imagePanY,
+    double? imageZoom,
     bool? isBinned,
     DateTime? binnedAt,
   }) {
@@ -114,6 +129,10 @@ class BoardClip {
       groupId: groupId ?? this.groupId,
       frameId: frameId ?? this.frameId,
       localFilePath: localFilePath,
+      imagePanX: imagePanX ?? this.imagePanX,
+      imagePanY: imagePanY ?? this.imagePanY,
+      imageZoom: imageZoom ?? this.imageZoom,
+      imageAspectRatio: imageAspectRatio,
       isBinned: isBinned ?? this.isBinned,
       binnedAt: binnedAt ?? this.binnedAt,
       createdAt: createdAt,

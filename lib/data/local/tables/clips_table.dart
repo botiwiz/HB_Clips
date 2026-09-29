@@ -42,6 +42,21 @@ class Clips extends Table {
   /// Key into [LocalBlobStore] for this image clip's bytes.
   TextColumn get localFilePath => text().nullable()();
 
+  /// Pan/zoom of the image content within this clip's fixed on-board frame
+  /// (double-click a clip to enter this mode) - Flutter `Alignment`
+  /// convention, -1..1 per axis, 0 = centered. Ignored for text notes.
+  RealColumn get imagePanX => real().withDefault(const Constant(0.0))();
+  RealColumn get imagePanY => real().withDefault(const Constant(0.0))();
+
+  /// Multiplier on top of the frame's own base "cover" scale; always >= 1.0
+  /// so the image can never show a gap inside its frame.
+  RealColumn get imageZoom => real().withDefault(const Constant(1.0))();
+
+  /// The source image's native width/height ratio - null for legacy rows
+  /// or text notes, treated as "matches the frame's own aspect" (renders
+  /// identically to a plain cover-fit with no pan/zoom available yet).
+  RealColumn get imageAspectRatio => real().nullable()();
+
   BoolColumn get isBinned => boolean().withDefault(const Constant(false))();
   DateTimeColumn get binnedAt => dateTime().nullable()();
 

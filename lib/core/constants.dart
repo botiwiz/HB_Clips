@@ -15,3 +15,8 @@ const String kLocalBoardId = 'local-board';
 /// the optional snap-to-grid behavior - kept as one constant so the visual
 /// grid and what dragging/resizing snaps to always agree.
 const double kBoardGridSpacing = 32;
+
+/// Maximum zoom multiplier for panning/zooming an image within its fixed
+/// on-board frame (double-click a clip to enter this mode). Never below
+/// 1.0 - see `ImagePanZoomGeometry`.
+const double kMaxImageZoom = 8.0;

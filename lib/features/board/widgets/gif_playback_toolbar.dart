@@ -44,6 +44,7 @@ class GifPlaybackToolbar extends ConsumerWidget {
           y: clip.y + 24,
           width: clip.width,
           height: clip.height,
+          imageAspectRatio: frame.image.width / frame.image.height,
         );
   }
 

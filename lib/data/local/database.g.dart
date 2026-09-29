@@ -166,6 +166,53 @@ class $ClipsTable extends Clips with TableInfo<$ClipsTable, ClipRow> {
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _imagePanXMeta = const VerificationMeta(
+    'imagePanX',
+  );
+  @override
+  late final GeneratedColumn<double> imagePanX = GeneratedColumn<double>(
+    'image_pan_x',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0.0),
+  );
+  static const VerificationMeta _imagePanYMeta = const VerificationMeta(
+    'imagePanY',
+  );
+  @override
+  late final GeneratedColumn<double> imagePanY = GeneratedColumn<double>(
+    'image_pan_y',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0.0),
+  );
+  static const VerificationMeta _imageZoomMeta = const VerificationMeta(
+    'imageZoom',
+  );
+  @override
+  late final GeneratedColumn<double> imageZoom = GeneratedColumn<double>(
+    'image_zoom',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(1.0),
+  );
+  static const VerificationMeta _imageAspectRatioMeta = const VerificationMeta(
+    'imageAspectRatio',
+  );
+  @override
+  late final GeneratedColumn<double> imageAspectRatio = GeneratedColumn<double>(
+    'image_aspect_ratio',
+    aliasedName,
+    true,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _isBinnedMeta = const VerificationMeta(
     'isBinned',
   );
@@ -233,6 +280,10 @@ class $ClipsTable extends Clips with TableInfo<$ClipsTable, ClipRow> {
     textContent,
     backgroundColorHex,
     localFilePath,
+    imagePanX,
+    imagePanY,
+    imageZoom,
+    imageAspectRatio,
     isBinned,
     binnedAt,
     createdAt,
@@ -346,6 +397,33 @@ class $ClipsTable extends Clips with TableInfo<$ClipsTable, ClipRow> {
         ),
       );
     }
+    if (data.containsKey('image_pan_x')) {
+      context.handle(
+        _imagePanXMeta,
+        imagePanX.isAcceptableOrUnknown(data['image_pan_x']!, _imagePanXMeta),
+      );
+    }
+    if (data.containsKey('image_pan_y')) {
+      context.handle(
+        _imagePanYMeta,
+        imagePanY.isAcceptableOrUnknown(data['image_pan_y']!, _imagePanYMeta),
+      );
+    }
+    if (data.containsKey('image_zoom')) {
+      context.handle(
+        _imageZoomMeta,
+        imageZoom.isAcceptableOrUnknown(data['image_zoom']!, _imageZoomMeta),
+      );
+    }
+    if (data.containsKey('image_aspect_ratio')) {
+      context.handle(
+        _imageAspectRatioMeta,
+        imageAspectRatio.isAcceptableOrUnknown(
+          data['image_aspect_ratio']!,
+          _imageAspectRatioMeta,
+        ),
+      );
+    }
     if (data.containsKey('is_binned')) {
       context.handle(
         _isBinnedMeta,
@@ -439,6 +517,22 @@ class $ClipsTable extends Clips with TableInfo<$ClipsTable, ClipRow> {
         DriftSqlType.string,
         data['${effectivePrefix}local_file_path'],
       ),
+      imagePanX: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}image_pan_x'],
+      )!,
+      imagePanY: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}image_pan_y'],
+      )!,
+      imageZoom: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}image_zoom'],
+      )!,
+      imageAspectRatio: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}image_aspect_ratio'],
+      ),
       isBinned: attachedDatabase.typeMapping.read(
         DriftSqlType.bool,
         data['${effectivePrefix}is_binned'],
@@ -498,6 +592,21 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
 
   /// Key into [LocalBlobStore] for this image clip's bytes.
   final String? localFilePath;
+
+  /// Pan/zoom of the image content within this clip's fixed on-board frame
+  /// (double-click a clip to enter this mode) - Flutter `Alignment`
+  /// convention, -1..1 per axis, 0 = centered. Ignored for text notes.
+  final double imagePanX;
+  final double imagePanY;
+
+  /// Multiplier on top of the frame's own base "cover" scale; always >= 1.0
+  /// so the image can never show a gap inside its frame.
+  final double imageZoom;
+
+  /// The source image's native width/height ratio - null for legacy rows
+  /// or text notes, treated as "matches the frame's own aspect" (renders
+  /// identically to a plain cover-fit with no pan/zoom available yet).
+  final double? imageAspectRatio;
   final bool isBinned;
   final DateTime? binnedAt;
   final DateTime createdAt;
@@ -518,6 +627,10 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
     this.textContent,
     this.backgroundColorHex,
     this.localFilePath,
+    required this.imagePanX,
+    required this.imagePanY,
+    required this.imageZoom,
+    this.imageAspectRatio,
     required this.isBinned,
     this.binnedAt,
     required this.createdAt,
@@ -550,6 +663,12 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
     }
     if (!nullToAbsent || localFilePath != null) {
       map['local_file_path'] = Variable<String>(localFilePath);
+    }
+    map['image_pan_x'] = Variable<double>(imagePanX);
+    map['image_pan_y'] = Variable<double>(imagePanY);
+    map['image_zoom'] = Variable<double>(imageZoom);
+    if (!nullToAbsent || imageAspectRatio != null) {
+      map['image_aspect_ratio'] = Variable<double>(imageAspectRatio);
     }
     map['is_binned'] = Variable<bool>(isBinned);
     if (!nullToAbsent || binnedAt != null) {
@@ -587,6 +706,12 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
       localFilePath: localFilePath == null && nullToAbsent
           ? const Value.absent()
           : Value(localFilePath),
+      imagePanX: Value(imagePanX),
+      imagePanY: Value(imagePanY),
+      imageZoom: Value(imageZoom),
+      imageAspectRatio: imageAspectRatio == null && nullToAbsent
+          ? const Value.absent()
+          : Value(imageAspectRatio),
       isBinned: Value(isBinned),
       binnedAt: binnedAt == null && nullToAbsent
           ? const Value.absent()
@@ -619,6 +744,10 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
         json['backgroundColorHex'],
       ),
       localFilePath: serializer.fromJson<String?>(json['localFilePath']),
+      imagePanX: serializer.fromJson<double>(json['imagePanX']),
+      imagePanY: serializer.fromJson<double>(json['imagePanY']),
+      imageZoom: serializer.fromJson<double>(json['imageZoom']),
+      imageAspectRatio: serializer.fromJson<double?>(json['imageAspectRatio']),
       isBinned: serializer.fromJson<bool>(json['isBinned']),
       binnedAt: serializer.fromJson<DateTime?>(json['binnedAt']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
@@ -644,6 +773,10 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
       'textContent': serializer.toJson<String?>(textContent),
       'backgroundColorHex': serializer.toJson<String?>(backgroundColorHex),
       'localFilePath': serializer.toJson<String?>(localFilePath),
+      'imagePanX': serializer.toJson<double>(imagePanX),
+      'imagePanY': serializer.toJson<double>(imagePanY),
+      'imageZoom': serializer.toJson<double>(imageZoom),
+      'imageAspectRatio': serializer.toJson<double?>(imageAspectRatio),
       'isBinned': serializer.toJson<bool>(isBinned),
       'binnedAt': serializer.toJson<DateTime?>(binnedAt),
       'createdAt': serializer.toJson<DateTime>(createdAt),
@@ -667,6 +800,10 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
     Value<String?> textContent = const Value.absent(),
     Value<String?> backgroundColorHex = const Value.absent(),
     Value<String?> localFilePath = const Value.absent(),
+    double? imagePanX,
+    double? imagePanY,
+    double? imageZoom,
+    Value<double?> imageAspectRatio = const Value.absent(),
     bool? isBinned,
     Value<DateTime?> binnedAt = const Value.absent(),
     DateTime? createdAt,
@@ -691,6 +828,12 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
     localFilePath: localFilePath.present
         ? localFilePath.value
         : this.localFilePath,
+    imagePanX: imagePanX ?? this.imagePanX,
+    imagePanY: imagePanY ?? this.imagePanY,
+    imageZoom: imageZoom ?? this.imageZoom,
+    imageAspectRatio: imageAspectRatio.present
+        ? imageAspectRatio.value
+        : this.imageAspectRatio,
     isBinned: isBinned ?? this.isBinned,
     binnedAt: binnedAt.present ? binnedAt.value : this.binnedAt,
     createdAt: createdAt ?? this.createdAt,
@@ -719,6 +862,12 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
       localFilePath: data.localFilePath.present
           ? data.localFilePath.value
           : this.localFilePath,
+      imagePanX: data.imagePanX.present ? data.imagePanX.value : this.imagePanX,
+      imagePanY: data.imagePanY.present ? data.imagePanY.value : this.imagePanY,
+      imageZoom: data.imageZoom.present ? data.imageZoom.value : this.imageZoom,
+      imageAspectRatio: data.imageAspectRatio.present
+          ? data.imageAspectRatio.value
+          : this.imageAspectRatio,
       isBinned: data.isBinned.present ? data.isBinned.value : this.isBinned,
       binnedAt: data.binnedAt.present ? data.binnedAt.value : this.binnedAt,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
@@ -744,6 +893,10 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
           ..write('textContent: $textContent, ')
           ..write('backgroundColorHex: $backgroundColorHex, ')
           ..write('localFilePath: $localFilePath, ')
+          ..write('imagePanX: $imagePanX, ')
+          ..write('imagePanY: $imagePanY, ')
+          ..write('imageZoom: $imageZoom, ')
+          ..write('imageAspectRatio: $imageAspectRatio, ')
           ..write('isBinned: $isBinned, ')
           ..write('binnedAt: $binnedAt, ')
           ..write('createdAt: $createdAt, ')
@@ -753,7 +906,7 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
   }
 
   @override
-  int get hashCode => Object.hash(
+  int get hashCode => Object.hashAll([
     id,
     boardId,
     type,
@@ -769,11 +922,15 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
     textContent,
     backgroundColorHex,
     localFilePath,
+    imagePanX,
+    imagePanY,
+    imageZoom,
+    imageAspectRatio,
     isBinned,
     binnedAt,
     createdAt,
     updatedAt,
-  );
+  ]);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -793,6 +950,10 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
           other.textContent == this.textContent &&
           other.backgroundColorHex == this.backgroundColorHex &&
           other.localFilePath == this.localFilePath &&
+          other.imagePanX == this.imagePanX &&
+          other.imagePanY == this.imagePanY &&
+          other.imageZoom == this.imageZoom &&
+          other.imageAspectRatio == this.imageAspectRatio &&
           other.isBinned == this.isBinned &&
           other.binnedAt == this.binnedAt &&
           other.createdAt == this.createdAt &&
@@ -815,6 +976,10 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
   final Value<String?> textContent;
   final Value<String?> backgroundColorHex;
   final Value<String?> localFilePath;
+  final Value<double> imagePanX;
+  final Value<double> imagePanY;
+  final Value<double> imageZoom;
+  final Value<double?> imageAspectRatio;
   final Value<bool> isBinned;
   final Value<DateTime?> binnedAt;
   final Value<DateTime> createdAt;
@@ -836,6 +1001,10 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
     this.textContent = const Value.absent(),
     this.backgroundColorHex = const Value.absent(),
     this.localFilePath = const Value.absent(),
+    this.imagePanX = const Value.absent(),
+    this.imagePanY = const Value.absent(),
+    this.imageZoom = const Value.absent(),
+    this.imageAspectRatio = const Value.absent(),
     this.isBinned = const Value.absent(),
     this.binnedAt = const Value.absent(),
     this.createdAt = const Value.absent(),
@@ -858,6 +1027,10 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
     this.textContent = const Value.absent(),
     this.backgroundColorHex = const Value.absent(),
     this.localFilePath = const Value.absent(),
+    this.imagePanX = const Value.absent(),
+    this.imagePanY = const Value.absent(),
+    this.imageZoom = const Value.absent(),
+    this.imageAspectRatio = const Value.absent(),
     this.isBinned = const Value.absent(),
     this.binnedAt = const Value.absent(),
     this.createdAt = const Value.absent(),
@@ -882,6 +1055,10 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
     Expression<String>? textContent,
     Expression<String>? backgroundColorHex,
     Expression<String>? localFilePath,
+    Expression<double>? imagePanX,
+    Expression<double>? imagePanY,
+    Expression<double>? imageZoom,
+    Expression<double>? imageAspectRatio,
     Expression<bool>? isBinned,
     Expression<DateTime>? binnedAt,
     Expression<DateTime>? createdAt,
@@ -905,6 +1082,10 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
       if (backgroundColorHex != null)
         'background_color_hex': backgroundColorHex,
       if (localFilePath != null) 'local_file_path': localFilePath,
+      if (imagePanX != null) 'image_pan_x': imagePanX,
+      if (imagePanY != null) 'image_pan_y': imagePanY,
+      if (imageZoom != null) 'image_zoom': imageZoom,
+      if (imageAspectRatio != null) 'image_aspect_ratio': imageAspectRatio,
       if (isBinned != null) 'is_binned': isBinned,
       if (binnedAt != null) 'binned_at': binnedAt,
       if (createdAt != null) 'created_at': createdAt,
@@ -929,6 +1110,10 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
     Value<String?>? textContent,
     Value<String?>? backgroundColorHex,
     Value<String?>? localFilePath,
+    Value<double>? imagePanX,
+    Value<double>? imagePanY,
+    Value<double>? imageZoom,
+    Value<double?>? imageAspectRatio,
     Value<bool>? isBinned,
     Value<DateTime?>? binnedAt,
     Value<DateTime>? createdAt,
@@ -951,6 +1136,10 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
       textContent: textContent ?? this.textContent,
       backgroundColorHex: backgroundColorHex ?? this.backgroundColorHex,
       localFilePath: localFilePath ?? this.localFilePath,
+      imagePanX: imagePanX ?? this.imagePanX,
+      imagePanY: imagePanY ?? this.imagePanY,
+      imageZoom: imageZoom ?? this.imageZoom,
+      imageAspectRatio: imageAspectRatio ?? this.imageAspectRatio,
       isBinned: isBinned ?? this.isBinned,
       binnedAt: binnedAt ?? this.binnedAt,
       createdAt: createdAt ?? this.createdAt,
@@ -1007,6 +1196,18 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
     if (localFilePath.present) {
       map['local_file_path'] = Variable<String>(localFilePath.value);
     }
+    if (imagePanX.present) {
+      map['image_pan_x'] = Variable<double>(imagePanX.value);
+    }
+    if (imagePanY.present) {
+      map['image_pan_y'] = Variable<double>(imagePanY.value);
+    }
+    if (imageZoom.present) {
+      map['image_zoom'] = Variable<double>(imageZoom.value);
+    }
+    if (imageAspectRatio.present) {
+      map['image_aspect_ratio'] = Variable<double>(imageAspectRatio.value);
+    }
     if (isBinned.present) {
       map['is_binned'] = Variable<bool>(isBinned.value);
     }
@@ -1043,6 +1244,10 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
           ..write('textContent: $textContent, ')
           ..write('backgroundColorHex: $backgroundColorHex, ')
           ..write('localFilePath: $localFilePath, ')
+          ..write('imagePanX: $imagePanX, ')
+          ..write('imagePanY: $imagePanY, ')
+          ..write('imageZoom: $imageZoom, ')
+          ..write('imageAspectRatio: $imageAspectRatio, ')
           ..write('isBinned: $isBinned, ')
           ..write('binnedAt: $binnedAt, ')
           ..write('createdAt: $createdAt, ')
@@ -2794,6 +2999,10 @@ typedef $$ClipsTableCreateCompanionBuilder =
       Value<String?> textContent,
       Value<String?> backgroundColorHex,
       Value<String?> localFilePath,
+      Value<double> imagePanX,
+      Value<double> imagePanY,
+      Value<double> imageZoom,
+      Value<double?> imageAspectRatio,
       Value<bool> isBinned,
       Value<DateTime?> binnedAt,
       Value<DateTime> createdAt,
@@ -2817,6 +3026,10 @@ typedef $$ClipsTableUpdateCompanionBuilder =
       Value<String?> textContent,
       Value<String?> backgroundColorHex,
       Value<String?> localFilePath,
+      Value<double> imagePanX,
+      Value<double> imagePanY,
+      Value<double> imageZoom,
+      Value<double?> imageAspectRatio,
       Value<bool> isBinned,
       Value<DateTime?> binnedAt,
       Value<DateTime> createdAt,
@@ -2904,6 +3117,26 @@ class $$ClipsTableFilterComposer extends Composer<_$AppDatabase, $ClipsTable> {
 
   ColumnFilters<String> get localFilePath => $composableBuilder(
     column: $table.localFilePath,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get imagePanX => $composableBuilder(
+    column: $table.imagePanX,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get imagePanY => $composableBuilder(
+    column: $table.imagePanY,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get imageZoom => $composableBuilder(
+    column: $table.imageZoom,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get imageAspectRatio => $composableBuilder(
+    column: $table.imageAspectRatio,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -3012,6 +3245,26 @@ class $$ClipsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<double> get imagePanX => $composableBuilder(
+    column: $table.imagePanX,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get imagePanY => $composableBuilder(
+    column: $table.imagePanY,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get imageZoom => $composableBuilder(
+    column: $table.imageZoom,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get imageAspectRatio => $composableBuilder(
+    column: $table.imageAspectRatio,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<bool> get isBinned => $composableBuilder(
     column: $table.isBinned,
     builder: (column) => ColumnOrderings(column),
@@ -3093,6 +3346,20 @@ class $$ClipsTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<double> get imagePanX =>
+      $composableBuilder(column: $table.imagePanX, builder: (column) => column);
+
+  GeneratedColumn<double> get imagePanY =>
+      $composableBuilder(column: $table.imagePanY, builder: (column) => column);
+
+  GeneratedColumn<double> get imageZoom =>
+      $composableBuilder(column: $table.imageZoom, builder: (column) => column);
+
+  GeneratedColumn<double> get imageAspectRatio => $composableBuilder(
+    column: $table.imageAspectRatio,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<bool> get isBinned =>
       $composableBuilder(column: $table.isBinned, builder: (column) => column);
 
@@ -3149,6 +3416,10 @@ class $$ClipsTableTableManager
                 Value<String?> textContent = const Value.absent(),
                 Value<String?> backgroundColorHex = const Value.absent(),
                 Value<String?> localFilePath = const Value.absent(),
+                Value<double> imagePanX = const Value.absent(),
+                Value<double> imagePanY = const Value.absent(),
+                Value<double> imageZoom = const Value.absent(),
+                Value<double?> imageAspectRatio = const Value.absent(),
                 Value<bool> isBinned = const Value.absent(),
                 Value<DateTime?> binnedAt = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
@@ -3170,6 +3441,10 @@ class $$ClipsTableTableManager
                 textContent: textContent,
                 backgroundColorHex: backgroundColorHex,
                 localFilePath: localFilePath,
+                imagePanX: imagePanX,
+                imagePanY: imagePanY,
+                imageZoom: imageZoom,
+                imageAspectRatio: imageAspectRatio,
                 isBinned: isBinned,
                 binnedAt: binnedAt,
                 createdAt: createdAt,
@@ -3193,6 +3468,10 @@ class $$ClipsTableTableManager
                 Value<String?> textContent = const Value.absent(),
                 Value<String?> backgroundColorHex = const Value.absent(),
                 Value<String?> localFilePath = const Value.absent(),
+                Value<double> imagePanX = const Value.absent(),
+                Value<double> imagePanY = const Value.absent(),
+                Value<double> imageZoom = const Value.absent(),
+                Value<double?> imageAspectRatio = const Value.absent(),
                 Value<bool> isBinned = const Value.absent(),
                 Value<DateTime?> binnedAt = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
@@ -3214,6 +3493,10 @@ class $$ClipsTableTableManager
                 textContent: textContent,
                 backgroundColorHex: backgroundColorHex,
                 localFilePath: localFilePath,
+                imagePanX: imagePanX,
+                imagePanY: imagePanY,
+                imageZoom: imageZoom,
+                imageAspectRatio: imageAspectRatio,
                 isBinned: isBinned,
                 binnedAt: binnedAt,
                 createdAt: createdAt,

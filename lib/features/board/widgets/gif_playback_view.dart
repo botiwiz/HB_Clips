@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../data/models/clip.dart';
 import '../../../data/providers.dart';
+import '../controllers/board_controller.dart' show ImagePanZoomLive;
 import '../services/gif_controller_service.dart';
+import 'image_pan_zoom_frame.dart';
 import 'local_image.dart';
 
 /// Renders a GIF clip's currently-selected frame once its frames have been
@@ -12,11 +15,15 @@ import 'local_image.dart';
 class GifPlaybackView extends ConsumerStatefulWidget {
   final String clipId;
   final String path;
+  final BoardClip clip;
+  final ImagePanZoomLive? panZoomLive;
 
   const GifPlaybackView({
     super.key,
     required this.clipId,
     required this.path,
+    required this.clip,
+    this.panZoomLive,
   });
 
   @override
@@ -52,18 +59,22 @@ class _GifPlaybackViewState extends ConsumerState<GifPlaybackView> {
   Widget build(BuildContext context) {
     final state = ref.watch(gifPlaybackControllerProvider);
     if (state == null || state.clipId != widget.clipId || state.frames.isEmpty) {
-      return LocalImage(
-        path: widget.path,
-        fit: BoxFit.cover,
-        width: double.infinity,
-        height: double.infinity,
+      return ImagePanZoomFrame(
+        clip: widget.clip,
+        live: widget.panZoomLive,
+        imageBuilder: (width, height) =>
+            LocalImage(path: widget.path, fit: BoxFit.fill, width: width, height: height),
       );
     }
-    return RawImage(
-      image: state.frames[state.currentFrame].image,
-      fit: BoxFit.cover,
-      width: double.infinity,
-      height: double.infinity,
+    return ImagePanZoomFrame(
+      clip: widget.clip,
+      live: widget.panZoomLive,
+      imageBuilder: (width, height) => RawImage(
+        image: state.frames[state.currentFrame].image,
+        fit: BoxFit.fill,
+        width: width,
+        height: height,
+      ),
     );
   }
 }

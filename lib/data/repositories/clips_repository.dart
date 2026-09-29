@@ -46,6 +46,7 @@ class ClipsRepository {
     double width = kDefaultClipWidth,
     double height = kDefaultClipHeight,
     double rotation = 0,
+    double? imageAspectRatio,
   }) async {
     final zIndex = await _nextZIndex(boardId);
     final row = await _insertClip(
@@ -60,6 +61,7 @@ class ClipsRepository {
         rotation: Value(rotation),
         zIndex: Value(zIndex),
         localFilePath: Value(localFilePath),
+        imageAspectRatio: Value(imageAspectRatio),
       ),
     );
     return row;
@@ -106,6 +108,9 @@ class ClipsRepository {
     double? height,
     double? rotation,
     double? opacity,
+    double? panX,
+    double? panY,
+    double? zoom,
   }) {
     return (_db.update(_db.clips)..where((c) => c.id.equals(id))).write(
       ClipsCompanion(
@@ -115,29 +120,9 @@ class ClipsRepository {
         height: height != null ? Value(height) : const Value.absent(),
         rotation: rotation != null ? Value(rotation) : const Value.absent(),
         opacity: opacity != null ? Value(opacity) : const Value.absent(),
-        updatedAt: Value(DateTime.now()),
-      ),
-    );
-  }
-
-  /// Swaps in a newly-cropped image file for [id] and updates its board
-  /// bounds to match (called by the crop tool - a destructive edit, no
-  /// undo, matching the app's other irreversible-edit affordances).
-  Future<void> replaceImage(
-    String id, {
-    required String localFilePath,
-    required double x,
-    required double y,
-    required double width,
-    required double height,
-  }) {
-    return (_db.update(_db.clips)..where((c) => c.id.equals(id))).write(
-      ClipsCompanion(
-        localFilePath: Value(localFilePath),
-        x: Value(x),
-        y: Value(y),
-        width: Value(width),
-        height: Value(height),
+        imagePanX: panX != null ? Value(panX) : const Value.absent(),
+        imagePanY: panY != null ? Value(panY) : const Value.absent(),
+        imageZoom: zoom != null ? Value(zoom) : const Value.absent(),
         updatedAt: Value(DateTime.now()),
       ),
     );

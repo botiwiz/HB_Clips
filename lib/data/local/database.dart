@@ -18,7 +18,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 12;
+  int get schemaVersion => 13;
 
   Future<void> _seedDefaultBoard(Migrator m) {
     return into(boards).insert(
@@ -74,6 +74,12 @@ class AppDatabase extends _$AppDatabase {
         await m.alterTable(TableMigration(frames));
         await m.alterTable(TableMigration(strokes));
         await m.deleteTable('sync_queue_entries');
+      }
+      if (from < 13) {
+        await m.addColumn(clips, clips.imagePanX);
+        await m.addColumn(clips, clips.imagePanY);
+        await m.addColumn(clips, clips.imageZoom);
+        await m.addColumn(clips, clips.imageAspectRatio);
       }
     },
   );

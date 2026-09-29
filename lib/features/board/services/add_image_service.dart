@@ -46,5 +46,6 @@ Future<void> addImageClipFromBytes(
         y: boardCenter.dy - clipSize.height / 2,
         width: clipSize.width,
         height: clipSize.height,
+        imageAspectRatio: imageAspectRatioForBytes(bytes),
       );
 }

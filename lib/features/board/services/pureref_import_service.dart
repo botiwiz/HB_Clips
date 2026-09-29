@@ -188,6 +188,7 @@ Future<void> _importImage(
     width: boardWidth,
     height: boardHeight,
     rotation: transform.rotationRadians,
+    imageAspectRatio: boardWidth / boardHeight,
   );
 }
 

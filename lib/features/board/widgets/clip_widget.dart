@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../data/models/clip.dart';
 import '../../annotation/stroke_painter.dart';
+import '../controllers/board_controller.dart' show ImagePanZoomLive;
 import 'gif_playback_view.dart';
+import 'image_pan_zoom_frame.dart';
 import 'local_image.dart';
 
 /// Renders one clip's content (image or text note) at its given size. The
@@ -13,7 +15,19 @@ class ClipWidget extends StatelessWidget {
   final BoardClip clip;
   final bool selected;
 
-  const ClipWidget({super.key, required this.clip, required this.selected});
+  /// Live pan/zoom override while a drag/wheel-zoom gesture is in
+  /// progress for this clip - null otherwise, in which case the clip's
+  /// own persisted `imagePanX/Y`/`imageZoom` are used. Computed externally
+  /// by `BoardCanvas` (same convention `groupDragProvider` already uses for
+  /// position/size), not watched by this widget directly.
+  final ImagePanZoomLive? panZoomLive;
+
+  const ClipWidget({
+    super.key,
+    required this.clip,
+    required this.selected,
+    this.panZoomLive,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -56,17 +70,21 @@ class ClipWidget extends StatelessWidget {
       );
     }
     if (selected && path.toLowerCase().endsWith('.gif')) {
-      return GifPlaybackView(clipId: clip.id, path: path);
+      return GifPlaybackView(clipId: clip.id, path: path, clip: clip, panZoomLive: panZoomLive);
     }
-    return LocalImage(
-      path: path,
-      fit: BoxFit.cover,
-      width: double.infinity,
-      height: double.infinity,
-      errorBuilder: (context, error, stackTrace) => const Center(
-        child: Icon(
-          Icons.broken_image_outlined,
-          color: AppTheme.textDisabled,
+    return ImagePanZoomFrame(
+      clip: clip,
+      live: panZoomLive,
+      imageBuilder: (width, height) => LocalImage(
+        path: path,
+        fit: BoxFit.fill,
+        width: width,
+        height: height,
+        errorBuilder: (context, error, stackTrace) => const Center(
+          child: Icon(
+            Icons.broken_image_outlined,
+            color: AppTheme.textDisabled,
+          ),
         ),
       ),
     );
