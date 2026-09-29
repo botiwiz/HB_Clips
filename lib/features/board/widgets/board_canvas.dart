@@ -20,6 +20,7 @@ import '../controllers/board_controller.dart';
 import '../geometry/frame_geometry.dart';
 import '../geometry/image_pan_zoom_geometry.dart';
 import '../geometry/selection_geometry.dart';
+import '../geometry/view_focus_geometry.dart';
 import '../services/add_image_service.dart';
 import '../services/eyedropper_service.dart';
 import '../services/image_file_formats.dart';
@@ -161,6 +162,13 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
   // hand-tool behavior, unaffected) - see _handleKeyEvent.
   bool _spaceKeyDown = false;
   bool _spacePanMoved = false;
+
+  // Space-tap toggle: pressing Space again right after focusing (with the
+  // same thing still selected and no manual pan/zoom in between) snaps back
+  // to the view from before that focus - see _focusOnSelection.
+  Rect? _focusedRect;
+  BoardViewState? _preFocusView;
+  BoardViewState? _postFocusView;
 
   @override
   void initState() {
@@ -318,10 +326,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     return KeyEventResult.ignored;
   }
 
-  /// Pans/zooms the viewport to fit the current clip selection, or - if no
-  /// clips are selected - the selected frame, if any. A no-op if neither
-  /// is selected.
-  void _focusOnSelection() {
+  Rect? _computeFocusTargetRect() {
     final selection = ref.read(selectedClipIdsProvider);
     final clips = ref.read(activeClipsProvider).valueOrNull ?? [];
     final selectedClips = [
@@ -329,23 +334,49 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
         if (selection.contains(c.id)) c,
     ];
     if (selectedClips.isNotEmpty) {
-      ref
-          .read(boardViewProvider.notifier)
-          .fitRect(ClipGeometry.boardBoundingBox(selectedClips), _canvasSize);
-      return;
+      return ClipGeometry.boardBoundingBox(selectedClips);
     }
 
     final selectedFrameId = ref.read(selectedFrameIdProvider);
-    if (selectedFrameId == null) return;
+    if (selectedFrameId == null) return null;
     final frame = _findFrameById(
       ref.read(boardFramesProvider).valueOrNull ?? [],
       selectedFrameId,
     );
-    if (frame != null) {
+    return frame == null ? null : FrameGeometry.boardRect(frame);
+  }
+
+  /// Pans/zooms the viewport to fit the current clip selection, or - if no
+  /// clips are selected - the selected frame, if any (a no-op if neither is
+  /// selected). Pressing Space again right after - with the same thing
+  /// still selected and no manual pan/zoom in between - snaps back to the
+  /// view from before the focus instead of re-fitting, via
+  /// [ViewFocusGeometry.isReturningToSameFocus].
+  void _focusOnSelection() {
+    final targetRect = _computeFocusTargetRect();
+    if (targetRect == null) return;
+
+    final currentView = ref.read(boardViewProvider);
+    if (ViewFocusGeometry.isReturningToSameFocus(
+      lastFocusedRect: _focusedRect,
+      lastPostFocusView: _postFocusView,
+      targetRect: targetRect,
+      currentView: currentView,
+    )) {
+      final preFocus = _preFocusView!;
       ref
           .read(boardViewProvider.notifier)
-          .fitRect(FrameGeometry.boardRect(frame), _canvasSize);
+          .setView(preFocus.panOffset, preFocus.scale);
+      _focusedRect = null;
+      _preFocusView = null;
+      _postFocusView = null;
+      return;
     }
+
+    _preFocusView = currentView;
+    _focusedRect = targetRect;
+    ref.read(boardViewProvider.notifier).fitRect(targetRect, _canvasSize);
+    _postFocusView = ref.read(boardViewProvider);
   }
 
   void _handlePointerDown(PointerDownEvent event) {
