@@ -30,7 +30,10 @@ void main() {
 
     test('clamps to maxScale for a tiny rect instead of zooming in arbitrarily far', () {
       final notifier = BoardViewNotifier();
-      notifier.fitRect(const Rect.fromLTWH(0, 0, 1, 1), const Size(1000, 1000));
+      notifier.fitRect(
+        const Rect.fromLTWH(0, 0, 0.001, 0.001),
+        const Size(1000, 1000),
+      );
       expect(notifier.state.scale, BoardViewNotifier.maxScale);
     });
 

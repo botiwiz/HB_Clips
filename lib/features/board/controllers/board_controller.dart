@@ -22,8 +22,12 @@ class BoardViewState {
 class BoardViewNotifier extends StateNotifier<BoardViewState> {
   BoardViewNotifier() : super(const BoardViewState());
 
-  static const double minScale = 0.15;
-  static const double maxScale = 4.0;
+  // Wide enough to feel unbounded in practice (pixel-level image
+  // inspection needs far more than the old 4.0 cap - a 4000px photo
+  // dropped into a 400px-wide clip already needs 10x zoom just to reach
+  // native resolution) while staying comfortably inside double precision.
+  static const double minScale = 0.001;
+  static const double maxScale = 10000.0;
 
   void setPan(Offset panOffset) {
     state = state.copyWith(panOffset: panOffset);
