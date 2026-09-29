@@ -7,16 +7,6 @@ import '../models/clip.dart';
 
 const _uuid = Uuid();
 
-/// Thrown when adding an image clip would exceed [kMaxImageClips]. Binned
-/// images still count toward the cap - only a permanent delete frees a slot.
-class ClipCapExceededException implements Exception {
-  final int limit;
-  const ClipCapExceededException(this.limit);
-
-  @override
-  String toString() => 'Image clip limit of $limit reached';
-}
-
 /// Local read/write API for clips - every mutation writes straight to Drift.
 class ClipsRepository {
   final AppDatabase _db;
@@ -37,27 +27,6 @@ class ClipsRepository {
     return query.watch().map((rows) => rows.map(BoardClip.fromRow).toList());
   }
 
-  /// Number of image slots left out of [kMaxImageClips]. Binned-but-not-yet-
-  /// deleted images still count; text notes never do.
-  Stream<int> watchImageSlotsRemaining(String boardId) {
-    final query = _db.selectOnly(_db.clips)
-      ..addColumns([_db.clips.id.count()])
-      ..where(_db.clips.boardId.equals(boardId) & _db.clips.type.equals('image'));
-    return query.watchSingle().map((row) {
-      final used = row.read(_db.clips.id.count()) ?? 0;
-      final remaining = kMaxImageClips - used;
-      return remaining < 0 ? 0 : remaining;
-    });
-  }
-
-  Future<int> _currentImageCount(String boardId) async {
-    final query = _db.selectOnly(_db.clips)
-      ..addColumns([_db.clips.id.count()])
-      ..where(_db.clips.boardId.equals(boardId) & _db.clips.type.equals('image'));
-    final row = await query.getSingle();
-    return row.read(_db.clips.id.count()) ?? 0;
-  }
-
   Future<int> _nextZIndex(String boardId) async {
     final query = _db.selectOnly(_db.clips)
       ..addColumns([_db.clips.zIndex.max()])
@@ -68,7 +37,6 @@ class ClipsRepository {
   }
 
   /// Adds an image clip pointing at an already-imported local file.
-  /// Throws [ClipCapExceededException] if the 30-image cap is reached.
   Future<BoardClip> addImageClip({
     required String id,
     required String boardId,
@@ -79,10 +47,6 @@ class ClipsRepository {
     double height = kDefaultClipHeight,
     double rotation = 0,
   }) async {
-    final currentCount = await _currentImageCount(boardId);
-    if (currentCount >= kMaxImageClips) {
-      throw const ClipCapExceededException(kMaxImageClips);
-    }
     final zIndex = await _nextZIndex(boardId);
     final row = await _insertClip(
       ClipsCompanion.insert(

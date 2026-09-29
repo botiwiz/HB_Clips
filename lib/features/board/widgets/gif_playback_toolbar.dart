@@ -7,7 +7,6 @@ import 'package:uuid/uuid.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../data/models/clip.dart';
 import '../../../data/providers.dart';
-import '../../../data/repositories/clips_repository.dart';
 import '../services/gif_controller_service.dart';
 
 const _uuid = Uuid();
@@ -21,7 +20,7 @@ class GifPlaybackToolbar extends ConsumerWidget {
 
   const GifPlaybackToolbar({super.key, required this.clip});
 
-  Future<void> _extractFrame(BuildContext context, WidgetRef ref) async {
+  Future<void> _extractFrame(WidgetRef ref) async {
     final state = ref.read(gifPlaybackControllerProvider);
     if (state == null || state.clipId != clip.id) return;
     final frame = state.frames[state.currentFrame];
@@ -35,30 +34,17 @@ class GifPlaybackToolbar extends ConsumerWidget {
         .read(localBlobStoreProvider)
         .writeBytes(byteData.buffer.asUint8List(), extension: '.png');
 
-    try {
-      await ref
-          .read(clipsRepositoryProvider)
-          .addImageClip(
-            id: id,
-            boardId: ref.read(currentBoardIdProvider),
-            localFilePath: destPath,
-            x: clip.x + 24,
-            y: clip.y + 24,
-            width: clip.width,
-            height: clip.height,
-          );
-    } on ClipCapExceededException {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            "You've reached the 30 image clip limit. Bin or delete one to "
-            'extract a frame.',
-          ),
-          backgroundColor: AppTheme.danger,
-        ),
-      );
-    }
+    await ref
+        .read(clipsRepositoryProvider)
+        .addImageClip(
+          id: id,
+          boardId: ref.read(currentBoardIdProvider),
+          localFilePath: destPath,
+          x: clip.x + 24,
+          y: clip.y + 24,
+          width: clip.width,
+          height: clip.height,
+        );
   }
 
   @override
@@ -129,9 +115,7 @@ class GifPlaybackToolbar extends ConsumerWidget {
               icon: const Icon(Icons.image_outlined),
               iconSize: 18,
               visualDensity: VisualDensity.compact,
-              onPressed: isThisClip
-                  ? () => _extractFrame(context, ref)
-                  : null,
+              onPressed: isThisClip ? () => _extractFrame(ref) : null,
             ),
           ],
         ),

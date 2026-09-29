@@ -1,7 +1,6 @@
 import 'package:drift/drift.dart';
 
-/// A clip on the board: either an image/screenshot (capped at
-/// [kMaxImageClips]) or a text note (unlimited).
+/// A clip on the board: either an image/screenshot or a text note.
 ///
 /// Named `ClipRow` (via [DataClassName]) so it doesn't collide with the
 /// domain-level `Clip` model in `data/models/clip.dart`.

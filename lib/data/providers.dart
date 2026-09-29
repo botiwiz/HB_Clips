@@ -40,11 +40,6 @@ final binnedClipsProvider = StreamProvider<List<BoardClip>>((ref) {
   return ref.watch(clipsRepositoryProvider).watchBinnedClips(boardId);
 });
 
-final imageSlotsRemainingProvider = StreamProvider<int>((ref) {
-  final boardId = ref.watch(currentBoardIdProvider);
-  return ref.watch(clipsRepositoryProvider).watchImageSlotsRemaining(boardId);
-});
-
 final strokesRepositoryProvider = Provider<StrokesRepository>((ref) {
   return StrokesRepository(ref.watch(databaseProvider));
 });

@@ -8,8 +8,7 @@ import '../local/database.dart';
 /// points stored as fractions 0..1 of the clip's own width/height so the
 /// stroke tracks the clip as it moves/resizes/rotates) or freestanding on
 /// the board ([clipId] null, points stored as absolute board-space
-/// coordinates). Unlimited count - see `core/constants.dart` for the
-/// separate 30-image cap, which strokes never count toward.
+/// coordinates). Unlimited count.
 class Stroke {
   final String id;
   final String boardId;

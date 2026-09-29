@@ -99,14 +99,6 @@ class BinScreen extends ConsumerWidget {
             )
           : Column(
               children: [
-                const Padding(
-                  padding: EdgeInsets.all(12),
-                  child: Text(
-                    'Binned image clips still count toward your 30-image '
-                    'limit until deleted forever.',
-                    style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
-                  ),
-                ),
                 Expanded(
                   child: GridView.builder(
                     padding: const EdgeInsets.all(12),

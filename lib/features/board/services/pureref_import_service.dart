@@ -16,12 +16,11 @@ import '../../../data/repositories/clips_repository.dart';
 const _uuid = Uuid();
 
 /// Counts from one `.pur` import, shown to the user in a summary dialog -
-/// deliberately not silent, since a large PureRef board can easily exceed
-/// the 30-image cap or contain items this importer can't fully represent.
+/// deliberately not silent, since a large PureRef board can contain items
+/// this importer can't fully represent.
 class PurImportSummary {
   final int imagesImported;
   final int textNotesImported;
-  final int imagesSkippedAtCap;
 
   /// PureRef 2.x only: images this file references but whose pixel data
   /// couldn't be recovered at all (no local embedded copy, only an
@@ -32,7 +31,6 @@ class PurImportSummary {
   const PurImportSummary({
     required this.imagesImported,
     required this.textNotesImported,
-    required this.imagesSkippedAtCap,
     this.imagesUnrecoverable = 0,
   });
 }
@@ -60,11 +58,10 @@ class _ImportText extends _ImportItem {
 }
 
 /// Imports a PureRef `.pur` project file (old 1.10/1.11.1 format only - see
-/// `pur_reader.dart`) into the current board, reusing the same
-/// add-clip/cap-handling path as manual add and clipboard paste. Takes the
-/// file's raw [bytes] directly (not a path) since `file_picker` already
-/// hands those back on every platform, including web where there is no
-/// path to read from.
+/// `pur_reader.dart`) into the current board, reusing the same add-clip
+/// path as manual add and clipboard paste. Takes the file's raw [bytes]
+/// directly (not a path) since `file_picker` already hands those back on
+/// every platform, including web where there is no path to read from.
 Future<PurImportSummary?> importPurFile(
   BuildContext context,
   WidgetRef ref,
@@ -100,17 +97,12 @@ Future<PurImportSummary?> importPurFile(
   final boardId = ref.read(currentBoardIdProvider);
   var imagesImported = 0;
   var textNotesImported = 0;
-  var imagesSkippedAtCap = 0;
 
   for (final item in items) {
     switch (item) {
       case _ImportImage():
-        final placed = await _importImage(item, blobStore, repo, boardId);
-        if (placed) {
-          imagesImported++;
-        } else {
-          imagesSkippedAtCap++;
-        }
+        await _importImage(item, blobStore, repo, boardId);
+        imagesImported++;
       case _ImportText():
         await _importText(item, repo, boardId);
         textNotesImported++;
@@ -120,13 +112,11 @@ Future<PurImportSummary?> importPurFile(
   return PurImportSummary(
     imagesImported: imagesImported,
     textNotesImported: textNotesImported,
-    imagesSkippedAtCap: imagesSkippedAtCap,
     imagesUnrecoverable: parsed.unrecoverableImageCount,
   );
 }
 
-/// Returns false if the image cap was already reached (nothing inserted).
-Future<bool> _importImage(
+Future<void> _importImage(
   _ImportImage item,
   LocalBlobStore blobStore,
   ClipsRepository repo,
@@ -189,26 +179,16 @@ Future<bool> _importImage(
   final id = _uuid.v4();
   final destPath = await blobStore.writeBytes(finalBytes, extension: '.png');
 
-  try {
-    await repo.addImageClip(
-      id: id,
-      boardId: boardId,
-      localFilePath: destPath,
-      x: transform.x - boardWidth / 2,
-      y: transform.y - boardHeight / 2,
-      width: boardWidth,
-      height: boardHeight,
-      rotation: transform.rotationRadians,
-    );
-    return true;
-  } on ClipCapExceededException {
-    try {
-      await blobStore.delete(destPath);
-    } catch (_) {
-      // Best-effort cleanup; a leftover blob here is harmless.
-    }
-    return false;
-  }
+  await repo.addImageClip(
+    id: id,
+    boardId: boardId,
+    localFilePath: destPath,
+    x: transform.x - boardWidth / 2,
+    y: transform.y - boardHeight / 2,
+    width: boardWidth,
+    height: boardHeight,
+    rotation: transform.rotationRadians,
+  );
 }
 
 Future<void> _importText(

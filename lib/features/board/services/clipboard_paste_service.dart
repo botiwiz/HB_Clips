@@ -47,7 +47,6 @@ Future<void> pasteImageFromClipboard(BuildContext context, WidgetRef ref) async 
   final boardCenter = (screenCenter - view.panOffset) / view.scale;
 
   await addImageClipFromBytes(
-    context,
     ref,
     bytes: bytes,
     extension: imageFileFormats[matchedFormat]!,

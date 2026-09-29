@@ -1,7 +1,3 @@
-/// Maximum number of image/screenshot clips a board may hold at once.
-/// Text notes and annotation strokes are unlimited.
-const int kMaxImageClips = 30;
-
 /// Default size (logical pixels, in board space) for a newly added clip.
 const double kDefaultClipWidth = 240;
 const double kDefaultClipHeight = 240;
