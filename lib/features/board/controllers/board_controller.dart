@@ -83,6 +83,11 @@ final boardViewProvider =
       (ref) => BoardViewNotifier(),
     );
 
+/// Board-space position of the most recent pointer-down on the canvas (any
+/// button, any hit target) - lets paste/drop land where the user was last
+/// working instead of always the viewport center.
+final lastClickBoardPositionProvider = StateProvider<Offset?>((ref) => null);
+
 /// Ids of the currently selected clips. A plain click collapses this to a
 /// single id; shift/ctrl-click toggles membership; a marquee drag replaces
 /// it with everything the marquee overlapped.

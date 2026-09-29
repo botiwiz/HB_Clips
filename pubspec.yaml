@@ -58,6 +58,7 @@ dependencies:
   super_drag_and_drop: ^0.9.1
   image: ^4.3.0
   pdf: ^3.12.0
+  http: ^1.2.0
 
   # Misc
   package_info_plus: ^8.1.3

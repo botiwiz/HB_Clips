@@ -24,6 +24,7 @@ import '../geometry/view_focus_geometry.dart';
 import '../services/add_image_service.dart';
 import '../services/eyedropper_service.dart';
 import '../services/image_file_formats.dart';
+import '../services/remote_image_fetch_service.dart';
 import 'arrange_selection_button.dart';
 import 'bin_drop_target.dart';
 import 'board_minimap.dart';
@@ -392,6 +393,11 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     }
     final view = ref.read(boardViewProvider);
     final boardPos = _screenToBoard(event.localPosition, view);
+
+    // Unconditional - any click anywhere (selecting a clip, empty canvas,
+    // right-click, a pan-drag's start) counts as "where I last clicked" for
+    // paste to land at.
+    ref.read(lastClickBoardPositionProvider.notifier).state = boardPos;
 
     // Unconditional so a stale field from a gesture that never got a
     // pointer-up (dropped event, cancelled pointer) can't leak into this
@@ -1522,14 +1528,19 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
   // ---- Drag-and-drop (Explorer files, or an image dragged out of a
   // browser) -----------------------------------------------------------
 
-  /// Accepts the drop only once at least one dragged item's reader can
-  /// actually provide one of the image formats this app knows how to read -
+  /// Accepts the drop once at least one dragged item's reader can either
+  /// provide one of the image formats this app knows how to read directly,
+  /// or offers a URL/HTML snippet a cross-origin web image (Pinterest,
+  /// Instagram, any page's hover/preview image) is fetched from instead -
   /// `dataReader` is "gradually populated" on desktop per super_clipboard's
   /// own docs, so this re-checks on every hover tick rather than only once.
   DropOperation _handleDropOver(DropOverEvent event) {
     for (final item in event.session.items) {
       final reader = item.dataReader;
-      if (reader != null && matchImageFormat(reader) != null) {
+      if (reader == null) continue;
+      if (matchImageFormat(reader) != null) return DropOperation.copy;
+      if (reader.canProvide(Formats.uri) ||
+          reader.canProvide(Formats.htmlText)) {
         return DropOperation.copy;
       }
     }
@@ -1540,7 +1551,10 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
   /// clip, centered on where it landed - a second (or third...) item in the
   /// same drop cascades a little further down-right so a multi-file drop
   /// (selecting several files in Explorer and dragging them together)
-  /// doesn't stack every clip exactly on top of the others.
+  /// doesn't stack every clip exactly on top of the others. An item with no
+  /// direct image bytes (the common case for an image dragged out of a
+  /// browser tab) falls back to resolving a URL off the drag and fetching
+  /// it over HTTP.
   Future<void> _handlePerformDrop(PerformDropEvent event) async {
     if (ref.read(isDrawModeProvider) || ref.read(panZoomClipIdProvider) != null) {
       return;
@@ -1553,17 +1567,34 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     for (final item in event.session.items) {
       final reader = item.dataReader;
       if (reader == null) continue;
+
+      Uint8List? bytes;
+      var extension = '.png';
       final format = matchImageFormat(reader);
-      if (format == null) continue;
-      final bytes = await readImageFileBytes(reader, format);
-      if (!mounted) return;
+      if (format != null) {
+        bytes = await readImageFileBytes(reader, format);
+        if (!mounted) return;
+        extension = imageFileFormats[format]!;
+      }
+      if (bytes == null || bytes.isEmpty) {
+        final uri = await matchImageUrl(reader);
+        if (!mounted) return;
+        if (uri != null) {
+          final fetched = await fetchImageBytes(uri);
+          if (!mounted) return;
+          if (fetched != null) {
+            bytes = fetched.bytes;
+            extension = fetched.extension;
+          }
+        }
+      }
       if (bytes == null || bytes.isEmpty) continue;
 
       final center = dropCenter + Offset(cascadeStep, cascadeStep) * placed.toDouble();
       await addImageClipFromBytes(
         ref,
         bytes: bytes,
-        extension: imageFileFormats[format]!,
+        extension: extension,
         boardCenter: center,
       );
       if (!mounted) return;
@@ -1598,7 +1629,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     }
 
     return DropRegion(
-      formats: [...imageFileFormats.keys],
+      formats: [...imageFileFormats.keys, Formats.uri, Formats.htmlText],
       hitTestBehavior: HitTestBehavior.opaque,
       onDropOver: _handleDropOver,
       onPerformDrop: _handlePerformDrop,

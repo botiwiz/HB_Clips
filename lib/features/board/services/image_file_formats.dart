@@ -48,3 +48,51 @@ Future<Uint8List?> readImageFileBytes(DataReader reader, FileFormat format) {
   if (progress == null) completer.complete(null);
   return completer.future;
 }
+
+/// Tries `Formats.uri` first (an exact URL, when the source app provides
+/// one), then falls back to the first `<img src="...">` found in
+/// `Formats.htmlText` - covers a cross-origin web image (Pinterest,
+/// Instagram, any page's hover/preview image) that has no raw image bytes
+/// on the drag at all, only a link to fetch.
+Future<Uri?> matchImageUrl(DataReader reader) async {
+  if (reader.canProvide(Formats.uri)) {
+    final named = await _readValue(reader, Formats.uri);
+    if (named?.uri != null) return named!.uri;
+  }
+  if (reader.canProvide(Formats.htmlText)) {
+    final html = await _readValue(reader, Formats.htmlText);
+    if (html != null) {
+      final uri = extractImageUrlFromHtml(html);
+      if (uri != null) return uri;
+    }
+  }
+  return null;
+}
+
+/// Pulls the first `<img src="...">` (single or double-quoted) out of an
+/// HTML snippet - the shape browsers attach to a dragged/copied `<img>`
+/// element.
+Uri? extractImageUrlFromHtml(String html) {
+  final match = RegExp(
+    r'''<img[^>]+src=["']([^"']+)["']''',
+    caseSensitive: false,
+  ).firstMatch(html);
+  if (match == null) return null;
+  return Uri.tryParse(match.group(1)!);
+}
+
+/// `getValue` is callback-based (same shape as `getFile`, see
+/// [readImageFileBytes]'s doc comment) - this wraps it the same way.
+Future<T?> _readValue<T extends Object>(
+  DataReader reader,
+  ValueFormat<T> format,
+) {
+  final completer = Completer<T?>();
+  final progress = reader.getValue<T>(
+    format,
+    (value) => completer.complete(value),
+    onError: completer.completeError,
+  );
+  if (progress == null) completer.complete(null);
+  return completer.future;
+}

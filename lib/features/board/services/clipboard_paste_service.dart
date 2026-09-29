@@ -41,10 +41,16 @@ Future<void> pasteImageFromClipboard(BuildContext context, WidgetRef ref) async 
     return;
   }
 
-  final size = MediaQuery.sizeOf(context);
-  final screenCenter = Offset(size.width / 2, size.height / 2);
-  final view = ref.read(boardViewProvider);
-  final boardCenter = (screenCenter - view.panOffset) / view.scale;
+  final lastClick = ref.read(lastClickBoardPositionProvider);
+  final Offset boardCenter;
+  if (lastClick != null) {
+    boardCenter = lastClick;
+  } else {
+    final size = MediaQuery.sizeOf(context);
+    final screenCenter = Offset(size.width / 2, size.height / 2);
+    final view = ref.read(boardViewProvider);
+    boardCenter = (screenCenter - view.panOffset) / view.scale;
+  }
 
   await addImageClipFromBytes(
     ref,
