@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hb_clips/data/pureref/pur_file.dart';
 import 'package:hb_clips/data/pureref/pur_reader.dart';
@@ -66,5 +67,55 @@ void main() {
 
   test('no text notes yet for 2.x', () {
     expect(file.text, isEmpty);
+  });
+
+  // `sample_v2_truncated_multipage.pur` is derived directly from a real,
+  // large PureRef 2.x export (not hand-rolled): its first 3 complete
+  // top-level embedded JPEGs, concatenated with its full trailing byte
+  // range from the `SQLite format 3` magic onward. Page offsets inside
+  // that region are relative to the magic's own position, so trimming
+  // what precedes it doesn't disturb the embedded database's internal
+  // structure at all - this reproduces the exact real-world scenario
+  // byte-for-byte: `items`/`items_images` are B-tree interior pages whose
+  // child pages point at page numbers genuinely absent from the file
+  // (confirmed: the original export's header declares 7,520 total pages,
+  // but only the last ~7 are physically present). One of the 3 JPEGs also
+  // happens to trip `package:image`'s JPEG decoder - a real, independent
+  // bug this file incidentally exercises too, handled by counting it
+  // unrecoverable instead of throwing.
+  group('a real large export whose position database was truncated away', () {
+    late PurFile file;
+
+    setUpAll(() {
+      final bytes = File(
+        'test/data/pureref/fixtures/sample_v2_truncated_multipage.pur',
+      ).readAsBytesSync();
+      file = PurReader(bytes).read();
+    });
+
+    test('recovers the 2 decodable images instead of dropping them', () {
+      final transforms = file.images.expand((image) => image.transforms).toList();
+      expect(transforms.length, 2);
+    });
+
+    test('flags both as recovered without their original position', () {
+      expect(file.recoveredWithoutPositionCount, 2);
+    });
+
+    test('the one undecodable JPEG is counted unrecoverable, not thrown', () {
+      expect(file.unrecoverableImageCount, 1);
+    });
+
+    test('the grid-fallback positions do not overlap', () {
+      final transforms = file.images.expand((image) => image.transforms).toList();
+      Rect rectOf(PurImageItem t) => Rect.fromCenter(
+        center: Offset(t.x, t.y),
+        width: t.width,
+        height: t.height,
+      );
+      final a = rectOf(transforms[0]);
+      final b = rectOf(transforms[1]);
+      expect(a.overlaps(b), isFalse);
+    });
   });
 }

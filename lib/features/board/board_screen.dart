@@ -136,6 +136,14 @@ class BoardScreen extends ConsumerWidget {
         "couldn't be recovered (no local copy embedded in this file)",
       );
     }
+    if (summary.imagesRecoveredWithoutPosition > 0) {
+      parts.add(
+        "${summary.imagesRecoveredWithoutPosition} image${summary.imagesRecoveredWithoutPosition == 1 ? '' : 's'} "
+        "recovered without their original position (arranged in a grid - "
+        "this board's project database was too large to fully embed in "
+        "the export)",
+      );
+    }
 
     await showDialog<void>(
       context: context,

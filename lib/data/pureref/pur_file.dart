@@ -141,6 +141,14 @@ class PurFile {
   /// that gap.
   final int unrecoverableImageCount;
 
+  /// How many images (PureRef 2.x only, always 0 for the old format) were
+  /// imported successfully but whose original position couldn't be
+  /// recovered - their `items`/`items_images` page was truncated out of
+  /// the export. These are still present in [images], just placed in a
+  /// synthesized grid layout instead of their real position. See
+  /// `PurReader._readV2`.
+  final int recoveredWithoutPositionCount;
+
   const PurFile({
     required this.canvas,
     required this.zoom,
@@ -150,6 +158,7 @@ class PurFile {
     required this.images,
     required this.text,
     this.unrecoverableImageCount = 0,
+    this.recoveredWithoutPositionCount = 0,
   });
 }
 

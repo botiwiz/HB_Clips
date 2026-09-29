@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:image/image.dart' as img;
@@ -563,23 +564,49 @@ class PurReader {
 
     final jpegBlobs = _findTopLevelJpegs(sqliteOffset);
 
-    final images = <PurImage>[];
-    var unrecoverable = 0;
-    final pairCount = orderedImageIds.length < jpegBlobs.length
+    // Decode every embedded JPEG once up front - each one is either paired
+    // with a real transform below, or (if the position database was
+    // truncated away for this board) added to a grid-fallback list further
+    // down, rather than dropped outright.
+    final decodedByIndex = <int, img.Image>{};
+    for (var i = 0; i < jpegBlobs.length; i++) {
+      final dims = _readJpegDimensions(jpegBlobs[i]);
+      if (dims == null) continue;
+      try {
+        final decoded = img.decodeJpg(jpegBlobs[i]);
+        if (decoded != null) decodedByIndex[i] = decoded;
+      } catch (_) {
+        // A handful of real-world embedded JPEGs trip package:image's
+        // decoder (confirmed against a real file) - treat as unrecoverable
+        // rather than failing the whole import over one bad image.
+      }
+    }
+
+    final pairedCount = orderedImageIds.length < jpegBlobs.length
         ? orderedImageIds.length
         : jpegBlobs.length;
-    for (var i = 0; i < pairCount; i++) {
-      final itemId = imageIdToItemId[orderedImageIds[i]]!;
-      final transform = itemTransforms[itemId];
-      final dims = _readJpegDimensions(jpegBlobs[i]);
-      final decoded = dims == null ? null : img.decodeJpg(jpegBlobs[i]);
-      if (transform == null || dims == null || decoded == null) {
+    final images = <PurImage>[];
+    final fallbackIndices = <int>[];
+    var unrecoverable = 0;
+
+    for (var i = 0; i < jpegBlobs.length; i++) {
+      final decoded = decodedByIndex[i];
+      if (decoded == null) {
         unrecoverable++;
         continue;
       }
-      final (width, height) = dims;
-      final halfW = width / 2;
-      final halfH = height / 2;
+      if (i >= pairedCount) {
+        fallbackIndices.add(i);
+        continue;
+      }
+      final itemId = imageIdToItemId[orderedImageIds[i]]!;
+      final transform = itemTransforms[itemId];
+      if (transform == null) {
+        fallbackIndices.add(i);
+        continue;
+      }
+      final halfW = decoded.width / 2;
+      final halfH = decoded.height / 2;
       images.add(
         PurImage(
           pngBytes: img.encodePng(decoded),
@@ -605,7 +632,55 @@ class PurReader {
         ),
       );
     }
-    unrecoverable += imageIdToItemId.length - pairCount;
+    unrecoverable += imageIdToItemId.length - pairedCount;
+
+    // Images whose real transform is missing (its `items`/`items_images`
+    // page was truncated out of this export - see the class doc comment)
+    // are still imported, just arranged in a simple non-overlapping grid
+    // rather than dropped - real photos the user pasted onto their board,
+    // just without their original position.
+    if (fallbackIndices.isNotEmpty) {
+      var maxDim = 0.0;
+      for (final i in fallbackIndices) {
+        final d = decodedByIndex[i]!;
+        maxDim = math.max(maxDim, math.max(d.width, d.height).toDouble());
+      }
+      const gridMargin = 40.0;
+      final cellSize = maxDim + gridMargin;
+      final columns = math.max(1, math.sqrt(fallbackIndices.length).ceil());
+      var gridOriginY = 0.0;
+      for (final image in images) {
+        final t = image.transforms.first;
+        gridOriginY = math.max(gridOriginY, t.y + t.height / 2);
+      }
+      if (images.isNotEmpty) gridOriginY += cellSize;
+
+      for (var gi = 0; gi < fallbackIndices.length; gi++) {
+        final decoded = decodedByIndex[fallbackIndices[gi]]!;
+        final col = gi % columns;
+        final row = gi ~/ columns;
+        final halfW = decoded.width / 2;
+        final halfH = decoded.height / 2;
+        images.add(
+          PurImage(
+            pngBytes: img.encodePng(decoded),
+            transforms: [
+              PurImageItem(
+                // Synthetic, guaranteed distinct from any real (positive)
+                // sqlite rowid-based item id.
+                id: -(gi + 1),
+                zLayer: gi.toDouble(),
+                matrix: const [1.0, 0.0, 0.0, 1.0],
+                x: col * cellSize + cellSize / 2,
+                y: gridOriginY + row * cellSize + cellSize / 2,
+                pointsX: [-halfW, halfW, halfW, -halfW, -halfW],
+                pointsY: [-halfH, -halfH, halfH, halfH, -halfH],
+              ),
+            ],
+          ),
+        );
+      }
+    }
 
     return PurFile(
       canvas: const [0, 0, 0, 0],
@@ -620,6 +695,7 @@ class PurReader {
       // truth yet to check a guessed encoding against.
       text: const [],
       unrecoverableImageCount: unrecoverable,
+      recoveredWithoutPositionCount: fallbackIndices.length,
     );
   }
 

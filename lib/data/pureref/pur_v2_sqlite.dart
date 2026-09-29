@@ -1,17 +1,23 @@
 import 'dart:typed_data';
 
-/// A hand-rolled, read-only reader for the tiny slice of the SQLite file
-/// format that PureRef 2.x's embedded database actually needs: the schema
-/// table on page 1, and a handful of small tables that (in every real file
-/// inspected so far) fit entirely on their own single leaf page. This is
-/// deliberately not a general SQLite engine - PureRef 2.x's own embedded
-/// database is reliably *truncated* in the exported `.pur` file (its header
-/// declares a page count the file doesn't actually contain, and the large
-/// `images` table's own root page is consistently a b-tree *interior* page
-/// pointing at leaf pages that aren't present at all) - so a real engine
-/// would just fail to open it anyway. Reading the handful of small,
-/// always-present pages directly, and treating anything else as
-/// "unavailable" rather than a hard error, is what actually works.
+/// A hand-rolled, read-only reader for the slice of the SQLite file format
+/// that PureRef 2.x's embedded database actually needs: the schema table on
+/// page 1, and a handful of tables holding each item's transform/z-order/
+/// image reference. This is deliberately not a general SQLite engine -
+/// PureRef 2.x's own embedded database is reliably *truncated* in the
+/// exported `.pur` file (its header declares a page count the file doesn't
+/// actually contain), so a real engine would just fail to open it anyway.
+///
+/// `readLeafTable` walks a table's full B-tree - a table with enough rows
+/// to need more than one page has an *interior* root page (type `0x05`)
+/// whose cells point at child pages, which may themselves be interior or
+/// leaf; this reader recurses into every child. Confirmed directly against
+/// a real 30MB export: `items`/`items_images` are routinely interior for
+/// any board with more than a handful of items, not just an edge case.
+/// Whenever a specific child page isn't present in this (possibly
+/// truncated) buffer, that one page is skipped rather than treated as an
+/// error - so a table is read as completely as the truncated file allows,
+/// not all-or-nothing.
 ///
 /// Every byte offset and encoding rule below is the standard, documented
 /// SQLite file format (https://www.sqlite.org/fileformat2.html) - the only
@@ -140,45 +146,83 @@ class MiniSqlite {
     return values;
   }
 
-  /// Reads every row of a table whose root page is a single table-leaf page
-  /// (type 0x0d) - returns an empty list (not an error) if the page is
-  /// absent from this (possibly truncated) buffer, or isn't a leaf page at
-  /// all (a table with enough rows to need an interior page can't be read
-  /// by this minimal reader - see the class doc comment).
+  /// Reads every row of a table, walking its full B-tree from [rootPage] -
+  /// see the class doc comment for why this recurses through interior
+  /// pages instead of only handling a single leaf page.
   List<List<Object?>> readLeafTable(int rootPage, {int? intPkColumnIndex}) {
-    final page = _page(rootPage);
-    if (page == null) return const [];
+    final rows = <List<Object?>>[];
+    _readTableBtree(rootPage, intPkColumnIndex, rows);
+    return rows;
+  }
+
+  void _readTableBtree(
+    int pageNumber,
+    int? intPkColumnIndex,
+    List<List<Object?>> rows,
+  ) {
+    final page = _page(pageNumber);
+    if (page == null) return; // absent - truncated away, not an error
     // Only page 1 has the extra 100-byte file header before its own b-tree
     // page header.
-    final headerOffset = rootPage == 1 ? 100 : 0;
+    final headerOffset = pageNumber == 1 ? 100 : 0;
     final pageType = page[headerOffset];
-    if (pageType != 0x0d) return const []; // not a leaf page - can't read it
     final numCells = ByteData.sublistView(
       page,
       headerOffset + 3,
       headerOffset + 5,
     ).getUint16(0, Endian.big);
-    final cellPointerStart = headerOffset + 8;
 
-    final rows = <List<Object?>>[];
-    for (var i = 0; i < numCells; i++) {
-      final cellOffset = ByteData.sublistView(
+    if (pageType == 0x0d) {
+      // Leaf page: decode every cell's record directly.
+      final cellPointerStart = headerOffset + 8;
+      for (var i = 0; i < numCells; i++) {
+        final cellOffset = ByteData.sublistView(
+          page,
+          cellPointerStart + i * 2,
+          cellPointerStart + i * 2 + 2,
+        ).getUint16(0, Endian.big);
+        var pos = cellOffset;
+        final (payloadLength, n1) = _readVarint(page, pos);
+        pos += n1;
+        final (rowid, n2) = _readVarint(page, pos);
+        pos += n2;
+        // Rows this small never overflow to a separate page (overflow only
+        // kicks in past roughly page_size - 35 bytes of payload) - every
+        // table this reader targets is well under that.
+        final payload = Uint8List.sublistView(page, pos, pos + payloadLength);
+        rows.add(_decodeRecord(payload, rowid, intPkColumnIndex));
+      }
+    } else if (pageType == 0x05) {
+      // Interior page: each cell is {4-byte child page number, varint key}
+      // (the standard table b-tree interior cell layout), followed by the
+      // header's own right-most-pointer field for the child "after" the
+      // last cell. Recurse into every child - one that isn't present in
+      // this (possibly truncated) buffer is skipped by the base case
+      // above, not treated as an error.
+      final cellPointerStart = headerOffset + 12;
+      for (var i = 0; i < numCells; i++) {
+        final cellOffset = ByteData.sublistView(
+          page,
+          cellPointerStart + i * 2,
+          cellPointerStart + i * 2 + 2,
+        ).getUint16(0, Endian.big);
+        if (cellOffset + 4 > page.length) continue; // truncated cell
+        final childPage = ByteData.sublistView(
+          page,
+          cellOffset,
+          cellOffset + 4,
+        ).getUint32(0, Endian.big);
+        _readTableBtree(childPage, intPkColumnIndex, rows);
+      }
+      final rightMostChild = ByteData.sublistView(
         page,
-        cellPointerStart + i * 2,
-        cellPointerStart + i * 2 + 2,
-      ).getUint16(0, Endian.big);
-      var pos = cellOffset;
-      final (payloadLength, n1) = _readVarint(page, pos);
-      pos += n1;
-      final (rowid, n2) = _readVarint(page, pos);
-      pos += n2;
-      // Rows this small never overflow to a separate page (overflow only
-      // kicks in past roughly page_size - 35 bytes of payload) - every
-      // table this reader targets is well under that.
-      final payload = Uint8List.sublistView(page, pos, pos + payloadLength);
-      rows.add(_decodeRecord(payload, rowid, intPkColumnIndex));
+        headerOffset + 8,
+        headerOffset + 12,
+      ).getUint32(0, Endian.big);
+      _readTableBtree(rightMostChild, intPkColumnIndex, rows);
     }
-    return rows;
+    // Any other page type: unreadable, skip silently - same best-effort
+    // philosophy as the rest of this class.
   }
 
   /// Reads `sqlite_master` (always page 1, always small enough to be a

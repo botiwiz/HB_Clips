@@ -28,10 +28,16 @@ class PurImportSummary {
   /// old format. See `PurFile.unrecoverableImageCount`.
   final int imagesUnrecoverable;
 
+  /// PureRef 2.x only: images imported successfully but whose original
+  /// position couldn't be recovered, so they were arranged in a grid
+  /// instead. See `PurFile.recoveredWithoutPositionCount`.
+  final int imagesRecoveredWithoutPosition;
+
   const PurImportSummary({
     required this.imagesImported,
     required this.textNotesImported,
     this.imagesUnrecoverable = 0,
+    this.imagesRecoveredWithoutPosition = 0,
   });
 }
 
@@ -113,6 +119,7 @@ Future<PurImportSummary?> importPurFile(
     imagesImported: imagesImported,
     textNotesImported: textNotesImported,
     imagesUnrecoverable: parsed.unrecoverableImageCount,
+    imagesRecoveredWithoutPosition: parsed.recoveredWithoutPositionCount,
   );
 }
 
