@@ -1000,7 +1000,11 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       if (rect != null &&
           rect.width >= ClipGeometry.minClipSize &&
           rect.height >= ClipGeometry.minClipSize) {
-        repo.updateTransform(
+        // Awaited before clearing the live rect - see the comment on the
+        // arrange branch below for why: otherwise activeClipsProvider's
+        // stream can still be showing the pre-gesture value for a frame or
+        // two after the preview disappears, flashing the stale state.
+        await repo.updateTransform(
           _defineFrameClip!.id,
           x: rect.left,
           y: rect.top,
@@ -1011,6 +1015,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
           zoom: 1.0,
         );
       }
+      if (!mounted) return;
       ref.read(defineFrameRectProvider.notifier).state = null;
       _defineFrameClip = null;
       _defineFrameStartBoard = null;
@@ -1021,7 +1026,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       final id = _handleStartClip!.id;
       final drag = ref.read(groupDragProvider)?[id];
       if (drag != null) {
-        repo.updateTransform(
+        await repo.updateTransform(
           id,
           x: drag.x,
           y: drag.y,
@@ -1030,6 +1035,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
           rotation: drag.rotation,
         );
       }
+      if (!mounted) return;
       ref.read(groupDragProvider.notifier).state = null;
       _activeHandle = null;
       _handleStartClip = null;
@@ -1040,16 +1046,18 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     if (_activeGroupScaleHandle != null && _groupScaleStartClips != null) {
       final dragMap = ref.read(groupDragProvider);
       if (dragMap != null) {
-        for (final entry in dragMap.entries) {
-          repo.updateTransform(
-            entry.key,
-            x: entry.value.x,
-            y: entry.value.y,
-            width: entry.value.width,
-            height: entry.value.height,
-          );
-        }
+        await Future.wait([
+          for (final entry in dragMap.entries)
+            repo.updateTransform(
+              entry.key,
+              x: entry.value.x,
+              y: entry.value.y,
+              width: entry.value.width,
+              height: entry.value.height,
+            ),
+        ]);
       }
+      if (!mounted) return;
       ref.read(groupDragProvider.notifier).state = null;
       _activeGroupScaleHandle = null;
       _groupScaleStartClips = null;
@@ -1093,15 +1101,17 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       final overBin = ref.read(isDraggingOverBinProvider);
       if (_groupDragMoved && dragMap != null) {
         if (overBin) {
-          for (final id in dragMap.keys) {
-            repo.binClip(id);
-          }
+          await Future.wait([for (final id in dragMap.keys) repo.binClip(id)]);
+          if (!mounted) return;
           ref.read(selectedClipIdsProvider.notifier).state = {};
         } else {
           final frames = ref.read(boardFramesProvider).valueOrNull ?? [];
           final clipsNow = ref.read(activeClipsProvider).valueOrNull ?? [];
+          final writes = <Future<void>>[];
           for (final entry in dragMap.entries) {
-            repo.updateTransform(entry.key, x: entry.value.x, y: entry.value.y);
+            writes.add(
+              repo.updateTransform(entry.key, x: entry.value.x, y: entry.value.y),
+            );
 
             // Miro-style frame containment: whichever frame now contains
             // this clip's center becomes its parent (moving with the frame
@@ -1116,9 +1126,11 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
               entry.key,
             )?.frameId;
             if (containingFrame?.id != currentFrameId) {
-              repo.setFrameId(entry.key, containingFrame?.id);
+              writes.add(repo.setFrameId(entry.key, containingFrame?.id));
             }
           }
+          await Future.wait(writes);
+          if (!mounted) return;
         }
       } else if (!_groupDragMoved && _pendingCollapseId != null) {
         ref.read(selectedClipIdsProvider.notifier).state = {
@@ -1162,7 +1174,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     if (_frameDragId != null) {
       final rect = ref.read(frameDragRectProvider);
       if (rect != null) {
-        ref
+        await ref
             .read(framesRepositoryProvider)
             .updateTransform(
               _frameDragId!,
@@ -1171,32 +1183,35 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
               width: rect.width,
               height: rect.height,
             );
+        if (!mounted) return;
       }
       if (_frameChildStartPositions != null) {
         final dragMap = ref.read(groupDragProvider);
         if (dragMap != null) {
-          for (final entry in dragMap.entries) {
-            if (_frameChildStartPositions!.containsKey(entry.key)) {
-              repo.updateTransform(entry.key, x: entry.value.x, y: entry.value.y);
-            }
-          }
+          await Future.wait([
+            for (final entry in dragMap.entries)
+              if (_frameChildStartPositions!.containsKey(entry.key))
+                repo.updateTransform(entry.key, x: entry.value.x, y: entry.value.y),
+          ]);
+          if (!mounted) return;
         }
         ref.read(groupDragProvider.notifier).state = null;
       }
       if (_frameResizeChildStart != null) {
         final dragMap = ref.read(groupDragProvider);
         if (dragMap != null) {
-          for (final entry in dragMap.entries) {
-            if (_frameResizeChildStart!.containsKey(entry.key)) {
-              repo.updateTransform(
-                entry.key,
-                x: entry.value.x,
-                y: entry.value.y,
-                width: entry.value.width,
-                height: entry.value.height,
-              );
-            }
-          }
+          await Future.wait([
+            for (final entry in dragMap.entries)
+              if (_frameResizeChildStart!.containsKey(entry.key))
+                repo.updateTransform(
+                  entry.key,
+                  x: entry.value.x,
+                  y: entry.value.y,
+                  width: entry.value.width,
+                  height: entry.value.height,
+                ),
+          ]);
+          if (!mounted) return;
         }
         ref.read(groupDragProvider.notifier).state = null;
       }
