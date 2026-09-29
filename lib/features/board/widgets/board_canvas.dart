@@ -156,6 +156,11 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
   Offset? _arrangeStartCorner;
   List<BoardClip>? _arrangeImages;
 
+  // Debug diagnostic (see _handleDropOver/_handlePerformDrop): the last
+  // drag session whose platform formats were already logged, so a
+  // repeated hover tick over the same drag doesn't spam the console.
+  Object? _lastLoggedDropSession;
+
   Size _canvasSize = Size.zero;
 
   // Space-tap-to-focus: distinguishes a plain tap (fit the viewport to the
@@ -970,7 +975,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     }
   }
 
-  void _handlePointerUp(PointerUpEvent event) {
+  Future<void> _handlePointerUp(PointerUpEvent event) async {
     if (ref.read(isDrawModeProvider)) {
       _handleDrawPointerUp(event);
       return;
@@ -1056,17 +1061,24 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     if (_arrangeAnchor != null) {
       final dragMap = ref.read(groupDragProvider);
       if (dragMap != null) {
-        for (final entry in dragMap.entries) {
-          repo.updateTransform(
-            entry.key,
-            x: entry.value.x,
-            y: entry.value.y,
-            width: entry.value.width,
-            height: entry.value.height,
-            rotation: 0,
-          );
-        }
+        // Awaited so the live preview (still showing these exact final
+        // values) isn't cleared until the write is actually committed -
+        // clearing it first left a gap where activeClipsProvider's stream
+        // hadn't caught up yet, flashing the stale pre-drag layout for a
+        // few frames before snapping to the real final state.
+        await Future.wait([
+          for (final entry in dragMap.entries)
+            repo.updateTransform(
+              entry.key,
+              x: entry.value.x,
+              y: entry.value.y,
+              width: entry.value.width,
+              height: entry.value.height,
+              rotation: 0,
+            ),
+        ]);
       }
+      if (!mounted) return;
       ref.read(groupDragProvider.notifier).state = null;
       ref.read(arrangeDragRectProvider.notifier).state = null;
       _arrangeAnchor = null;
@@ -1535,6 +1547,18 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
   /// `dataReader` is "gradually populated" on desktop per super_clipboard's
   /// own docs, so this re-checks on every hover tick rather than only once.
   DropOperation _handleDropOver(DropOverEvent event) {
+    // Temporary diagnostic: logs once per drag session (not every hover
+    // tick) so we can see exactly which platform formats Windows/the
+    // browser is actually offering, even if the drop never ends up being
+    // accepted at all.
+    if (!identical(event.session, _lastLoggedDropSession)) {
+      _lastLoggedDropSession = event.session;
+      for (final item in event.session.items) {
+        debugPrint(
+          'Drag hover - item formats: ${item.dataReader?.platformFormats}',
+        );
+      }
+    }
     for (final item in event.session.items) {
       final reader = item.dataReader;
       if (reader == null) continue;
@@ -1567,6 +1591,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     for (final item in event.session.items) {
       final reader = item.dataReader;
       if (reader == null) continue;
+      debugPrint('Drop performed - item formats: ${reader.platformFormats}');
 
       Uint8List? bytes;
       var extension = '.png';
@@ -1617,6 +1642,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     final selectedFrameId = ref.watch(selectedFrameIdProvider);
     final frameDragRect = ref.watch(frameDragRectProvider);
     final framesPanelOpen = ref.watch(framesPanelOpenProvider);
+    final arrangeDragRect = ref.watch(arrangeDragRectProvider);
 
     final clips = clipsAsync.valueOrNull ?? [];
     final sorted = [...clips]..sort((a, b) => a.zIndex.compareTo(b.zIndex));
@@ -1675,6 +1701,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
                           view,
                           strokesByClip[clip.id] ?? const [],
                           panZoomLive?.clipId == clip.id ? panZoomLive : null,
+                          arrangeDragRect != null,
                         ),
                       const Positioned.fill(child: DrawingOverlay()),
                       if (defineFrameRect != null) const DefineFrameOverlay(),
@@ -1739,6 +1766,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     BoardViewState view,
     List<Stroke> strokes,
     ImagePanZoomLive? panZoomLive,
+    bool arranging,
   ) {
     final drag = dragging?[clip.id];
     final x = drag?.x ?? clip.x;
@@ -1750,50 +1778,73 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     final boxWidth = width * view.scale;
     final boxHeight = height * view.scale;
 
+    final child = IgnorePointer(
+      child: Transform.rotate(
+        angle: rotation,
+        alignment: Alignment.center,
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: ClipWidget(
+                clip: clip,
+                selected: selection.contains(clip.id),
+                panZoomLive: panZoomLive,
+              ),
+            ),
+            if (strokes.isNotEmpty)
+              Positioned.fill(
+                child: CustomPaint(
+                  painter: StrokePainter([
+                    for (final stroke in strokes)
+                      StrokeSpec(
+                        points: stroke.points
+                            .map(
+                              (p) => Offset(
+                                p.dx * boxWidth,
+                                p.dy * boxHeight,
+                              ),
+                            )
+                            .toList(),
+                        color: hexToColor(stroke.colorHex),
+                        width: stroke.strokeWidth * view.scale,
+                        dashed: stroke.dashed,
+                        arrowEnd: stroke.arrowEnd,
+                      ),
+                  ]),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+
+    // Arrange repacks the selection into a justified grid on every pointer
+    // move, which can discontinuously jump a clip between rows as the
+    // target width crosses a row-break threshold (see JustifiedLayout).
+    // Animating just the clips actively being arranged turns that pop into
+    // a smooth slide; every other gesture (plain drag, resize, frame-drag,
+    // ...) keeps a zero-lag plain Positioned - direct manipulation should
+    // never lag behind the cursor.
+    if (arranging && drag != null) {
+      return AnimatedPositioned(
+        key: ValueKey(clip.id),
+        duration: const Duration(milliseconds: 120),
+        curve: Curves.easeOut,
+        left: topLeft.dx,
+        top: topLeft.dy,
+        width: boxWidth,
+        height: boxHeight,
+        child: child,
+      );
+    }
+
     return Positioned(
+      key: ValueKey(clip.id),
       left: topLeft.dx,
       top: topLeft.dy,
       width: boxWidth,
       height: boxHeight,
-      child: IgnorePointer(
-        child: Transform.rotate(
-          angle: rotation,
-          alignment: Alignment.center,
-          child: Stack(
-            children: [
-              Positioned.fill(
-                child: ClipWidget(
-                  clip: clip,
-                  selected: selection.contains(clip.id),
-                  panZoomLive: panZoomLive,
-                ),
-              ),
-              if (strokes.isNotEmpty)
-                Positioned.fill(
-                  child: CustomPaint(
-                    painter: StrokePainter([
-                      for (final stroke in strokes)
-                        StrokeSpec(
-                          points: stroke.points
-                              .map(
-                                (p) => Offset(
-                                  p.dx * boxWidth,
-                                  p.dy * boxHeight,
-                                ),
-                              )
-                              .toList(),
-                          color: hexToColor(stroke.colorHex),
-                          width: stroke.strokeWidth * view.scale,
-                          dashed: stroke.dashed,
-                          arrowEnd: stroke.arrowEnd,
-                        ),
-                    ]),
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ),
+      child: child,
     );
   }
 }
