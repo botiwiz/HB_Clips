@@ -1833,13 +1833,13 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       ),
     );
 
-    // Arrange repacks the selection into a justified grid on every pointer
-    // move, which can discontinuously jump a clip between rows as the
-    // target width crosses a row-break threshold (see JustifiedLayout).
-    // Animating just the clips actively being arranged turns that pop into
-    // a smooth slide; every other gesture (plain drag, resize, frame-drag,
-    // ...) keeps a zero-lag plain Positioned - direct manipulation should
-    // never lag behind the cursor.
+    // Arrange repacks the selection into a masonry grid on every pointer
+    // move, which can discontinuously reassign a clip to a different
+    // column (and resize others) as the target rect changes (see
+    // MasonryLayout). Animating just the clips actively being arranged
+    // turns that pop into a smooth slide; every other gesture (plain drag,
+    // resize, frame-drag, ...) keeps a zero-lag plain Positioned - direct
+    // manipulation should never lag behind the cursor.
     if (arranging && drag != null) {
       return AnimatedPositioned(
         key: ValueKey(clip.id),

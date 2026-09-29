@@ -76,7 +76,7 @@ void main() {
       );
     });
 
-    test('a wider target rect still packs with no gaps/overflow (delegates to JustifiedLayout)', () {
+    test('a wider target rect still packs with no gaps/overflow (delegates to MasonryLayout)', () {
       final selected = [
         _clip(id: 'a', type: ClipType.image, x: 0, y: 0, width: 100, height: 100),
         _clip(id: 'b', type: ClipType.image, x: 0, y: 0, width: 100, height: 100),

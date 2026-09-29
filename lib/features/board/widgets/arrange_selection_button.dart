@@ -5,7 +5,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../data/models/clip.dart';
 import '../../../data/providers.dart';
 import '../controllers/board_controller.dart';
-import '../geometry/justified_layout.dart';
+import '../geometry/masonry_layout.dart';
 import '../geometry/selection_geometry.dart';
 
 /// A small circular handle at the top-right corner of a multi-selection's
@@ -15,12 +15,13 @@ import '../geometry/selection_geometry.dart';
 /// happens in `board_canvas.dart`'s Listener, same architecture as every
 /// other draggable handle on this board. A plain click with no movement
 /// reproduces the original one-shot behavior: repacks every selected
-/// *image* clip into a justified/masonry grid that fills the selection's
-/// current bounding-box width, each row's height computed automatically so
-/// images fit together with no gaps or letterboxing while keeping their own
-/// aspect ratio - see `JustifiedLayout`. Text notes in the same selection
-/// are left untouched (resizing a note's box doesn't rescale its font, so
-/// shrinking it could clip text or leave dead space).
+/// *image* clip into a masonry grid that fills the selection's current
+/// bounding-box width, each image's own height following its own aspect
+/// ratio at the shared column width - no gaps, no distortion, and no
+/// single sparse image forced to stretch across the whole width alone -
+/// see `MasonryLayout`. Text notes in the same selection are left untouched
+/// (resizing a note's box doesn't rescale its font, so shrinking it could
+/// clip text or leave dead space).
 class ArrangeSelectionButton extends ConsumerWidget {
   const ArrangeSelectionButton({super.key});
 
@@ -44,7 +45,7 @@ class ArrangeSelectionButton extends ConsumerWidget {
   }
 
   /// Sorts [selected]'s image clips (top-to-bottom, then left-to-right) and
-  /// packs them into [targetRect] via [JustifiedLayout]. Returns null if
+  /// packs them into [targetRect] via [MasonryLayout]. Returns null if
   /// fewer than 2 images are in the selection - nothing to arrange. A pure
   /// function so live preview (every pointer-move) and the final commit
   /// (pointer-up) are guaranteed to agree - there is exactly one packing
@@ -60,7 +61,7 @@ class ArrangeSelectionButton extends ConsumerWidget {
     });
     if (images.length < 2) return null;
 
-    final rects = JustifiedLayout.pack(
+    final rects = MasonryLayout.pack(
       aspectRatios: [for (final c in images) c.width / c.height],
       containerWidth: targetRect.width,
       targetTotalHeight: targetRect.height,
