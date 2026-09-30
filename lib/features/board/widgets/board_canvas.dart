@@ -10,6 +10,7 @@ import '../../../core/constants.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../data/local/database.dart' show FrameRow;
 import '../../../data/models/clip.dart';
+import '../../../data/models/connector.dart';
 import '../../../data/models/stroke.dart';
 import '../../../data/providers.dart';
 import '../../annotation/controllers/annotation_controller.dart';
@@ -17,6 +18,7 @@ import '../../annotation/drawing_overlay.dart';
 import '../../annotation/geometry/eraser_geometry.dart';
 import '../../annotation/stroke_painter.dart';
 import '../controllers/board_controller.dart';
+import '../geometry/connector_geometry.dart';
 import '../geometry/frame_geometry.dart';
 import '../geometry/image_pan_zoom_geometry.dart';
 import '../geometry/selection_geometry.dart';
@@ -31,6 +33,9 @@ import 'bin_drop_target.dart';
 import 'board_minimap.dart';
 import 'clip_style_popover.dart';
 import 'clip_widget.dart';
+import 'connector_draft_overlay.dart';
+import 'connector_handles.dart';
+import 'connectors_overlay.dart';
 import 'define_frame_overlay.dart';
 import 'dot_grid_background.dart';
 import 'frame_widget.dart';
@@ -167,6 +172,15 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
   Offset? _arrangeStartCorner;
   List<BoardClip>? _arrangeImages;
 
+  // Connector-drag (text-clip edge handle -> image clip): started only
+  // when the sole selected clip is a text clip and pointer-down hits one
+  // of its 4 edge-midpoint handles (ConnectorGeometry.hitTestHandle). Live
+  // preview is entirely provider-driven (connectorDraftProvider) - no
+  // local Offset field needed since pointer-move just overwrites the
+  // provider's state.
+  String? _connectorFromClipId;
+  ConnectorSide? _connectorFromSide;
+
   // Debug diagnostic (see _handleDropOver/_handlePerformDrop): the last
   // drag session whose platform formats were already logged, so a
   // repeated hover tick over the same drag doesn't spam the console.
@@ -301,6 +315,8 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     _arrangeAnchor = null;
     _arrangeStartCorner = null;
     _arrangeImages = null;
+    _connectorFromClipId = null;
+    _connectorFromSide = null;
     _panZoomDragClip = null;
     _panZoomDragStartPan = null;
     _panZoomGestureStartBoard = null;
@@ -316,6 +332,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     ref.read(defineFrameRectProvider.notifier).state = null;
     ref.read(snapGuidesProvider.notifier).state = (x: null, y: null);
     ref.read(textToolDragRectProvider.notifier).state = null;
+    ref.read(connectorDraftProvider.notifier).state = null;
   }
 
   /// Updates [snapGuidesProvider] only when it actually changed, avoiding a
@@ -565,6 +582,32 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       }
     }
 
+    // 1.2. A connector-drag handle at one of the sole selected clip's 4
+    // edge midpoints - offered only for a text clip, checked after step
+    // 1's resize/rotate hit-test has already missed (so the rotate handle,
+    // which can sit close to the top-edge midpoint on small/rotated
+    // clips, still wins when the pointer is nearer to it).
+    if (selection.length == 1) {
+      final selectedClip = ClipGeometry.findById(clips, selection.first);
+      if (selectedClip != null && selectedClip.type == ClipType.text) {
+        final side = ConnectorGeometry.hitTestHandle(
+          selectedClip,
+          view,
+          event.localPosition,
+        );
+        if (side != null) {
+          _connectorFromClipId = selectedClip.id;
+          _connectorFromSide = side;
+          ref.read(connectorDraftProvider.notifier).state = ConnectorDraft(
+            fromClipId: selectedClip.id,
+            fromSide: side,
+            cursorBoard: boardPos,
+          );
+          return;
+        }
+      }
+    }
+
     // 1.5. A handle on a multi-clip selection's bounding box (group scale)
     // - only offered when every selected clip is currently unrotated (see
     // GroupScaleHandles's doc comment for why).
@@ -769,6 +812,15 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     }
     final view = ref.read(boardViewProvider);
     final boardPos = _screenToBoard(event.localPosition, view);
+
+    if (_connectorFromClipId != null && _connectorFromSide != null) {
+      ref.read(connectorDraftProvider.notifier).state = ConnectorDraft(
+        fromClipId: _connectorFromClipId!,
+        fromSide: _connectorFromSide!,
+        cursorBoard: boardPos,
+      );
+      return;
+    }
 
     if (_defineFrameClip != null && _defineFrameStartBoard != null) {
       ref.read(defineFrameRectProvider.notifier).state = Rect.fromPoints(
@@ -1109,6 +1161,31 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       return;
     }
     final repo = ref.read(clipsRepositoryProvider);
+
+    if (_connectorFromClipId != null && _connectorFromSide != null) {
+      final view = ref.read(boardViewProvider);
+      final boardPos = _screenToBoard(event.localPosition, view);
+      final clipsNow = ref.read(activeClipsProvider).valueOrNull ?? [];
+      final target = _hitTestClip(clipsNow, boardPos);
+      if (target != null &&
+          target.type == ClipType.image &&
+          target.id != _connectorFromClipId) {
+        await ref
+            .read(connectorsRepositoryProvider)
+            .addConnector(
+              id: _uuid.v4(),
+              boardId: ref.read(currentBoardIdProvider),
+              fromClipId: _connectorFromClipId!,
+              fromSide: _connectorFromSide!,
+              toClipId: target.id,
+            );
+      }
+      if (!mounted) return;
+      ref.read(connectorDraftProvider.notifier).state = null;
+      _connectorFromClipId = null;
+      _connectorFromSide = null;
+      return;
+    }
 
     if (_defineFrameClip != null) {
       final rect = ref.read(defineFrameRectProvider);
@@ -1845,6 +1922,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     final panZoomLive = ref.watch(panZoomLiveProvider);
     final defineFrameRect = ref.watch(defineFrameRectProvider);
     final textToolDragRect = ref.watch(textToolDragRectProvider);
+    final connectorDraft = ref.watch(connectorDraftProvider);
     final frames = ref.watch(boardFramesProvider).valueOrNull ?? [];
     final selectedFrameId = ref.watch(selectedFrameIdProvider);
     final frameDragRect = ref.watch(frameDragRectProvider);
@@ -1902,6 +1980,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
                           frame.id == selectedFrameId,
                           view,
                         ),
+                      const Positioned.fill(child: ConnectorsOverlay()),
                       for (final clip in sorted)
                         _positionedClip(
                           clip,
@@ -1915,6 +1994,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
                       const Positioned.fill(child: DrawingOverlay()),
                       if (defineFrameRect != null) const DefineFrameOverlay(),
                       if (textToolDragRect != null) const TextToolDragOverlay(),
+                      if (connectorDraft != null) const ConnectorDraftOverlay(),
                       const SnapGuidesOverlay(),
                       const TextClipEditOverlay(),
                       if (panZoomClipId == null &&
@@ -1922,6 +2002,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
                           !isTextToolActive) ...[
                         const MarqueeOverlay(),
                         const SelectionHandles(),
+                        const ConnectorHandles(),
                         const GroupScaleHandles(),
                         const ClipStylePopover(),
                         const ArrangeSelectionButton(),
@@ -2002,6 +2083,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
               child: ClipWidget(
                 clip: clip,
                 selected: selection.contains(clip.id),
+                viewScale: view.scale,
                 panZoomLive: panZoomLive,
               ),
             ),

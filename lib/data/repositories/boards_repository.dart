@@ -36,8 +36,9 @@ class BoardsRepository {
     );
   }
 
-  /// Deletes [id] along with every clip on it and their strokes. Throws
-  /// [LastBoardException] instead of deleting the only remaining board.
+  /// Deletes [id] along with every clip on it and their strokes/connectors.
+  /// Throws [LastBoardException] instead of deleting the only remaining
+  /// board.
   Future<void> deleteBoard(String id) async {
     final count = await _db.select(_db.boards).get().then((rows) => rows.length);
     if (count <= 1) throw const LastBoardException();
@@ -54,6 +55,12 @@ class BoardsRepository {
       await (_db.delete(
         _db.strokes,
       )..where((s) => s.boardId.equals(id) & s.clipId.isNull())).go();
+      for (final clipId in clipIds) {
+        await (_db.delete(_db.connectors)..where(
+              (c) => c.fromClipId.equals(clipId) | c.toClipId.equals(clipId),
+            ))
+            .go();
+      }
       await (_db.delete(_db.clips)..where((c) => c.boardId.equals(id))).go();
       await (_db.delete(_db.frames)..where((f) => f.boardId.equals(id))).go();
       await (_db.delete(_db.boards)..where((b) => b.id.equals(id))).go();

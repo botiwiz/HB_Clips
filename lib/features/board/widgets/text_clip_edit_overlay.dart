@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/constants.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../data/models/clip.dart';
 import '../../../data/providers.dart';
@@ -122,9 +123,9 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
               focusNode: _focusNode,
               maxLines: null,
               expands: true,
-              style: const TextStyle(
+              style: TextStyle(
                 color: AppTheme.textNoteText,
-                fontSize: 14,
+                fontSize: kTextNoteFontSize * view.scale,
                 height: 1.3,
               ),
               decoration: const InputDecoration(

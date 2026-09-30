@@ -4,9 +4,11 @@ import '../core/constants.dart';
 import 'local/database.dart';
 import 'local_blob_store.dart';
 import 'models/clip.dart';
+import 'models/connector.dart';
 import 'models/stroke.dart';
 import 'repositories/boards_repository.dart';
 import 'repositories/clips_repository.dart';
+import 'repositories/connectors_repository.dart';
 import 'repositories/frames_repository.dart';
 import 'repositories/strokes_repository.dart';
 
@@ -64,4 +66,13 @@ final framesRepositoryProvider = Provider<FramesRepository>((ref) {
 final boardFramesProvider = StreamProvider<List<FrameRow>>((ref) {
   final boardId = ref.watch(currentBoardIdProvider);
   return ref.watch(framesRepositoryProvider).watchFrames(boardId);
+});
+
+final connectorsRepositoryProvider = Provider<ConnectorsRepository>((ref) {
+  return ConnectorsRepository(ref.watch(databaseProvider));
+});
+
+final activeConnectorsProvider = StreamProvider<List<Connector>>((ref) {
+  final boardId = ref.watch(currentBoardIdProvider);
+  return ref.watch(connectorsRepositoryProvider).watchConnectors(boardId);
 });

@@ -2961,6 +2961,566 @@ class FramesCompanion extends UpdateCompanion<FrameRow> {
   }
 }
 
+class $ConnectorsTable extends Connectors
+    with TableInfo<$ConnectorsTable, ConnectorRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $ConnectorsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _boardIdMeta = const VerificationMeta(
+    'boardId',
+  );
+  @override
+  late final GeneratedColumn<String> boardId = GeneratedColumn<String>(
+    'board_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _fromClipIdMeta = const VerificationMeta(
+    'fromClipId',
+  );
+  @override
+  late final GeneratedColumn<String> fromClipId = GeneratedColumn<String>(
+    'from_clip_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _fromSideMeta = const VerificationMeta(
+    'fromSide',
+  );
+  @override
+  late final GeneratedColumn<String> fromSide = GeneratedColumn<String>(
+    'from_side',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _toClipIdMeta = const VerificationMeta(
+    'toClipId',
+  );
+  @override
+  late final GeneratedColumn<String> toClipId = GeneratedColumn<String>(
+    'to_clip_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _colorMeta = const VerificationMeta('color');
+  @override
+  late final GeneratedColumn<String> color = GeneratedColumn<String>(
+    'color',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('#9B9BA1'),
+  );
+  static const VerificationMeta _strokeWidthMeta = const VerificationMeta(
+    'strokeWidth',
+  );
+  @override
+  late final GeneratedColumn<double> strokeWidth = GeneratedColumn<double>(
+    'stroke_width',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(2),
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    boardId,
+    fromClipId,
+    fromSide,
+    toClipId,
+    color,
+    strokeWidth,
+    createdAt,
+    updatedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'connectors';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<ConnectorRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('board_id')) {
+      context.handle(
+        _boardIdMeta,
+        boardId.isAcceptableOrUnknown(data['board_id']!, _boardIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_boardIdMeta);
+    }
+    if (data.containsKey('from_clip_id')) {
+      context.handle(
+        _fromClipIdMeta,
+        fromClipId.isAcceptableOrUnknown(
+          data['from_clip_id']!,
+          _fromClipIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_fromClipIdMeta);
+    }
+    if (data.containsKey('from_side')) {
+      context.handle(
+        _fromSideMeta,
+        fromSide.isAcceptableOrUnknown(data['from_side']!, _fromSideMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_fromSideMeta);
+    }
+    if (data.containsKey('to_clip_id')) {
+      context.handle(
+        _toClipIdMeta,
+        toClipId.isAcceptableOrUnknown(data['to_clip_id']!, _toClipIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_toClipIdMeta);
+    }
+    if (data.containsKey('color')) {
+      context.handle(
+        _colorMeta,
+        color.isAcceptableOrUnknown(data['color']!, _colorMeta),
+      );
+    }
+    if (data.containsKey('stroke_width')) {
+      context.handle(
+        _strokeWidthMeta,
+        strokeWidth.isAcceptableOrUnknown(
+          data['stroke_width']!,
+          _strokeWidthMeta,
+        ),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  ConnectorRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return ConnectorRow(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      boardId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}board_id'],
+      )!,
+      fromClipId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}from_clip_id'],
+      )!,
+      fromSide: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}from_side'],
+      )!,
+      toClipId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}to_clip_id'],
+      )!,
+      color: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}color'],
+      )!,
+      strokeWidth: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}stroke_width'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+    );
+  }
+
+  @override
+  $ConnectorsTable createAlias(String alias) {
+    return $ConnectorsTable(attachedDatabase, alias);
+  }
+}
+
+class ConnectorRow extends DataClass implements Insertable<ConnectorRow> {
+  final String id;
+  final String boardId;
+  final String fromClipId;
+  final String fromSide;
+  final String toClipId;
+  final String color;
+  final double strokeWidth;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  const ConnectorRow({
+    required this.id,
+    required this.boardId,
+    required this.fromClipId,
+    required this.fromSide,
+    required this.toClipId,
+    required this.color,
+    required this.strokeWidth,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['board_id'] = Variable<String>(boardId);
+    map['from_clip_id'] = Variable<String>(fromClipId);
+    map['from_side'] = Variable<String>(fromSide);
+    map['to_clip_id'] = Variable<String>(toClipId);
+    map['color'] = Variable<String>(color);
+    map['stroke_width'] = Variable<double>(strokeWidth);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    return map;
+  }
+
+  ConnectorsCompanion toCompanion(bool nullToAbsent) {
+    return ConnectorsCompanion(
+      id: Value(id),
+      boardId: Value(boardId),
+      fromClipId: Value(fromClipId),
+      fromSide: Value(fromSide),
+      toClipId: Value(toClipId),
+      color: Value(color),
+      strokeWidth: Value(strokeWidth),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory ConnectorRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return ConnectorRow(
+      id: serializer.fromJson<String>(json['id']),
+      boardId: serializer.fromJson<String>(json['boardId']),
+      fromClipId: serializer.fromJson<String>(json['fromClipId']),
+      fromSide: serializer.fromJson<String>(json['fromSide']),
+      toClipId: serializer.fromJson<String>(json['toClipId']),
+      color: serializer.fromJson<String>(json['color']),
+      strokeWidth: serializer.fromJson<double>(json['strokeWidth']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'boardId': serializer.toJson<String>(boardId),
+      'fromClipId': serializer.toJson<String>(fromClipId),
+      'fromSide': serializer.toJson<String>(fromSide),
+      'toClipId': serializer.toJson<String>(toClipId),
+      'color': serializer.toJson<String>(color),
+      'strokeWidth': serializer.toJson<double>(strokeWidth),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+    };
+  }
+
+  ConnectorRow copyWith({
+    String? id,
+    String? boardId,
+    String? fromClipId,
+    String? fromSide,
+    String? toClipId,
+    String? color,
+    double? strokeWidth,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+  }) => ConnectorRow(
+    id: id ?? this.id,
+    boardId: boardId ?? this.boardId,
+    fromClipId: fromClipId ?? this.fromClipId,
+    fromSide: fromSide ?? this.fromSide,
+    toClipId: toClipId ?? this.toClipId,
+    color: color ?? this.color,
+    strokeWidth: strokeWidth ?? this.strokeWidth,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+  ConnectorRow copyWithCompanion(ConnectorsCompanion data) {
+    return ConnectorRow(
+      id: data.id.present ? data.id.value : this.id,
+      boardId: data.boardId.present ? data.boardId.value : this.boardId,
+      fromClipId: data.fromClipId.present
+          ? data.fromClipId.value
+          : this.fromClipId,
+      fromSide: data.fromSide.present ? data.fromSide.value : this.fromSide,
+      toClipId: data.toClipId.present ? data.toClipId.value : this.toClipId,
+      color: data.color.present ? data.color.value : this.color,
+      strokeWidth: data.strokeWidth.present
+          ? data.strokeWidth.value
+          : this.strokeWidth,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ConnectorRow(')
+          ..write('id: $id, ')
+          ..write('boardId: $boardId, ')
+          ..write('fromClipId: $fromClipId, ')
+          ..write('fromSide: $fromSide, ')
+          ..write('toClipId: $toClipId, ')
+          ..write('color: $color, ')
+          ..write('strokeWidth: $strokeWidth, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    boardId,
+    fromClipId,
+    fromSide,
+    toClipId,
+    color,
+    strokeWidth,
+    createdAt,
+    updatedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is ConnectorRow &&
+          other.id == this.id &&
+          other.boardId == this.boardId &&
+          other.fromClipId == this.fromClipId &&
+          other.fromSide == this.fromSide &&
+          other.toClipId == this.toClipId &&
+          other.color == this.color &&
+          other.strokeWidth == this.strokeWidth &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt);
+}
+
+class ConnectorsCompanion extends UpdateCompanion<ConnectorRow> {
+  final Value<String> id;
+  final Value<String> boardId;
+  final Value<String> fromClipId;
+  final Value<String> fromSide;
+  final Value<String> toClipId;
+  final Value<String> color;
+  final Value<double> strokeWidth;
+  final Value<DateTime> createdAt;
+  final Value<DateTime> updatedAt;
+  final Value<int> rowid;
+  const ConnectorsCompanion({
+    this.id = const Value.absent(),
+    this.boardId = const Value.absent(),
+    this.fromClipId = const Value.absent(),
+    this.fromSide = const Value.absent(),
+    this.toClipId = const Value.absent(),
+    this.color = const Value.absent(),
+    this.strokeWidth = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  ConnectorsCompanion.insert({
+    required String id,
+    required String boardId,
+    required String fromClipId,
+    required String fromSide,
+    required String toClipId,
+    this.color = const Value.absent(),
+    this.strokeWidth = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       boardId = Value(boardId),
+       fromClipId = Value(fromClipId),
+       fromSide = Value(fromSide),
+       toClipId = Value(toClipId);
+  static Insertable<ConnectorRow> custom({
+    Expression<String>? id,
+    Expression<String>? boardId,
+    Expression<String>? fromClipId,
+    Expression<String>? fromSide,
+    Expression<String>? toClipId,
+    Expression<String>? color,
+    Expression<double>? strokeWidth,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? updatedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (boardId != null) 'board_id': boardId,
+      if (fromClipId != null) 'from_clip_id': fromClipId,
+      if (fromSide != null) 'from_side': fromSide,
+      if (toClipId != null) 'to_clip_id': toClipId,
+      if (color != null) 'color': color,
+      if (strokeWidth != null) 'stroke_width': strokeWidth,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  ConnectorsCompanion copyWith({
+    Value<String>? id,
+    Value<String>? boardId,
+    Value<String>? fromClipId,
+    Value<String>? fromSide,
+    Value<String>? toClipId,
+    Value<String>? color,
+    Value<double>? strokeWidth,
+    Value<DateTime>? createdAt,
+    Value<DateTime>? updatedAt,
+    Value<int>? rowid,
+  }) {
+    return ConnectorsCompanion(
+      id: id ?? this.id,
+      boardId: boardId ?? this.boardId,
+      fromClipId: fromClipId ?? this.fromClipId,
+      fromSide: fromSide ?? this.fromSide,
+      toClipId: toClipId ?? this.toClipId,
+      color: color ?? this.color,
+      strokeWidth: strokeWidth ?? this.strokeWidth,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (boardId.present) {
+      map['board_id'] = Variable<String>(boardId.value);
+    }
+    if (fromClipId.present) {
+      map['from_clip_id'] = Variable<String>(fromClipId.value);
+    }
+    if (fromSide.present) {
+      map['from_side'] = Variable<String>(fromSide.value);
+    }
+    if (toClipId.present) {
+      map['to_clip_id'] = Variable<String>(toClipId.value);
+    }
+    if (color.present) {
+      map['color'] = Variable<String>(color.value);
+    }
+    if (strokeWidth.present) {
+      map['stroke_width'] = Variable<double>(strokeWidth.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ConnectorsCompanion(')
+          ..write('id: $id, ')
+          ..write('boardId: $boardId, ')
+          ..write('fromClipId: $fromClipId, ')
+          ..write('fromSide: $fromSide, ')
+          ..write('toClipId: $toClipId, ')
+          ..write('color: $color, ')
+          ..write('strokeWidth: $strokeWidth, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -2969,6 +3529,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $BoardsTable boards = $BoardsTable(this);
   late final $LocalBlobsTable localBlobs = $LocalBlobsTable(this);
   late final $FramesTable frames = $FramesTable(this);
+  late final $ConnectorsTable connectors = $ConnectorsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -2979,6 +3540,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     boards,
     localBlobs,
     frames,
+    connectors,
   ];
 }
 
@@ -4420,6 +4982,286 @@ typedef $$FramesTableProcessedTableManager =
       FrameRow,
       PrefetchHooks Function()
     >;
+typedef $$ConnectorsTableCreateCompanionBuilder =
+    ConnectorsCompanion Function({
+      required String id,
+      required String boardId,
+      required String fromClipId,
+      required String fromSide,
+      required String toClipId,
+      Value<String> color,
+      Value<double> strokeWidth,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+      Value<int> rowid,
+    });
+typedef $$ConnectorsTableUpdateCompanionBuilder =
+    ConnectorsCompanion Function({
+      Value<String> id,
+      Value<String> boardId,
+      Value<String> fromClipId,
+      Value<String> fromSide,
+      Value<String> toClipId,
+      Value<String> color,
+      Value<double> strokeWidth,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+      Value<int> rowid,
+    });
+
+class $$ConnectorsTableFilterComposer
+    extends Composer<_$AppDatabase, $ConnectorsTable> {
+  $$ConnectorsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get boardId => $composableBuilder(
+    column: $table.boardId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get fromClipId => $composableBuilder(
+    column: $table.fromClipId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get fromSide => $composableBuilder(
+    column: $table.fromSide,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get toClipId => $composableBuilder(
+    column: $table.toClipId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get color => $composableBuilder(
+    column: $table.color,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get strokeWidth => $composableBuilder(
+    column: $table.strokeWidth,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$ConnectorsTableOrderingComposer
+    extends Composer<_$AppDatabase, $ConnectorsTable> {
+  $$ConnectorsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get boardId => $composableBuilder(
+    column: $table.boardId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get fromClipId => $composableBuilder(
+    column: $table.fromClipId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get fromSide => $composableBuilder(
+    column: $table.fromSide,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get toClipId => $composableBuilder(
+    column: $table.toClipId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get color => $composableBuilder(
+    column: $table.color,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get strokeWidth => $composableBuilder(
+    column: $table.strokeWidth,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$ConnectorsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $ConnectorsTable> {
+  $$ConnectorsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get boardId =>
+      $composableBuilder(column: $table.boardId, builder: (column) => column);
+
+  GeneratedColumn<String> get fromClipId => $composableBuilder(
+    column: $table.fromClipId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get fromSide =>
+      $composableBuilder(column: $table.fromSide, builder: (column) => column);
+
+  GeneratedColumn<String> get toClipId =>
+      $composableBuilder(column: $table.toClipId, builder: (column) => column);
+
+  GeneratedColumn<String> get color =>
+      $composableBuilder(column: $table.color, builder: (column) => column);
+
+  GeneratedColumn<double> get strokeWidth => $composableBuilder(
+    column: $table.strokeWidth,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+}
+
+class $$ConnectorsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $ConnectorsTable,
+          ConnectorRow,
+          $$ConnectorsTableFilterComposer,
+          $$ConnectorsTableOrderingComposer,
+          $$ConnectorsTableAnnotationComposer,
+          $$ConnectorsTableCreateCompanionBuilder,
+          $$ConnectorsTableUpdateCompanionBuilder,
+          (
+            ConnectorRow,
+            BaseReferences<_$AppDatabase, $ConnectorsTable, ConnectorRow>,
+          ),
+          ConnectorRow,
+          PrefetchHooks Function()
+        > {
+  $$ConnectorsTableTableManager(_$AppDatabase db, $ConnectorsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$ConnectorsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$ConnectorsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$ConnectorsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> boardId = const Value.absent(),
+                Value<String> fromClipId = const Value.absent(),
+                Value<String> fromSide = const Value.absent(),
+                Value<String> toClipId = const Value.absent(),
+                Value<String> color = const Value.absent(),
+                Value<double> strokeWidth = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => ConnectorsCompanion(
+                id: id,
+                boardId: boardId,
+                fromClipId: fromClipId,
+                fromSide: fromSide,
+                toClipId: toClipId,
+                color: color,
+                strokeWidth: strokeWidth,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String boardId,
+                required String fromClipId,
+                required String fromSide,
+                required String toClipId,
+                Value<String> color = const Value.absent(),
+                Value<double> strokeWidth = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => ConnectorsCompanion.insert(
+                id: id,
+                boardId: boardId,
+                fromClipId: fromClipId,
+                fromSide: fromSide,
+                toClipId: toClipId,
+                color: color,
+                strokeWidth: strokeWidth,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$ConnectorsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $ConnectorsTable,
+      ConnectorRow,
+      $$ConnectorsTableFilterComposer,
+      $$ConnectorsTableOrderingComposer,
+      $$ConnectorsTableAnnotationComposer,
+      $$ConnectorsTableCreateCompanionBuilder,
+      $$ConnectorsTableUpdateCompanionBuilder,
+      (
+        ConnectorRow,
+        BaseReferences<_$AppDatabase, $ConnectorsTable, ConnectorRow>,
+      ),
+      ConnectorRow,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -4434,4 +5276,6 @@ class $AppDatabaseManager {
       $$LocalBlobsTableTableManager(_db, _db.localBlobs);
   $$FramesTableTableManager get frames =>
       $$FramesTableTableManager(_db, _db.frames);
+  $$ConnectorsTableTableManager get connectors =>
+      $$ConnectorsTableTableManager(_db, _db.connectors);
 }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/constants.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../data/models/clip.dart';
 import '../../annotation/stroke_painter.dart';
@@ -22,10 +23,17 @@ class ClipWidget extends StatelessWidget {
   /// position/size), not watched by this widget directly.
   final ImagePanZoomLive? panZoomLive;
 
+  /// Current board-view zoom, so a text clip's font renders at a
+  /// world-space size (`kTextNoteFontSize * viewScale`) like every other
+  /// clip's content, instead of a constant screen size regardless of zoom.
+  /// Unused for image clips.
+  final double viewScale;
+
   const ClipWidget({
     super.key,
     required this.clip,
     required this.selected,
+    required this.viewScale,
     this.panZoomLive,
   });
 
@@ -95,9 +103,9 @@ class ClipWidget extends StatelessWidget {
       padding: const EdgeInsets.all(10),
       child: Text(
         clip.textContent ?? '',
-        style: const TextStyle(
+        style: TextStyle(
           color: AppTheme.textNoteText,
-          fontSize: 14,
+          fontSize: kTextNoteFontSize * viewScale,
           height: 1.3,
         ),
       ),

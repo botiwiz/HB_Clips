@@ -27,3 +27,10 @@ const double kMaxImageZoom = 8.0;
 /// caller (dividing by the current view scale) before comparing against
 /// board-space positions.
 const double kEdgeSnapThresholdPx = 8;
+
+/// Board-space (world) font size for text-note clips, converted to screen
+/// pixels via `* view.scale` at render time - the same "world unit ->
+/// screen pixels" pattern already used for stroke width, so text visually
+/// grows/shrinks with zoom like every other clip's content, instead of
+/// staying a constant screen size.
+const double kTextNoteFontSize = 14;

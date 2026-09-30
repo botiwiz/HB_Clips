@@ -4,13 +4,14 @@ import 'package:drift_flutter/drift_flutter.dart';
 import '../../core/constants.dart';
 import 'tables/boards_table.dart';
 import 'tables/clips_table.dart';
+import 'tables/connectors_table.dart';
 import 'tables/frames_table.dart';
 import 'tables/local_blobs_table.dart';
 import 'tables/strokes_table.dart';
 
 part 'database.g.dart';
 
-@DriftDatabase(tables: [Clips, Strokes, Boards, LocalBlobs, Frames])
+@DriftDatabase(tables: [Clips, Strokes, Boards, LocalBlobs, Frames, Connectors])
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
@@ -18,7 +19,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 13;
+  int get schemaVersion => 14;
 
   Future<void> _seedDefaultBoard(Migrator m) {
     return into(boards).insert(
@@ -80,6 +81,9 @@ class AppDatabase extends _$AppDatabase {
         await m.addColumn(clips, clips.imagePanY);
         await m.addColumn(clips, clips.imageZoom);
         await m.addColumn(clips, clips.imageAspectRatio);
+      }
+      if (from < 14) {
+        await m.createTable(connectors);
       }
     },
   );

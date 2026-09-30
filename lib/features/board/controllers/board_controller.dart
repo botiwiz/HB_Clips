@@ -3,6 +3,8 @@ import 'dart:math' as math;
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../data/models/connector.dart';
+
 /// Camera transform for the infinite board: screenPoint = boardPoint *
 /// scale + panOffset.
 class BoardViewState {
@@ -225,3 +227,24 @@ final textToolDragRectProvider = StateProvider<Rect?>((ref) => null);
 /// for exactly one clip" role [panZoomClipIdProvider] plays for image
 /// pan/zoom.
 final editingTextClipIdProvider = StateProvider<String?>((ref) => null);
+
+/// Snapshot of an in-progress connector drag (started from one of a
+/// selected text clip's 4 edge-midpoint handles, not yet dropped) - null
+/// when no such drag is active. Same ephemeral-preview role
+/// [defineFrameRectProvider]/[arrangeDragRectProvider] play elsewhere:
+/// `board_canvas.dart` updates it every pointer-move, `ConnectorDraftOverlay`
+/// renders a dashed line from the fixed source anchor to [cursorBoard], and
+/// nothing is written to the repository until a valid drop on pointer-up.
+class ConnectorDraft {
+  final String fromClipId;
+  final ConnectorSide fromSide;
+  final Offset cursorBoard;
+
+  const ConnectorDraft({
+    required this.fromClipId,
+    required this.fromSide,
+    required this.cursorBoard,
+  });
+}
+
+final connectorDraftProvider = StateProvider<ConnectorDraft?>((ref) => null);
