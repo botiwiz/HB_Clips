@@ -234,13 +234,6 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
     final boxHeight = clip.height * effectiveScale;
     final locked = clip.sizeLockScale != null;
 
-    // Anchored by `bottom` (distance up from the note's own top edge)
-    // rather than a guessed `top` + assumed toolbar height - the toolbar
-    // then simply grows upward from a fixed point regardless of exactly
-    // how tall its Row renders, so it can never end up overlapping the
-    // note itself.
-    final screenHeight = MediaQuery.sizeOf(context).height;
-
     return Positioned.fill(
       child: Stack(
         children: [
@@ -249,79 +242,72 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
             top: topLeft.dy,
             width: boxWidth,
             height: boxHeight,
-            // The outer Focus unconditionally swallows any key event that
-            // reaches it, so nothing un-matched by the inner
-            // CallbackShortcuts (bare Backspace, Delete, arrow keys,
-            // Ctrl+A, Ctrl+V, ...) can keep bubbling up to
-            // board_screen.dart's ancestor CallbackShortcuts, which binds
-            // Backspace/Delete to binning the current board selection.
-            // EditableText's own internal editing (deleting a character,
-            // moving the cursor, etc.) happens inside the TextField below
-            // this wrapper, so normal typing/editing is unaffected - this
-            // only blocks further upward propagation once the field (and
-            // the inner CallbackShortcuts) have already had their turn.
-            child: Focus(
-              onKeyEvent: (node, event) => KeyEventResult.handled,
-              child: CallbackShortcuts(
-                bindings: {
-                  const SingleActivator(LogicalKeyboardKey.escape):
-                      _commitAndExit,
-                  // Swallows the bare Space key so it doesn't bubble up to
-                  // board_canvas.dart's ancestor Focus (which binds a
-                  // tap-Space-to-fit-viewport-to-selection shortcut) -
-                  // without this, every space typed re-triggered that
-                  // shortcut, since EditableText doesn't claim plain
-                  // printable characters at the raw-key level (it inserts
-                  // them via the platform text-input/IME channel instead).
-                  const SingleActivator(LogicalKeyboardKey.space): () {},
-                  const SingleActivator(
-                    LogicalKeyboardKey.keyB,
-                    control: true,
-                  ): _toggleBold,
-                  const SingleActivator(
-                    LogicalKeyboardKey.keyI,
-                    control: true,
-                  ): _toggleItalic,
-                  const SingleActivator(
-                    LogicalKeyboardKey.keyU,
-                    control: true,
-                  ): _toggleUnderline,
-                  const SingleActivator(
-                    LogicalKeyboardKey.keyS,
-                    control: true,
-                  ): _toggleStrikethrough,
-                },
-                child: Container(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: AppTheme.red, width: 2.5),
-                    color: clip.backgroundColorHex != null
-                        ? hexToColor(clip.backgroundColorHex!)
-                        : AppTheme.textNoteSurface,
-                  ),
-                  clipBehavior: Clip.antiAlias,
-                  child: Padding(
-                    padding: const EdgeInsets.all(10),
-                    child: TextField(
-                      controller: _controller,
-                      focusNode: _focusNode,
-                      maxLines: null,
-                      expands: true,
-                      style: TextStyle(
-                        color: AppTheme.textNoteText,
-                        fontSize:
-                            (clip.fontSize ?? kTextNoteFontSize) *
-                            effectiveScale,
-                        height: 1.3,
-                      ),
-                      decoration: const InputDecoration(
-                        border: InputBorder.none,
-                        isCollapsed: true,
-                      ),
-                      onChanged: (text) => ref
-                          .read(clipsRepositoryProvider)
-                          .updateTextContent(editingId, text),
+            child: CallbackShortcuts(
+              bindings: {
+                const SingleActivator(LogicalKeyboardKey.escape):
+                    _commitAndExit,
+                // Swallows the bare Space key so it doesn't bubble up to
+                // board_canvas.dart's ancestor Focus (which binds a
+                // tap-Space-to-fit-viewport-to-selection shortcut) -
+                // without this, every space typed re-triggered that
+                // shortcut, since EditableText doesn't claim plain
+                // printable characters at the raw-key level (it inserts
+                // them via the platform text-input/IME channel instead).
+                const SingleActivator(LogicalKeyboardKey.space): () {},
+                // Swallows bare Backspace/Delete so they don't bubble up to
+                // board_screen.dart's ancestor CallbackShortcuts (which
+                // bins the whole board selection on those keys) - without
+                // this, backspacing while editing a note also binned
+                // everything on the board. Deletion of the character
+                // itself is unaffected, same as Space's insertion above.
+                const SingleActivator(LogicalKeyboardKey.backspace): () {},
+                const SingleActivator(LogicalKeyboardKey.delete): () {},
+                const SingleActivator(
+                  LogicalKeyboardKey.keyB,
+                  control: true,
+                ): _toggleBold,
+                const SingleActivator(
+                  LogicalKeyboardKey.keyI,
+                  control: true,
+                ): _toggleItalic,
+                const SingleActivator(
+                  LogicalKeyboardKey.keyU,
+                  control: true,
+                ): _toggleUnderline,
+                const SingleActivator(
+                  LogicalKeyboardKey.keyS,
+                  control: true,
+                ): _toggleStrikethrough,
+              },
+              child: Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: AppTheme.red, width: 2.5),
+                  color: clip.backgroundColorHex != null
+                      ? hexToColor(clip.backgroundColorHex!)
+                      : AppTheme.textNoteSurface,
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: Padding(
+                  padding: const EdgeInsets.all(10),
+                  child: TextField(
+                    controller: _controller,
+                    focusNode: _focusNode,
+                    maxLines: null,
+                    expands: true,
+                    style: TextStyle(
+                      color: AppTheme.textNoteText,
+                      fontSize:
+                          (clip.fontSize ?? kTextNoteFontSize) * effectiveScale,
+                      height: 1.3,
                     ),
+                    decoration: const InputDecoration(
+                      border: InputBorder.none,
+                      isCollapsed: true,
+                    ),
+                    onChanged: (text) => ref
+                        .read(clipsRepositoryProvider)
+                        .updateTextContent(editingId, text),
                   ),
                 ),
               ),
@@ -329,76 +315,89 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
           ),
           Positioned(
             left: topLeft.dx,
-            bottom: screenHeight - topLeft.dy + 8,
-            child: Material(
-              color: AppTheme.surfaceElevated,
-              borderRadius: BorderRadius.circular(8),
-              elevation: 6,
-              shadowColor: Colors.black54,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 4),
-                      child: Text(
-                        '${(clip.fontSize ?? kTextNoteFontSize).round()}',
-                        style: const TextStyle(
-                          color: AppTheme.textSecondary,
-                          fontSize: 12,
+            top: topLeft.dy - 8,
+            // FractionalTranslation shifts the toolbar upward by exactly
+            // 100% of its own rendered height, so it grows upward from a
+            // fixed anchor point without ever needing to know or guess
+            // that height in advance - more robust than a guessed pixel
+            // height or a MediaQuery-window-height calculation, and stays
+            // purely in the Stack's own local coordinate space like every
+            // other overlay in this codebase.
+            child: FractionalTranslation(
+              translation: const Offset(0, -1),
+              child: Material(
+                color: AppTheme.surfaceElevated,
+                borderRadius: BorderRadius.circular(8),
+                elevation: 6,
+                shadowColor: Colors.black54,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 4,
+                    vertical: 2,
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                        child: Text(
+                          '${(clip.fontSize ?? kTextNoteFontSize).round()}',
+                          style: const TextStyle(
+                            color: AppTheme.textSecondary,
+                            fontSize: 12,
+                          ),
                         ),
                       ),
-                    ),
-                    Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        _chevron(
-                          Icons.keyboard_arrow_up,
-                          () => _adjustFontSize(clip, _fontSizeStep),
+                      Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _chevron(
+                            Icons.keyboard_arrow_up,
+                            () => _adjustFontSize(clip, _fontSizeStep),
+                          ),
+                          _chevron(
+                            Icons.keyboard_arrow_down,
+                            () => _adjustFontSize(clip, -_fontSizeStep),
+                          ),
+                        ],
+                      ),
+                      _divider(),
+                      _formatButton(
+                        icon: Icons.format_bold,
+                        active: _selectionHasStyle(
+                          _controller?.formatting.bold ?? const [],
                         ),
-                        _chevron(
-                          Icons.keyboard_arrow_down,
-                          () => _adjustFontSize(clip, -_fontSizeStep),
+                        onPressed: _toggleBold,
+                      ),
+                      _formatButton(
+                        icon: Icons.format_italic,
+                        active: _selectionHasStyle(
+                          _controller?.formatting.italic ?? const [],
                         ),
-                      ],
-                    ),
-                    _divider(),
-                    _formatButton(
-                      icon: Icons.format_bold,
-                      active: _selectionHasStyle(
-                        _controller?.formatting.bold ?? const [],
+                        onPressed: _toggleItalic,
                       ),
-                      onPressed: _toggleBold,
-                    ),
-                    _formatButton(
-                      icon: Icons.format_italic,
-                      active: _selectionHasStyle(
-                        _controller?.formatting.italic ?? const [],
+                      _formatButton(
+                        icon: Icons.format_underlined,
+                        active: _selectionHasStyle(
+                          _controller?.formatting.underline ?? const [],
+                        ),
+                        onPressed: _toggleUnderline,
                       ),
-                      onPressed: _toggleItalic,
-                    ),
-                    _formatButton(
-                      icon: Icons.format_underlined,
-                      active: _selectionHasStyle(
-                        _controller?.formatting.underline ?? const [],
+                      _formatButton(
+                        icon: Icons.format_strikethrough,
+                        active: _selectionHasStyle(
+                          _controller?.formatting.strikethrough ?? const [],
+                        ),
+                        onPressed: _toggleStrikethrough,
                       ),
-                      onPressed: _toggleUnderline,
-                    ),
-                    _formatButton(
-                      icon: Icons.format_strikethrough,
-                      active: _selectionHasStyle(
-                        _controller?.formatting.strikethrough ?? const [],
+                      _divider(),
+                      _formatButton(
+                        icon: Icons.push_pin_outlined,
+                        active: locked,
+                        onPressed: () => _toggleSizeLock(clip, view.scale),
                       ),
-                      onPressed: _toggleStrikethrough,
-                    ),
-                    _divider(),
-                    _formatButton(
-                      icon: Icons.push_pin_outlined,
-                      active: locked,
-                      onPressed: () => _toggleSizeLock(clip, view.scale),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -429,12 +428,19 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
     required bool active,
     required VoidCallback onPressed,
   }) {
-    return IconButton(
-      icon: Icon(icon, size: 16),
-      color: active ? AppTheme.red : AppTheme.textPrimary,
-      padding: EdgeInsets.zero,
-      constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-      onPressed: onPressed,
+    return SizedBox(
+      width: 28,
+      height: 28,
+      child: InkWell(
+        onTap: onPressed,
+        child: Center(
+          child: Icon(
+            icon,
+            size: 16,
+            color: active ? AppTheme.red : AppTheme.textPrimary,
+          ),
+        ),
+      ),
     );
   }
 }
