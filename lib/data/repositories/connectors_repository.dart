@@ -23,6 +23,8 @@ class ConnectorsRepository {
     required String fromClipId,
     required ConnectorSide fromSide,
     required String toClipId,
+    double? toRelX,
+    double? toRelY,
   }) {
     return _db.into(_db.connectors).insert(
       ConnectorsCompanion.insert(
@@ -31,6 +33,26 @@ class ConnectorsRepository {
         fromClipId: fromClipId,
         fromSide: fromSide.storageValue,
         toClipId: toClipId,
+        toRelX: Value(toRelX),
+        toRelY: Value(toRelY),
+      ),
+    );
+  }
+
+  /// Repoints an existing connector's target - used when the user drags
+  /// its endpoint handle to reposition it, possibly onto a different clip.
+  Future<void> updateConnectorTarget(
+    String id, {
+    required String toClipId,
+    required double toRelX,
+    required double toRelY,
+  }) {
+    return (_db.update(_db.connectors)..where((c) => c.id.equals(id))).write(
+      ConnectorsCompanion(
+        toClipId: Value(toClipId),
+        toRelX: Value(toRelX),
+        toRelY: Value(toRelY),
+        updatedAt: Value(DateTime.now()),
       ),
     );
   }

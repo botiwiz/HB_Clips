@@ -346,6 +346,17 @@ class BoardScreen extends ConsumerWidget {
   }
 
   void _binSelected(WidgetRef ref) {
+    // A selected connector takes priority over a clip selection - the two
+    // are mutually exclusive per `board_canvas.dart`'s click-to-select
+    // rules, so this is just precedence, not a real conflict. Connectors
+    // have no bin/trash concept (same as strokes) - this is a hard delete.
+    final selectedConnectorId = ref.read(selectedConnectorIdProvider);
+    if (selectedConnectorId != null) {
+      ref.read(connectorsRepositoryProvider).deleteConnector(selectedConnectorId);
+      ref.read(selectedConnectorIdProvider.notifier).state = null;
+      return;
+    }
+
     final selection = ref.read(selectedClipIdsProvider);
     if (selection.isEmpty) return;
     final repo = ref.read(clipsRepositoryProvider);

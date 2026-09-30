@@ -228,23 +228,40 @@ final textToolDragRectProvider = StateProvider<Rect?>((ref) => null);
 /// pan/zoom.
 final editingTextClipIdProvider = StateProvider<String?>((ref) => null);
 
-/// Snapshot of an in-progress connector drag (started from one of a
-/// selected text clip's 4 edge-midpoint handles, not yet dropped) - null
-/// when no such drag is active. Same ephemeral-preview role
-/// [defineFrameRectProvider]/[arrangeDragRectProvider] play elsewhere:
-/// `board_canvas.dart` updates it every pointer-move, `ConnectorDraftOverlay`
-/// renders a dashed line from the fixed source anchor to [cursorBoard], and
-/// nothing is written to the repository until a valid drop on pointer-up.
+/// Snapshot of an in-progress connector drag - null when no such drag is
+/// active. Same ephemeral-preview role [defineFrameRectProvider]/
+/// [arrangeDragRectProvider] play elsewhere: `board_canvas.dart` updates it
+/// every pointer-move, `ConnectorDraftOverlay` renders a dashed line from
+/// the fixed source anchor to [cursorBoard], and nothing is written to the
+/// repository until a valid drop on pointer-up.
+///
+/// [existingConnectorId] is null when this is a brand-new connector being
+/// created (started from one of a selected text clip's 4 edge-midpoint
+/// handles); when non-null, this instead represents dragging an *existing*
+/// connector's endpoint to reposition/retarget it - `fromClipId`/`fromSide`
+/// are copied unchanged from that connector's own source side, and
+/// `ConnectorsOverlay` skips re-drawing the persisted connector while this
+/// draft stands in for it.
 class ConnectorDraft {
   final String fromClipId;
   final ConnectorSide fromSide;
   final Offset cursorBoard;
+  final String? existingConnectorId;
 
   const ConnectorDraft({
     required this.fromClipId,
     required this.fromSide,
     required this.cursorBoard,
+    this.existingConnectorId,
   });
 }
 
 final connectorDraftProvider = StateProvider<ConnectorDraft?>((ref) => null);
+
+/// The connector currently selected by clicking its curve - null when
+/// none is selected. Mutually exclusive with clip/frame selection: picking
+/// a connector clears [selectedClipIdsProvider]/[selectedFrameIdProvider]
+/// and vice versa. Drives the connector's highlighted-red rendering, its
+/// draggable endpoint handle, and Backspace/Delete deleting it instead of
+/// binning a clip selection (see `board_screen.dart`'s `_binSelected`).
+final selectedConnectorIdProvider = StateProvider<String?>((ref) => null);

@@ -5,6 +5,7 @@ import 'package:hb_clips/data/models/clip.dart';
 import 'package:hb_clips/data/models/connector.dart';
 import 'package:hb_clips/features/board/controllers/board_controller.dart';
 import 'package:hb_clips/features/board/geometry/connector_geometry.dart';
+import 'package:hb_clips/features/board/geometry/selection_geometry.dart';
 
 BoardClip _clip({
   String id = 'a',
@@ -182,6 +183,85 @@ void main() {
       );
 
       expect((result.c1 - result.p0).distance, closeTo(120, 1e-9));
+    });
+
+    test('explicit relative target lands at pointFromRelative, not the boundary', () {
+      final fromClip = _clip(id: 'from', x: 0, y: 0, width: 100, height: 60);
+      final toClip = _clip(id: 'to', x: 300, y: 200, width: 100, height: 60);
+      final result = ConnectorGeometry.bezierBoard(
+        fromClip: fromClip,
+        fromSide: ConnectorSide.top,
+        toClip: toClip,
+        toRelX: 0.5,
+        toRelY: 0.5,
+      );
+
+      expect(result.p3, ConnectorGeometry.pointFromRelative(toClip, const Offset(0.5, 0.5)));
+      expect(result.p3, ClipGeometry.clipCenter(toClip));
+    });
+  });
+
+  group('relativePointInClip / pointFromRelative', () {
+    test('round-trips through an unrotated clip', () {
+      final clip = _clip(x: 100, y: 50, width: 200, height: 80);
+      final boardPoint = const Offset(150, 70);
+      final rel = ConnectorGeometry.relativePointInClip(clip, boardPoint);
+      expect(rel.dx, closeTo(0.25, 1e-9));
+      expect(rel.dy, closeTo(0.25, 1e-9));
+      final back = ConnectorGeometry.pointFromRelative(clip, rel);
+      expect(back.dx, closeTo(boardPoint.dx, 1e-9));
+      expect(back.dy, closeTo(boardPoint.dy, 1e-9));
+    });
+
+    test('round-trips through a rotated clip', () {
+      final clip = _clip(x: 0, y: 0, width: 100, height: 100, rotation: math.pi / 2);
+      final boardPoint = const Offset(50, 500);
+      final rel = ConnectorGeometry.relativePointInClip(clip, boardPoint);
+      final back = ConnectorGeometry.pointFromRelative(clip, rel);
+      // relativePointInClip clamps to [0,1], so a point far outside the
+      // rect round-trips only to its clamped boundary projection, not the
+      // original point - assert the clamp landed on the expected edge
+      // instead (matches nearestBoundaryAnchor's own rotated-clip case).
+      expect(back.dx, closeTo(50, 1e-9));
+      expect(back.dy, closeTo(100, 1e-9));
+    });
+
+    test('a point inside the rect round-trips exactly', () {
+      final clip = _clip(x: 0, y: 0, width: 100, height: 100, rotation: math.pi / 2);
+      final center = ClipGeometry.clipCenter(clip);
+      final rel = ConnectorGeometry.relativePointInClip(clip, center);
+      expect(rel.dx, closeTo(0.5, 1e-9));
+      expect(rel.dy, closeTo(0.5, 1e-9));
+    });
+  });
+
+  group('hitTestCurve', () {
+    test('true near the curve\'s midpoint', () {
+      final fromClip = _clip(id: 'from', x: 0, y: 0, width: 100, height: 60);
+      final toClip = _clip(id: 'to', x: 300, y: 0, width: 100, height: 60);
+      final bezier = ConnectorGeometry.bezierBoard(
+        fromClip: fromClip,
+        fromSide: ConnectorSide.right,
+        toClip: toClip,
+      );
+      // t=0.5 of the cubic bezier.
+      final mid =
+          bezier.p0 * 0.125 +
+          bezier.c1 * 0.375 +
+          bezier.c2 * 0.375 +
+          bezier.p3 * 0.125;
+      expect(ConnectorGeometry.hitTestCurve(bezier, mid), isTrue);
+    });
+
+    test('false far from the curve', () {
+      final fromClip = _clip(id: 'from', x: 0, y: 0, width: 100, height: 60);
+      final toClip = _clip(id: 'to', x: 300, y: 0, width: 100, height: 60);
+      final bezier = ConnectorGeometry.bezierBoard(
+        fromClip: fromClip,
+        fromSide: ConnectorSide.right,
+        toClip: toClip,
+      );
+      expect(ConnectorGeometry.hitTestCurve(bezier, const Offset(-1000, -1000)), isFalse);
     });
   });
 }

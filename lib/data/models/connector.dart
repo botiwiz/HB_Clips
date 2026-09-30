@@ -20,14 +20,18 @@ extension ConnectorSideStorage on ConnectorSide {
 }
 
 /// A persisted connector between a text-note clip's fixed edge midpoint
-/// ([fromSide]) and an image clip ([toClipId]) - see the `Connectors`
-/// table's doc comment for why the target side isn't stored.
+/// ([fromSide]) and an image clip ([toClipId]). The target anchor lands at
+/// ([toRelX], [toRelY]) - a fraction (0-1) of the target clip's own
+/// width/height - when both are set; null falls back to the original
+/// nearest-boundary-anchor behavior (see `Connectors` table's doc comment).
 class Connector {
   final String id;
   final String boardId;
   final String fromClipId;
   final ConnectorSide fromSide;
   final String toClipId;
+  final double? toRelX;
+  final double? toRelY;
   final String colorHex;
   final double strokeWidth;
   final DateTime createdAt;
@@ -39,6 +43,8 @@ class Connector {
     required this.fromClipId,
     required this.fromSide,
     required this.toClipId,
+    this.toRelX,
+    this.toRelY,
     required this.colorHex,
     required this.strokeWidth,
     required this.createdAt,
@@ -51,6 +57,8 @@ class Connector {
     fromClipId: row.fromClipId,
     fromSide: ConnectorSideStorage.fromStorage(row.fromSide),
     toClipId: row.toClipId,
+    toRelX: row.toRelX,
+    toRelY: row.toRelY,
     colorHex: row.color,
     strokeWidth: row.strokeWidth,
     createdAt: row.createdAt,

@@ -4,6 +4,7 @@ import 'package:flutter/rendering.dart';
 
 import '../../../data/models/clip.dart';
 import '../../../data/models/connector.dart';
+import '../../annotation/geometry/eraser_geometry.dart';
 import '../controllers/board_controller.dart';
 import 'selection_geometry.dart';
 
@@ -152,23 +153,100 @@ class ConnectorGeometry {
     return ((a - b).distance * 0.5).clamp(_minControlOffset, _maxControlOffset);
   }
 
+  /// [boardPoint] expressed as a fraction (0-1 on each axis, clamped) of
+  /// [clip]'s own width/height, in its local unrotated frame - lets a
+  /// connector's target anchor be stored as "a specific spot on this
+  /// clip's surface" rather than always the nearest boundary point. Same
+  /// un-rotate-into-local-frame technique as [nearestBoundaryAnchor].
+  static Offset relativePointInClip(BoardClip clip, Offset boardPoint) {
+    final center = ClipGeometry.clipCenter(clip);
+    final local = ClipGeometry.rotatePoint(boardPoint, center, -clip.rotation);
+    final relX = clip.width == 0
+        ? 0.0
+        : ((local.dx - clip.x) / clip.width).clamp(0.0, 1.0);
+    final relY = clip.height == 0
+        ? 0.0
+        : ((local.dy - clip.y) / clip.height).clamp(0.0, 1.0);
+    return Offset(relX, relY);
+  }
+
+  /// The inverse of [relativePointInClip]: the board-space point at
+  /// fraction [rel] of [clip]'s width/height.
+  static Offset pointFromRelative(BoardClip clip, Offset rel) {
+    final local = Offset(
+      clip.x + rel.dx * clip.width,
+      clip.y + rel.dy * clip.height,
+    );
+    final center = ClipGeometry.clipCenter(clip);
+    return ClipGeometry.rotatePoint(local, center, clip.rotation);
+  }
+
   /// The 4 board-space points (P0 start anchor, C1, C2, P3 end anchor) of
-  /// a cubic bezier connecting [fromClip]'s fixed [fromSide] to the
-  /// nearest boundary point on [toClip] - control points are pushed out
-  /// along each anchor's own outward normal so the curve reads as a
-  /// smooth "leaving/arriving perpendicular to the box edge" arc,
-  /// Miro-style, rather than a straight line.
+  /// a cubic bezier connecting [fromClip]'s fixed [fromSide] to
+  /// [toClip]. When [toRelX]/[toRelY] are both given, the target anchor is
+  /// that exact surface point ([pointFromRelative]) and its control point
+  /// is aimed back toward the source anchor (no "side" to take an outward
+  /// normal from, since the point can be anywhere inside the box).
+  /// Otherwise the target anchor falls back to the nearest boundary point
+  /// ([nearestBoundaryAnchor]), with the arrival control point pushed out
+  /// along that side's outward normal - today's behavior, unchanged.
+  /// Either way, control points are pushed out along each anchor's own
+  /// direction so the curve reads as a smooth arc, Miro-style, rather than
+  /// a straight line.
   static ({Offset p0, Offset c1, Offset c2, Offset p3}) bezierBoard({
     required BoardClip fromClip,
     required ConnectorSide fromSide,
     required BoardClip toClip,
+    double? toRelX,
+    double? toRelY,
   }) {
     final p0 = sideMidpointBoard(fromClip, fromSide);
-    final target = nearestBoundaryAnchor(toClip, p0);
-    final p3 = target.point;
+
+    final Offset p3;
+    Offset c2Direction;
+    if (toRelX != null && toRelY != null) {
+      p3 = pointFromRelative(toClip, Offset(toRelX, toRelY));
+      final toP0 = p0 - p3;
+      c2Direction = toP0.distance == 0
+          ? const Offset(0, -1)
+          : toP0 / toP0.distance;
+    } else {
+      final target = nearestBoundaryAnchor(toClip, p0);
+      p3 = target.point;
+      c2Direction = outwardNormal(toClip, target.side);
+    }
+
     final offset = _controlOffset(p0, p3);
     final c1 = p0 + outwardNormal(fromClip, fromSide) * offset;
-    final c2 = p3 + outwardNormal(toClip, target.side) * offset;
+    final c2 = p3 + c2Direction * offset;
     return (p0: p0, c1: c1, c2: c2, p3: p3);
+  }
+
+  /// Samples the cubic bezier described by [bezier] into a short polyline
+  /// ([segments] + 1 points, standard cubic Bezier interpolation) and
+  /// checks whether [screenPoint] comes within [ClipGeometry.handleHitRadius]
+  /// of it - reuses `EraserGeometry.strokeNearPoint`'s existing
+  /// point-to-polyline distance check rather than duplicating it.
+  static bool hitTestCurve(
+    ({Offset p0, Offset c1, Offset c2, Offset p3}) bezier,
+    Offset screenPoint, {
+    int segments = 16,
+  }) {
+    final points = <Offset>[];
+    for (var i = 0; i <= segments; i++) {
+      final t = i / segments;
+      final mt = 1 - t;
+      final point =
+          bezier.p0 * (mt * mt * mt) +
+          bezier.c1 * (3 * mt * mt * t) +
+          bezier.c2 * (3 * mt * t * t) +
+          bezier.p3 * (t * t * t);
+      points.add(point);
+    }
+    return EraserGeometry.strokeNearPoint(
+      points,
+      screenPoint,
+      handleHitRadius,
+    );
   }
 }

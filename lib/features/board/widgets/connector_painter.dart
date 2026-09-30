@@ -1,10 +1,10 @@
-import 'dart:math';
-
 import 'package:flutter/rendering.dart';
 
 /// One connector's curve endpoints/controls and style, already converted
 /// by the caller into screen space - the painter itself has no opinion on
-/// coordinate systems (same convention as `StrokeSpec`).
+/// coordinate systems (same convention as `StrokeSpec`). Callers pass the
+/// accent color for [color] when this connector is selected, same
+/// "caller decides color" convention as everywhere else in this file.
 class ConnectorSpec {
   final Offset p0;
   final Offset c1;
@@ -28,6 +28,8 @@ class ConnectorPainter extends CustomPainter {
 
   const ConnectorPainter(this.connectors);
 
+  static const double _endpointRadius = 4;
+
   @override
   void paint(Canvas canvas, Size size) {
     for (final c in connectors) {
@@ -40,25 +42,13 @@ class ConnectorPainter extends CustomPainter {
         ..moveTo(c.p0.dx, c.p0.dy)
         ..cubicTo(c.c1.dx, c.c1.dy, c.c2.dx, c.c2.dy, c.p3.dx, c.p3.dy);
       canvas.drawPath(path, paint);
-      _drawArrowHead(canvas, c, paint);
-    }
-  }
-
-  /// Mirrors `StrokePainter._drawArrowHead`'s technique exactly, but the
-  /// "from" point is the bezier's own last control point - the tangent
-  /// direction at t=1 of a cubic bezier is along p3-c2 - not a polyline's
-  /// second-to-last point.
-  void _drawArrowHead(Canvas canvas, ConnectorSpec c, Paint paint) {
-    final tip = c.p3;
-    final direction = tip - c.c2;
-    if (direction.distance == 0) return;
-    final angle = direction.direction;
-    final headLength = 8.0 + c.width * 2;
-    const spreadAngle = 0.5;
-    for (final sign in [-1, 1]) {
-      final wingAngle = angle + pi + sign * spreadAngle;
-      final wingEnd = tip + Offset.fromDirection(wingAngle, headLength);
-      canvas.drawLine(tip, wingEnd, paint);
+      canvas.drawCircle(
+        c.p3,
+        _endpointRadius,
+        Paint()
+          ..color = c.color
+          ..style = PaintingStyle.fill,
+      );
     }
   }
 

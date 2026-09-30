@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/theme/app_theme.dart';
 import '../../../data/providers.dart';
 import '../../annotation/stroke_painter.dart' show hexToColor;
 import '../controllers/board_controller.dart';
@@ -16,7 +17,10 @@ import 'connector_painter.dart';
 /// overriding with in-progress drag state the same way `SelectionHandles`
 /// does, so a connector visibly follows a clip mid-drag, not just after
 /// the drag commits. Skips (does not render) any connector whose endpoint
-/// clip can't currently be found - e.g. it's been binned.
+/// clip can't currently be found - e.g. it's been binned - or whose id
+/// matches an in-progress endpoint-retarget drag (`ConnectorDraftOverlay`'s
+/// dashed preview stands in for it while that drag is live). The selected
+/// connector (`selectedConnectorIdProvider`) renders in the accent color.
 class ConnectorsOverlay extends ConsumerWidget {
   const ConnectorsOverlay({super.key});
 
@@ -28,12 +32,15 @@ class ConnectorsOverlay extends ConsumerWidget {
     final clips = ref.watch(activeClipsProvider).valueOrNull ?? [];
     final dragging = ref.watch(groupDragProvider);
     final view = ref.watch(boardViewProvider);
+    final retargetingId = ref.watch(connectorDraftProvider)?.existingConnectorId;
+    final selectedId = ref.watch(selectedConnectorIdProvider);
 
     Offset toScreen(Offset boardPoint) =>
         boardPoint * view.scale + view.panOffset;
 
     final specs = <ConnectorSpec>[];
     for (final connector in connectors) {
+      if (connector.id == retargetingId) continue;
       var fromClip = ClipGeometry.findById(clips, connector.fromClipId);
       var toClip = ClipGeometry.findById(clips, connector.toClipId);
       if (fromClip == null || toClip == null) continue;
@@ -63,14 +70,17 @@ class ConnectorsOverlay extends ConsumerWidget {
         fromClip: fromClip,
         fromSide: connector.fromSide,
         toClip: toClip,
+        toRelX: connector.toRelX,
+        toRelY: connector.toRelY,
       );
+      final selected = connector.id == selectedId;
       specs.add(
         ConnectorSpec(
           p0: toScreen(bezier.p0),
           c1: toScreen(bezier.c1),
           c2: toScreen(bezier.c2),
           p3: toScreen(bezier.p3),
-          color: hexToColor(connector.colorHex),
+          color: selected ? AppTheme.red : hexToColor(connector.colorHex),
           width: connector.strokeWidth * view.scale,
         ),
       );

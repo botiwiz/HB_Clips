@@ -3198,6 +3198,24 @@ class $ConnectorsTable extends Connectors
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _toRelXMeta = const VerificationMeta('toRelX');
+  @override
+  late final GeneratedColumn<double> toRelX = GeneratedColumn<double>(
+    'to_rel_x',
+    aliasedName,
+    true,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _toRelYMeta = const VerificationMeta('toRelY');
+  @override
+  late final GeneratedColumn<double> toRelY = GeneratedColumn<double>(
+    'to_rel_y',
+    aliasedName,
+    true,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _colorMeta = const VerificationMeta('color');
   @override
   late final GeneratedColumn<String> color = GeneratedColumn<String>(
@@ -3251,6 +3269,8 @@ class $ConnectorsTable extends Connectors
     fromClipId,
     fromSide,
     toClipId,
+    toRelX,
+    toRelY,
     color,
     strokeWidth,
     createdAt,
@@ -3308,6 +3328,18 @@ class $ConnectorsTable extends Connectors
     } else if (isInserting) {
       context.missing(_toClipIdMeta);
     }
+    if (data.containsKey('to_rel_x')) {
+      context.handle(
+        _toRelXMeta,
+        toRelX.isAcceptableOrUnknown(data['to_rel_x']!, _toRelXMeta),
+      );
+    }
+    if (data.containsKey('to_rel_y')) {
+      context.handle(
+        _toRelYMeta,
+        toRelY.isAcceptableOrUnknown(data['to_rel_y']!, _toRelYMeta),
+      );
+    }
     if (data.containsKey('color')) {
       context.handle(
         _colorMeta,
@@ -3364,6 +3396,14 @@ class $ConnectorsTable extends Connectors
         DriftSqlType.string,
         data['${effectivePrefix}to_clip_id'],
       )!,
+      toRelX: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}to_rel_x'],
+      ),
+      toRelY: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}to_rel_y'],
+      ),
       color: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}color'],
@@ -3395,6 +3435,17 @@ class ConnectorRow extends DataClass implements Insertable<ConnectorRow> {
   final String fromClipId;
   final String fromSide;
   final String toClipId;
+
+  /// The target anchor's position as a fraction (0-1) of [toClipId]'s own
+  /// width/height, in its local unrotated frame - lets a connector land on
+  /// any specific spot on the target's surface, not just its boundary.
+  /// Null (legacy rows, or any row this session's migration didn't touch)
+  /// falls back to the original behavior: the anchor is recomputed live
+  /// every frame as the nearest point on the target clip's (rotated)
+  /// boundary to the source anchor, so it stays correct as either clip
+  /// moves/resizes/rotates without a stale stored value.
+  final double? toRelX;
+  final double? toRelY;
   final String color;
   final double strokeWidth;
   final DateTime createdAt;
@@ -3405,6 +3456,8 @@ class ConnectorRow extends DataClass implements Insertable<ConnectorRow> {
     required this.fromClipId,
     required this.fromSide,
     required this.toClipId,
+    this.toRelX,
+    this.toRelY,
     required this.color,
     required this.strokeWidth,
     required this.createdAt,
@@ -3418,6 +3471,12 @@ class ConnectorRow extends DataClass implements Insertable<ConnectorRow> {
     map['from_clip_id'] = Variable<String>(fromClipId);
     map['from_side'] = Variable<String>(fromSide);
     map['to_clip_id'] = Variable<String>(toClipId);
+    if (!nullToAbsent || toRelX != null) {
+      map['to_rel_x'] = Variable<double>(toRelX);
+    }
+    if (!nullToAbsent || toRelY != null) {
+      map['to_rel_y'] = Variable<double>(toRelY);
+    }
     map['color'] = Variable<String>(color);
     map['stroke_width'] = Variable<double>(strokeWidth);
     map['created_at'] = Variable<DateTime>(createdAt);
@@ -3432,6 +3491,12 @@ class ConnectorRow extends DataClass implements Insertable<ConnectorRow> {
       fromClipId: Value(fromClipId),
       fromSide: Value(fromSide),
       toClipId: Value(toClipId),
+      toRelX: toRelX == null && nullToAbsent
+          ? const Value.absent()
+          : Value(toRelX),
+      toRelY: toRelY == null && nullToAbsent
+          ? const Value.absent()
+          : Value(toRelY),
       color: Value(color),
       strokeWidth: Value(strokeWidth),
       createdAt: Value(createdAt),
@@ -3450,6 +3515,8 @@ class ConnectorRow extends DataClass implements Insertable<ConnectorRow> {
       fromClipId: serializer.fromJson<String>(json['fromClipId']),
       fromSide: serializer.fromJson<String>(json['fromSide']),
       toClipId: serializer.fromJson<String>(json['toClipId']),
+      toRelX: serializer.fromJson<double?>(json['toRelX']),
+      toRelY: serializer.fromJson<double?>(json['toRelY']),
       color: serializer.fromJson<String>(json['color']),
       strokeWidth: serializer.fromJson<double>(json['strokeWidth']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
@@ -3465,6 +3532,8 @@ class ConnectorRow extends DataClass implements Insertable<ConnectorRow> {
       'fromClipId': serializer.toJson<String>(fromClipId),
       'fromSide': serializer.toJson<String>(fromSide),
       'toClipId': serializer.toJson<String>(toClipId),
+      'toRelX': serializer.toJson<double?>(toRelX),
+      'toRelY': serializer.toJson<double?>(toRelY),
       'color': serializer.toJson<String>(color),
       'strokeWidth': serializer.toJson<double>(strokeWidth),
       'createdAt': serializer.toJson<DateTime>(createdAt),
@@ -3478,6 +3547,8 @@ class ConnectorRow extends DataClass implements Insertable<ConnectorRow> {
     String? fromClipId,
     String? fromSide,
     String? toClipId,
+    Value<double?> toRelX = const Value.absent(),
+    Value<double?> toRelY = const Value.absent(),
     String? color,
     double? strokeWidth,
     DateTime? createdAt,
@@ -3488,6 +3559,8 @@ class ConnectorRow extends DataClass implements Insertable<ConnectorRow> {
     fromClipId: fromClipId ?? this.fromClipId,
     fromSide: fromSide ?? this.fromSide,
     toClipId: toClipId ?? this.toClipId,
+    toRelX: toRelX.present ? toRelX.value : this.toRelX,
+    toRelY: toRelY.present ? toRelY.value : this.toRelY,
     color: color ?? this.color,
     strokeWidth: strokeWidth ?? this.strokeWidth,
     createdAt: createdAt ?? this.createdAt,
@@ -3502,6 +3575,8 @@ class ConnectorRow extends DataClass implements Insertable<ConnectorRow> {
           : this.fromClipId,
       fromSide: data.fromSide.present ? data.fromSide.value : this.fromSide,
       toClipId: data.toClipId.present ? data.toClipId.value : this.toClipId,
+      toRelX: data.toRelX.present ? data.toRelX.value : this.toRelX,
+      toRelY: data.toRelY.present ? data.toRelY.value : this.toRelY,
       color: data.color.present ? data.color.value : this.color,
       strokeWidth: data.strokeWidth.present
           ? data.strokeWidth.value
@@ -3519,6 +3594,8 @@ class ConnectorRow extends DataClass implements Insertable<ConnectorRow> {
           ..write('fromClipId: $fromClipId, ')
           ..write('fromSide: $fromSide, ')
           ..write('toClipId: $toClipId, ')
+          ..write('toRelX: $toRelX, ')
+          ..write('toRelY: $toRelY, ')
           ..write('color: $color, ')
           ..write('strokeWidth: $strokeWidth, ')
           ..write('createdAt: $createdAt, ')
@@ -3534,6 +3611,8 @@ class ConnectorRow extends DataClass implements Insertable<ConnectorRow> {
     fromClipId,
     fromSide,
     toClipId,
+    toRelX,
+    toRelY,
     color,
     strokeWidth,
     createdAt,
@@ -3548,6 +3627,8 @@ class ConnectorRow extends DataClass implements Insertable<ConnectorRow> {
           other.fromClipId == this.fromClipId &&
           other.fromSide == this.fromSide &&
           other.toClipId == this.toClipId &&
+          other.toRelX == this.toRelX &&
+          other.toRelY == this.toRelY &&
           other.color == this.color &&
           other.strokeWidth == this.strokeWidth &&
           other.createdAt == this.createdAt &&
@@ -3560,6 +3641,8 @@ class ConnectorsCompanion extends UpdateCompanion<ConnectorRow> {
   final Value<String> fromClipId;
   final Value<String> fromSide;
   final Value<String> toClipId;
+  final Value<double?> toRelX;
+  final Value<double?> toRelY;
   final Value<String> color;
   final Value<double> strokeWidth;
   final Value<DateTime> createdAt;
@@ -3571,6 +3654,8 @@ class ConnectorsCompanion extends UpdateCompanion<ConnectorRow> {
     this.fromClipId = const Value.absent(),
     this.fromSide = const Value.absent(),
     this.toClipId = const Value.absent(),
+    this.toRelX = const Value.absent(),
+    this.toRelY = const Value.absent(),
     this.color = const Value.absent(),
     this.strokeWidth = const Value.absent(),
     this.createdAt = const Value.absent(),
@@ -3583,6 +3668,8 @@ class ConnectorsCompanion extends UpdateCompanion<ConnectorRow> {
     required String fromClipId,
     required String fromSide,
     required String toClipId,
+    this.toRelX = const Value.absent(),
+    this.toRelY = const Value.absent(),
     this.color = const Value.absent(),
     this.strokeWidth = const Value.absent(),
     this.createdAt = const Value.absent(),
@@ -3599,6 +3686,8 @@ class ConnectorsCompanion extends UpdateCompanion<ConnectorRow> {
     Expression<String>? fromClipId,
     Expression<String>? fromSide,
     Expression<String>? toClipId,
+    Expression<double>? toRelX,
+    Expression<double>? toRelY,
     Expression<String>? color,
     Expression<double>? strokeWidth,
     Expression<DateTime>? createdAt,
@@ -3611,6 +3700,8 @@ class ConnectorsCompanion extends UpdateCompanion<ConnectorRow> {
       if (fromClipId != null) 'from_clip_id': fromClipId,
       if (fromSide != null) 'from_side': fromSide,
       if (toClipId != null) 'to_clip_id': toClipId,
+      if (toRelX != null) 'to_rel_x': toRelX,
+      if (toRelY != null) 'to_rel_y': toRelY,
       if (color != null) 'color': color,
       if (strokeWidth != null) 'stroke_width': strokeWidth,
       if (createdAt != null) 'created_at': createdAt,
@@ -3625,6 +3716,8 @@ class ConnectorsCompanion extends UpdateCompanion<ConnectorRow> {
     Value<String>? fromClipId,
     Value<String>? fromSide,
     Value<String>? toClipId,
+    Value<double?>? toRelX,
+    Value<double?>? toRelY,
     Value<String>? color,
     Value<double>? strokeWidth,
     Value<DateTime>? createdAt,
@@ -3637,6 +3730,8 @@ class ConnectorsCompanion extends UpdateCompanion<ConnectorRow> {
       fromClipId: fromClipId ?? this.fromClipId,
       fromSide: fromSide ?? this.fromSide,
       toClipId: toClipId ?? this.toClipId,
+      toRelX: toRelX ?? this.toRelX,
+      toRelY: toRelY ?? this.toRelY,
       color: color ?? this.color,
       strokeWidth: strokeWidth ?? this.strokeWidth,
       createdAt: createdAt ?? this.createdAt,
@@ -3662,6 +3757,12 @@ class ConnectorsCompanion extends UpdateCompanion<ConnectorRow> {
     }
     if (toClipId.present) {
       map['to_clip_id'] = Variable<String>(toClipId.value);
+    }
+    if (toRelX.present) {
+      map['to_rel_x'] = Variable<double>(toRelX.value);
+    }
+    if (toRelY.present) {
+      map['to_rel_y'] = Variable<double>(toRelY.value);
     }
     if (color.present) {
       map['color'] = Variable<String>(color.value);
@@ -3689,6 +3790,8 @@ class ConnectorsCompanion extends UpdateCompanion<ConnectorRow> {
           ..write('fromClipId: $fromClipId, ')
           ..write('fromSide: $fromSide, ')
           ..write('toClipId: $toClipId, ')
+          ..write('toRelX: $toRelX, ')
+          ..write('toRelY: $toRelY, ')
           ..write('color: $color, ')
           ..write('strokeWidth: $strokeWidth, ')
           ..write('createdAt: $createdAt, ')
@@ -5228,6 +5331,8 @@ typedef $$ConnectorsTableCreateCompanionBuilder =
       required String fromClipId,
       required String fromSide,
       required String toClipId,
+      Value<double?> toRelX,
+      Value<double?> toRelY,
       Value<String> color,
       Value<double> strokeWidth,
       Value<DateTime> createdAt,
@@ -5241,6 +5346,8 @@ typedef $$ConnectorsTableUpdateCompanionBuilder =
       Value<String> fromClipId,
       Value<String> fromSide,
       Value<String> toClipId,
+      Value<double?> toRelX,
+      Value<double?> toRelY,
       Value<String> color,
       Value<double> strokeWidth,
       Value<DateTime> createdAt,
@@ -5279,6 +5386,16 @@ class $$ConnectorsTableFilterComposer
 
   ColumnFilters<String> get toClipId => $composableBuilder(
     column: $table.toClipId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get toRelX => $composableBuilder(
+    column: $table.toRelX,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get toRelY => $composableBuilder(
+    column: $table.toRelY,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -5337,6 +5454,16 @@ class $$ConnectorsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<double> get toRelX => $composableBuilder(
+    column: $table.toRelX,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get toRelY => $composableBuilder(
+    column: $table.toRelY,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get color => $composableBuilder(
     column: $table.color,
     builder: (column) => ColumnOrderings(column),
@@ -5383,6 +5510,12 @@ class $$ConnectorsTableAnnotationComposer
 
   GeneratedColumn<String> get toClipId =>
       $composableBuilder(column: $table.toClipId, builder: (column) => column);
+
+  GeneratedColumn<double> get toRelX =>
+      $composableBuilder(column: $table.toRelX, builder: (column) => column);
+
+  GeneratedColumn<double> get toRelY =>
+      $composableBuilder(column: $table.toRelY, builder: (column) => column);
 
   GeneratedColumn<String> get color =>
       $composableBuilder(column: $table.color, builder: (column) => column);
@@ -5435,6 +5568,8 @@ class $$ConnectorsTableTableManager
                 Value<String> fromClipId = const Value.absent(),
                 Value<String> fromSide = const Value.absent(),
                 Value<String> toClipId = const Value.absent(),
+                Value<double?> toRelX = const Value.absent(),
+                Value<double?> toRelY = const Value.absent(),
                 Value<String> color = const Value.absent(),
                 Value<double> strokeWidth = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
@@ -5446,6 +5581,8 @@ class $$ConnectorsTableTableManager
                 fromClipId: fromClipId,
                 fromSide: fromSide,
                 toClipId: toClipId,
+                toRelX: toRelX,
+                toRelY: toRelY,
                 color: color,
                 strokeWidth: strokeWidth,
                 createdAt: createdAt,
@@ -5459,6 +5596,8 @@ class $$ConnectorsTableTableManager
                 required String fromClipId,
                 required String fromSide,
                 required String toClipId,
+                Value<double?> toRelX = const Value.absent(),
+                Value<double?> toRelY = const Value.absent(),
                 Value<String> color = const Value.absent(),
                 Value<double> strokeWidth = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
@@ -5470,6 +5609,8 @@ class $$ConnectorsTableTableManager
                 fromClipId: fromClipId,
                 fromSide: fromSide,
                 toClipId: toClipId,
+                toRelX: toRelX,
+                toRelY: toRelY,
                 color: color,
                 strokeWidth: strokeWidth,
                 createdAt: createdAt,

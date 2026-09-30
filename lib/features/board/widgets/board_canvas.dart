@@ -181,6 +181,11 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
   String? _connectorFromClipId;
   ConnectorSide? _connectorFromSide;
 
+  // Endpoint-retarget drag on an *existing* connector (started by grabbing
+  // its endpoint circle while it's the selected connector) - set instead
+  // of `_connectorFromClipId` when repositioning rather than creating.
+  String? _retargetingConnectorId;
+
   // Debug diagnostic (see _handleDropOver/_handlePerformDrop): the last
   // drag session whose platform formats were already logged, so a
   // repeated hover tick over the same drag doesn't spam the console.
@@ -246,6 +251,34 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       if (ClipGeometry.pointInClip(boardPoint, clip)) return clip;
     }
     return null;
+  }
+
+  Connector? _findConnector(List<Connector> connectors, String id) {
+    for (final connector in connectors) {
+      if (connector.id == id) return connector;
+    }
+    return null;
+  }
+
+  /// The connector's target endpoint in board space, honoring its stored
+  /// relative surface point when set (falls back to the nearest-boundary
+  /// anchor otherwise) - shared by the endpoint-drag hit-test and the
+  /// click-to-select curve hit-test so both agree with what
+  /// `ConnectorsOverlay` actually paints.
+  ({Offset p0, Offset c1, Offset c2, Offset p3})? _connectorBezierBoard(
+    Connector connector,
+    List<BoardClip> clips,
+  ) {
+    final fromClip = ClipGeometry.findById(clips, connector.fromClipId);
+    final toClip = ClipGeometry.findById(clips, connector.toClipId);
+    if (fromClip == null || toClip == null) return null;
+    return ConnectorGeometry.bezierBoard(
+      fromClip: fromClip,
+      fromSide: connector.fromSide,
+      toClip: toClip,
+      toRelX: connector.toRelX,
+      toRelY: connector.toRelY,
+    );
   }
 
   /// Last-created-on-top, mirroring how clips default to insertion order
@@ -317,6 +350,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     _arrangeImages = null;
     _connectorFromClipId = null;
     _connectorFromSide = null;
+    _retargetingConnectorId = null;
     _panZoomDragClip = null;
     _panZoomDragStartPan = null;
     _panZoomGestureStartBoard = null;
@@ -497,6 +531,37 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     // future context menu) - it shouldn't select or drag whatever's
     // underneath it either.
     if (event.buttons & kPrimaryMouseButton == 0) return;
+
+    // 0.3. The endpoint handle of the currently-selected connector, if
+    // any - checked early since it's a small, precise target the user
+    // needs to be able to grab reliably to reposition/retarget it. A miss
+    // here clears the connector selection (any other branch below - a
+    // clip, a frame, empty canvas - implicitly means "not this connector"
+    // too, except step 2.4 below, which re-selects a different connector
+    // if its own curve gets clicked instead).
+    final selectedConnectorId = ref.read(selectedConnectorIdProvider);
+    if (selectedConnectorId != null) {
+      final connectors = ref.read(activeConnectorsProvider).valueOrNull ?? [];
+      final connector = _findConnector(connectors, selectedConnectorId);
+      final bezier = connector == null
+          ? null
+          : _connectorBezierBoard(connector, clips);
+      if (bezier != null) {
+        final p3Screen = bezier.p3 * view.scale + view.panOffset;
+        if ((p3Screen - event.localPosition).distance <=
+            ConnectorGeometry.handleHitRadius) {
+          _retargetingConnectorId = connector!.id;
+          ref.read(connectorDraftProvider.notifier).state = ConnectorDraft(
+            fromClipId: connector.fromClipId,
+            fromSide: connector.fromSide,
+            cursorBoard: boardPos,
+            existingConnectorId: connector.id,
+          );
+          return;
+        }
+      }
+      ref.read(selectedConnectorIdProvider.notifier).state = null;
+    }
 
     // 0. A click landing on the floating clip-style popover (opacity
     // slider / text-note color swatches) or the Arrange-selection button is
@@ -715,6 +780,28 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       return;
     }
 
+    // 2.4. A connector's curve - only checked once no clip was hit
+    // (connectors paint above frames but below clips in the Stack, so a
+    // click on a connector that crosses a frame selects the connector,
+    // not the frame).
+    final connectorsList = ref.read(activeConnectorsProvider).valueOrNull ?? [];
+    for (final connector in connectorsList) {
+      final bezier = _connectorBezierBoard(connector, clips);
+      if (bezier == null) continue;
+      final screenBezier = (
+        p0: bezier.p0 * view.scale + view.panOffset,
+        c1: bezier.c1 * view.scale + view.panOffset,
+        c2: bezier.c2 * view.scale + view.panOffset,
+        p3: bezier.p3 * view.scale + view.panOffset,
+      );
+      if (ConnectorGeometry.hitTestCurve(screenBezier, event.localPosition)) {
+        ref.read(selectedConnectorIdProvider.notifier).state = connector.id;
+        ref.read(selectedClipIdsProvider.notifier).state = {};
+        ref.read(selectedFrameIdProvider.notifier).state = null;
+        return;
+      }
+    }
+
     // 2.5. Frames sit behind clips - only checked once no clip was hit.
     // A resize-handle hit only applies to the already-selected frame.
     final frames = ref.read(boardFramesProvider).valueOrNull ?? [];
@@ -826,6 +913,19 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
         fromSide: _connectorFromSide!,
         cursorBoard: boardPos,
       );
+      return;
+    }
+
+    if (_retargetingConnectorId != null) {
+      final draft = ref.read(connectorDraftProvider);
+      if (draft != null) {
+        ref.read(connectorDraftProvider.notifier).state = ConnectorDraft(
+          fromClipId: draft.fromClipId,
+          fromSide: draft.fromSide,
+          cursorBoard: boardPos,
+          existingConnectorId: draft.existingConnectorId,
+        );
+      }
       return;
     }
 
@@ -1169,6 +1269,28 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     }
     final repo = ref.read(clipsRepositoryProvider);
 
+    if (_retargetingConnectorId != null) {
+      final view = ref.read(boardViewProvider);
+      final boardPos = _screenToBoard(event.localPosition, view);
+      final clipsNow = ref.read(activeClipsProvider).valueOrNull ?? [];
+      final target = _hitTestClip(clipsNow, boardPos);
+      if (target != null && target.type == ClipType.image) {
+        final rel = ConnectorGeometry.relativePointInClip(target, boardPos);
+        await ref
+            .read(connectorsRepositoryProvider)
+            .updateConnectorTarget(
+              _retargetingConnectorId!,
+              toClipId: target.id,
+              toRelX: rel.dx,
+              toRelY: rel.dy,
+            );
+      }
+      if (!mounted) return;
+      ref.read(connectorDraftProvider.notifier).state = null;
+      _retargetingConnectorId = null;
+      return;
+    }
+
     if (_connectorFromClipId != null && _connectorFromSide != null) {
       final view = ref.read(boardViewProvider);
       final boardPos = _screenToBoard(event.localPosition, view);
@@ -1177,6 +1299,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       if (target != null &&
           target.type == ClipType.image &&
           target.id != _connectorFromClipId) {
+        final rel = ConnectorGeometry.relativePointInClip(target, boardPos);
         await ref
             .read(connectorsRepositoryProvider)
             .addConnector(
@@ -1185,6 +1308,8 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
               fromClipId: _connectorFromClipId!,
               fromSide: _connectorFromSide!,
               toClipId: target.id,
+              toRelX: rel.dx,
+              toRelY: rel.dy,
             );
       }
       if (!mounted) return;
