@@ -64,16 +64,11 @@ class ClipWidget extends StatelessWidget {
                     : AppTheme.textNoteSurface)
               : AppTheme.surfaceCard,
         ),
-        // antiAliasWithSaveLayer (not the plain antiAlias default) - image
-        // content is painted via its own compositing layer (Image/RawImage,
-        // especially the GIF playback path's texture-backed frames), and a
-        // plain canvas clipPath doesn't reliably constrain a child's own
-        // layer to the rounded shape, so the image's square corners could
-        // paint right over the rounded red selection border instead of
-        // being clipped to match it. The extra offscreen composite this
-        // costs is bounded to the handful of clips on screen at once.
-        clipBehavior: Clip.antiAliasWithSaveLayer,
-        child: clip.type == ClipType.image ? _buildImage() : _buildText(),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(10),
+          clipBehavior: Clip.antiAlias,
+          child: clip.type == ClipType.image ? _buildImage() : _buildText(),
+        ),
       ),
     );
   }

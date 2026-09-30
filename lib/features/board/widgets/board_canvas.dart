@@ -568,12 +568,27 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
         ref.read(activeClipsProvider).valueOrNull ?? [],
         editingTextClipId,
       );
-      if (editingClip != null &&
-          TextClipEditOverlay.screenRectFor(
-            editingClip,
-            ref.read(boardViewProvider),
-          ).contains(event.localPosition)) {
-        return;
+      if (editingClip != null) {
+        final view = ref.read(boardViewProvider);
+        if (TextClipEditOverlay.screenRectFor(
+          editingClip,
+          view,
+        ).contains(event.localPosition)) {
+          return;
+        }
+        // Same reasoning, for the note's own box: a click/drag meant to
+        // place the caret or drag-select text must never let this
+        // canvas-level focus node steal focus away from the TextField
+        // first - checked here, before _focusNode.requestFocus() below,
+        // rather than relying solely on the later clip-body hit-test's
+        // own "defer to the TextField" branch, which runs too late (after
+        // focus has already moved).
+        if (TextClipEditOverlay.noteRectFor(
+          editingClip,
+          view,
+        ).contains(event.localPosition)) {
+          return;
+        }
       }
     }
 

@@ -71,13 +71,26 @@ class _RichTextEditingController extends TextEditingController {
 class TextClipEditOverlay extends ConsumerStatefulWidget {
   const TextClipEditOverlay({super.key});
 
-  /// The toolbar's fixed height - its row's tallest child is the stacked
-  /// font-size chevron column (two 40x40 `PillIconButton`s, the same
-  /// footprint every other icon button in the app now uses), plus the
+  /// The toolbar's fixed height - its row's tallest child is a 40x40
+  /// format-toggle `PillIconButton` (the font-size chevrons are
+  /// deliberately kept smaller - see `_chevron`'s doc comment), plus the
   /// `Material`'s own 2px top/bottom padding. A known constant (not a
   /// guess) so `screenRectFor` and the widget's own positioning always
   /// agree exactly.
-  static const double toolbarHeight = 84;
+  static const double toolbarHeight = 44;
+
+  /// The toolbar's clamped screen-space `top`, given the note box's own
+  /// screen-space `topLeftDy` - shared by [screenRectFor] and the
+  /// widget's own `Positioned` in [build] so they never drift apart.
+  /// Clamped to never go negative (same idiom the now-deleted
+  /// `ClipStylePopover.screenRectFor` used): a note near the top of the
+  /// viewport pins the toolbar to the window's top edge instead of
+  /// pushing it off-screen entirely, where it would be completely
+  /// invisible regardless of anything else about its rendering.
+  static double topFor(double topLeftDy) {
+    final top = topLeftDy - 8 - toolbarHeight;
+    return top < 8 ? 8 : top;
+  }
 
   /// Screen-space bounds of the edit-mode toolbar for [clip] at the
   /// current [view] - lets `board_canvas.dart` recognize a click landing
@@ -90,17 +103,32 @@ class TextClipEditOverlay extends ConsumerStatefulWidget {
     final effectiveScale = clip.sizeLockScale ?? view.scale;
     final topLeft = Offset(clip.x, clip.y) * view.scale + view.panOffset;
     final boxWidth = clip.width * effectiveScale;
-    final top = topLeft.dy - 8 - toolbarHeight;
+    final top = topFor(topLeft.dy);
     // Width is generous (the toolbar's Row sizes to its content, which can
     // be wider than the note itself) - matching board_canvas.dart's other
     // guards, an approximate-but-safe rect is fine here since a miss only
     // means a click just outside the toolbar's edge falls through to
     // normal canvas handling, same as clicking genuinely elsewhere. 300
-    // comfortably covers the row's content now that every button is a
-    // 40x40 PillIconButton (font-size label + chevron column + 6 format
-    // buttons + 2 dividers).
+    // comfortably covers the row's content (font-size label + compact
+    // chevron column + 5 standard 40x40 PillIconButtons + 2 dividers).
     final width = boxWidth < 300 ? 300.0 : boxWidth;
     return Rect.fromLTWH(topLeft.dx, top, width, toolbarHeight);
+  }
+
+  /// Screen-space bounds of the note's own box for [clip] at the current
+  /// [view] - lets `board_canvas.dart` recognize a click/drag landing on
+  /// the actively-edited note itself, before it ever touches focus (see
+  /// the guard in `_handlePointerDown` that uses this, right alongside the
+  /// one using [screenRectFor] for the toolbar) - otherwise the canvas's
+  /// own `_focusNode.requestFocus()` steals focus away from the TextField
+  /// before the TextField's own tap/drag handling (caret placement,
+  /// click-drag-to-select) gets a chance to claim it for itself.
+  static Rect noteRectFor(BoardClip clip, BoardViewState view) {
+    final effectiveScale = clip.sizeLockScale ?? view.scale;
+    final topLeft = Offset(clip.x, clip.y) * view.scale + view.panOffset;
+    final boxWidth = clip.width * effectiveScale;
+    final boxHeight = clip.height * effectiveScale;
+    return Rect.fromLTWH(topLeft.dx, topLeft.dy, boxWidth, boxHeight);
   }
 
   @override
@@ -379,7 +407,7 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
           ),
           Positioned(
             left: topLeft.dx,
-            top: topLeft.dy - 8 - TextClipEditOverlay.toolbarHeight,
+            top: TextClipEditOverlay.topFor(topLeft.dy),
             height: TextClipEditOverlay.toolbarHeight,
             child: Material(
               color: AppTheme.surfaceElevated,
@@ -407,17 +435,13 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
                     Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        PillIconButton(
-                          tooltip: 'Increase font size',
-                          icon: Icons.keyboard_arrow_up,
-                          onPressed: () =>
-                              _adjustFontSize(clip, _fontSizeStep),
+                        _chevron(
+                          Icons.keyboard_arrow_up,
+                          () => _adjustFontSize(clip, _fontSizeStep),
                         ),
-                        PillIconButton(
-                          tooltip: 'Decrease font size',
-                          icon: Icons.keyboard_arrow_down,
-                          onPressed: () =>
-                              _adjustFontSize(clip, -_fontSizeStep),
+                        _chevron(
+                          Icons.keyboard_arrow_down,
+                          () => _adjustFontSize(clip, -_fontSizeStep),
                         ),
                       ],
                     ),
@@ -485,6 +509,18 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
       height: 20,
       margin: const EdgeInsets.symmetric(horizontal: 4),
       color: AppTheme.border,
+    );
+  }
+
+  /// A compact font-size stepper arrow - deliberately kept smaller than
+  /// the app-wide 40x40 `PillIconButton` standard (per explicit user
+  /// feedback that the standard size read as oversized for this specific
+  /// stacked-pair control), not meant to be reused elsewhere.
+  Widget _chevron(IconData icon, VoidCallback onPressed) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onPressed,
+      child: Icon(icon, size: 14, color: AppTheme.textPrimary),
     );
   }
 }
