@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../data/models/clip.dart';
 import '../../../data/providers.dart';
+import '../services/add_image_service.dart' show pushAddClipUndo;
 import '../services/gif_controller_service.dart';
 import 'board_toolbar.dart';
 
@@ -47,6 +48,7 @@ class GifPlaybackToolbar extends ConsumerWidget {
           height: clip.height,
           imageAspectRatio: frame.image.width / frame.image.height,
         );
+    pushAddClipUndo(ref, id);
   }
 
   @override

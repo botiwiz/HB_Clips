@@ -6,6 +6,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../../core/theme/app_theme.dart';
 import '../../../data/providers.dart';
+import '../controllers/undo_controller.dart';
 import 'image_size_service.dart';
 
 const _uuid = Uuid();
@@ -15,6 +16,22 @@ void showBoardSnack(BuildContext context, String message, {bool isError = false}
     SnackBar(
       content: Text(message),
       backgroundColor: isError ? AppTheme.danger : null,
+    ),
+  );
+}
+
+/// Pushes the "undo = bin this clip, redo = restore it" entry every simple
+/// single-clip "add" flow shares (the add-image-clip/add-text-note
+/// buttons, clipboard paste, drag-and-drop, the text tool, extracting a
+/// GIF frame) - reuses the app's existing bin/restore soft-delete as the
+/// undo/redo mechanism, so a newly-added clip's full data survives an
+/// undo/redo round-trip exactly like any other binned-then-restored clip.
+void pushAddClipUndo(WidgetRef ref, String clipId) {
+  final repo = ref.read(clipsRepositoryProvider);
+  ref.read(undoManagerProvider.notifier).push(
+    UndoableAction(
+      undo: () => repo.binClip(clipId),
+      redo: () => repo.restoreClip(clipId),
     ),
   );
 }
@@ -48,4 +65,5 @@ Future<void> addImageClipFromBytes(
         height: clipSize.height,
         imageAspectRatio: imageAspectRatioForBytes(bytes),
       );
+  pushAddClipUndo(ref, id);
 }

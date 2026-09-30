@@ -10,6 +10,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/widgets/color_swatch_button.dart';
 import '../../data/local/database.dart' show FrameRow;
 import '../../data/models/clip.dart';
+import '../../data/models/connector.dart';
 import '../../data/pdf/pdf_writer.dart';
 import '../../data/providers.dart';
 import '../../data/pureref/pur_writer.dart';
@@ -20,9 +21,11 @@ import '../annotation/draw_toolbar.dart';
 import '../annotation/stroke_painter.dart' show hexToColor;
 import '../bin/bin_screen.dart';
 import 'controllers/board_controller.dart';
+import 'controllers/undo_controller.dart';
 import 'geometry/frame_geometry.dart';
 import 'geometry/frame_presets.dart';
 import 'geometry/selection_geometry.dart';
+import 'services/add_image_service.dart' show pushAddClipUndo;
 import 'services/clipboard_paste_service.dart';
 import 'services/image_size_service.dart';
 import 'services/pureref_import_service.dart';
@@ -96,6 +99,7 @@ class BoardScreen extends ConsumerWidget {
           height: clipSize.height,
           imageAspectRatio: imageAspectRatioForBytes(pickedBytes),
         );
+    pushAddClipUndo(ref, id);
   }
 
   Future<void> _importPurFile(BuildContext context, WidgetRef ref) async {
@@ -336,6 +340,7 @@ class BoardScreen extends ConsumerWidget {
           x: center.dx - kDefaultTextNoteWidth / 2,
           y: center.dy - kDefaultTextNoteHeight / 2,
         );
+    pushAddClipUndo(ref, id);
   }
 
   void _selectAll(WidgetRef ref) {
@@ -348,22 +353,54 @@ class BoardScreen extends ConsumerWidget {
   void _binSelected(WidgetRef ref) {
     // A selected connector takes priority over a clip selection - the two
     // are mutually exclusive per `board_canvas.dart`'s click-to-select
-    // rules, so this is just precedence, not a real conflict. Connectors
-    // have no bin/trash concept (same as strokes) - this is a hard delete.
+    // rules, so this is just precedence, not a real conflict.
     final selectedConnectorId = ref.read(selectedConnectorIdProvider);
     if (selectedConnectorId != null) {
-      ref.read(connectorsRepositoryProvider).deleteConnector(selectedConnectorId);
+      final connectors = ref.read(activeConnectorsProvider).valueOrNull ?? [];
+      Connector? connector;
+      for (final c in connectors) {
+        if (c.id == selectedConnectorId) {
+          connector = c;
+          break;
+        }
+      }
+      final connRepo = ref.read(connectorsRepositoryProvider);
+      connRepo.deleteConnector(selectedConnectorId);
       ref.read(selectedConnectorIdProvider.notifier).state = null;
+      if (connector != null) {
+        final c = connector;
+        ref.read(undoManagerProvider.notifier).push(
+          UndoableAction(
+            undo: () => connRepo.addConnector(
+              id: c.id,
+              boardId: c.boardId,
+              fromClipId: c.fromClipId,
+              fromSide: c.fromSide,
+              toClipId: c.toClipId,
+              toRelX: c.toRelX,
+              toRelY: c.toRelY,
+            ),
+            redo: () => connRepo.deleteConnector(c.id),
+          ),
+        );
+      }
       return;
     }
 
     final selection = ref.read(selectedClipIdsProvider);
     if (selection.isEmpty) return;
     final repo = ref.read(clipsRepositoryProvider);
-    for (final id in selection) {
+    final ids = selection.toList();
+    for (final id in ids) {
       repo.binClip(id);
     }
     ref.read(selectedClipIdsProvider.notifier).state = {};
+    ref.read(undoManagerProvider.notifier).push(
+      UndoableAction(
+        undo: () => Future.wait([for (final id in ids) repo.restoreClip(id)]),
+        redo: () => Future.wait([for (final id in ids) repo.binClip(id)]),
+      ),
+    );
   }
 
   void _nudgeSelection(WidgetRef ref, Offset delta) {
@@ -371,11 +408,29 @@ class BoardScreen extends ConsumerWidget {
     if (selection.isEmpty) return;
     final clips = ref.read(activeClipsProvider).valueOrNull ?? [];
     final repo = ref.read(clipsRepositoryProvider);
+    final before = <String, Offset>{};
+    final after = <String, Offset>{};
     for (final id in selection) {
       final clip = ClipGeometry.findById(clips, id);
       if (clip == null) continue;
-      repo.updateTransform(id, x: clip.x + delta.dx, y: clip.y + delta.dy);
+      before[id] = Offset(clip.x, clip.y);
+      final next = Offset(clip.x + delta.dx, clip.y + delta.dy);
+      after[id] = next;
+      repo.updateTransform(id, x: next.dx, y: next.dy);
     }
+    if (before.isEmpty) return;
+    ref.read(undoManagerProvider.notifier).push(
+      UndoableAction(
+        undo: () => Future.wait([
+          for (final entry in before.entries)
+            repo.updateTransform(entry.key, x: entry.value.dx, y: entry.value.dy),
+        ]),
+        redo: () => Future.wait([
+          for (final entry in after.entries)
+            repo.updateTransform(entry.key, x: entry.value.dx, y: entry.value.dy),
+        ]),
+      ),
+    );
   }
 
   void _toggleDrawMode(WidgetRef ref) {
@@ -608,6 +663,15 @@ class BoardScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Undo history is only meaningful within the board it was recorded
+    // against - actions reference specific clip/connector ids, which make
+    // no sense replayed after switching to a different board.
+    ref.listen(currentBoardIdProvider, (previous, next) {
+      if (previous != null && previous != next) {
+        ref.read(undoManagerProvider.notifier).clear();
+      }
+    });
+    final undoState = ref.watch(undoManagerProvider);
     final selection = ref.watch(selectedClipIdsProvider);
     final hasSelection = selection.isNotEmpty;
     final isDrawMode = ref.watch(isDrawModeProvider);
@@ -652,6 +716,23 @@ class BoardScreen extends ConsumerWidget {
               _binSelected(ref),
           const SingleActivator(LogicalKeyboardKey.backspace): () =>
               _binSelected(ref),
+          const SingleActivator(LogicalKeyboardKey.keyZ, control: true): () =>
+              ref.read(undoManagerProvider.notifier).undo(),
+          const SingleActivator(LogicalKeyboardKey.keyZ, meta: true): () =>
+              ref.read(undoManagerProvider.notifier).undo(),
+          const SingleActivator(
+            LogicalKeyboardKey.keyZ,
+            control: true,
+            shift: true,
+          ): () => ref.read(undoManagerProvider.notifier).redo(),
+          const SingleActivator(
+            LogicalKeyboardKey.keyZ,
+            meta: true,
+            shift: true,
+          ): () => ref.read(undoManagerProvider.notifier).redo(),
+          // Windows' other common redo convention, alongside Ctrl+Shift+Z.
+          const SingleActivator(LogicalKeyboardKey.keyY, control: true): () =>
+              ref.read(undoManagerProvider.notifier).redo(),
           const SingleActivator(LogicalKeyboardKey.keyA, control: true): () =>
               _selectAll(ref),
           const SingleActivator(LogicalKeyboardKey.keyA, meta: true): () =>
@@ -706,6 +787,20 @@ class BoardScreen extends ConsumerWidget {
                   Flexible(
                     child: PillGroup(
                       children: [
+                        PillIconButton(
+                          tooltip: 'Undo',
+                          icon: Icons.arrow_back,
+                          onPressed: undoState.canUndo
+                              ? () => ref.read(undoManagerProvider.notifier).undo()
+                              : null,
+                        ),
+                        PillIconButton(
+                          tooltip: 'Redo',
+                          icon: Icons.arrow_forward,
+                          onPressed: undoState.canRedo
+                              ? () => ref.read(undoManagerProvider.notifier).redo()
+                              : null,
+                        ),
                         PillIconButton(
                           tooltip: isDrawMode
                               ? 'Exit draw mode'
