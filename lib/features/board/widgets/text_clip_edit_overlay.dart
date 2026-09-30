@@ -70,6 +70,33 @@ class _RichTextEditingController extends TextEditingController {
 class TextClipEditOverlay extends ConsumerStatefulWidget {
   const TextClipEditOverlay({super.key});
 
+  /// The toolbar's fixed height - its row's tallest child is a 28px format
+  /// button, plus the `Material`'s own 2px top/bottom padding. A known
+  /// constant (not a guess) so `screenRectFor` and the widget's own
+  /// positioning always agree exactly.
+  static const double toolbarHeight = 32;
+
+  /// Screen-space bounds of the edit-mode toolbar for [clip] at the
+  /// current [view] - lets `board_canvas.dart` recognize a click landing
+  /// on the toolbar as "not an empty-canvas/board click" (same
+  /// click-through-guard role `ClipStylePopover.screenRectFor` plays for
+  /// the image opacity slider), so it doesn't steal focus away from the
+  /// TextField and exit edit mode before the toolbar's own button gets a
+  /// chance to handle the tap.
+  static Rect screenRectFor(BoardClip clip, BoardViewState view) {
+    final effectiveScale = clip.sizeLockScale ?? view.scale;
+    final topLeft = Offset(clip.x, clip.y) * view.scale + view.panOffset;
+    final boxWidth = clip.width * effectiveScale;
+    final top = topLeft.dy - 8 - toolbarHeight;
+    // Width is generous (the toolbar's Row sizes to its content, which can
+    // be wider than the note itself) - matching board_canvas.dart's other
+    // guards, an approximate-but-safe rect is fine here since a miss only
+    // means a click just outside the toolbar's edge falls through to
+    // normal canvas handling, same as clicking genuinely elsewhere.
+    final width = boxWidth < 220 ? 220.0 : boxWidth;
+    return Rect.fromLTWH(topLeft.dx, top, width, toolbarHeight);
+  }
+
   @override
   ConsumerState<TextClipEditOverlay> createState() =>
       _TextClipEditOverlayState();
@@ -315,89 +342,80 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
           ),
           Positioned(
             left: topLeft.dx,
-            top: topLeft.dy - 8,
-            // FractionalTranslation shifts the toolbar upward by exactly
-            // 100% of its own rendered height, so it grows upward from a
-            // fixed anchor point without ever needing to know or guess
-            // that height in advance - more robust than a guessed pixel
-            // height or a MediaQuery-window-height calculation, and stays
-            // purely in the Stack's own local coordinate space like every
-            // other overlay in this codebase.
-            child: FractionalTranslation(
-              translation: const Offset(0, -1),
-              child: Material(
-                color: AppTheme.surfaceElevated,
-                borderRadius: BorderRadius.circular(8),
-                elevation: 6,
-                shadowColor: Colors.black54,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 4,
-                    vertical: 2,
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 4),
-                        child: Text(
-                          '${(clip.fontSize ?? kTextNoteFontSize).round()}',
-                          style: const TextStyle(
-                            color: AppTheme.textSecondary,
-                            fontSize: 12,
-                          ),
+            top: topLeft.dy - 8 - TextClipEditOverlay.toolbarHeight,
+            height: TextClipEditOverlay.toolbarHeight,
+            child: Material(
+              color: AppTheme.surfaceElevated,
+              borderRadius: BorderRadius.circular(8),
+              elevation: 6,
+              shadowColor: Colors.black54,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 4,
+                  vertical: 2,
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      child: Text(
+                        '${(clip.fontSize ?? kTextNoteFontSize).round()}',
+                        style: const TextStyle(
+                          color: AppTheme.textSecondary,
+                          fontSize: 12,
                         ),
                       ),
-                      Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          _chevron(
-                            Icons.keyboard_arrow_up,
-                            () => _adjustFontSize(clip, _fontSizeStep),
-                          ),
-                          _chevron(
-                            Icons.keyboard_arrow_down,
-                            () => _adjustFontSize(clip, -_fontSizeStep),
-                          ),
-                        ],
-                      ),
-                      _divider(),
-                      _formatButton(
-                        icon: Icons.format_bold,
-                        active: _selectionHasStyle(
-                          _controller?.formatting.bold ?? const [],
+                    ),
+                    Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _chevron(
+                          Icons.keyboard_arrow_up,
+                          () => _adjustFontSize(clip, _fontSizeStep),
                         ),
-                        onPressed: _toggleBold,
-                      ),
-                      _formatButton(
-                        icon: Icons.format_italic,
-                        active: _selectionHasStyle(
-                          _controller?.formatting.italic ?? const [],
+                        _chevron(
+                          Icons.keyboard_arrow_down,
+                          () => _adjustFontSize(clip, -_fontSizeStep),
                         ),
-                        onPressed: _toggleItalic,
+                      ],
+                    ),
+                    _divider(),
+                    _formatButton(
+                      icon: Icons.format_bold,
+                      active: _selectionHasStyle(
+                        _controller?.formatting.bold ?? const [],
                       ),
-                      _formatButton(
-                        icon: Icons.format_underlined,
-                        active: _selectionHasStyle(
-                          _controller?.formatting.underline ?? const [],
-                        ),
-                        onPressed: _toggleUnderline,
+                      onPressed: _toggleBold,
+                    ),
+                    _formatButton(
+                      icon: Icons.format_italic,
+                      active: _selectionHasStyle(
+                        _controller?.formatting.italic ?? const [],
                       ),
-                      _formatButton(
-                        icon: Icons.format_strikethrough,
-                        active: _selectionHasStyle(
-                          _controller?.formatting.strikethrough ?? const [],
-                        ),
-                        onPressed: _toggleStrikethrough,
+                      onPressed: _toggleItalic,
+                    ),
+                    _formatButton(
+                      icon: Icons.format_underlined,
+                      active: _selectionHasStyle(
+                        _controller?.formatting.underline ?? const [],
                       ),
-                      _divider(),
-                      _formatButton(
-                        icon: Icons.push_pin_outlined,
-                        active: locked,
-                        onPressed: () => _toggleSizeLock(clip, view.scale),
+                      onPressed: _toggleUnderline,
+                    ),
+                    _formatButton(
+                      icon: Icons.format_strikethrough,
+                      active: _selectionHasStyle(
+                        _controller?.formatting.strikethrough ?? const [],
                       ),
-                    ],
-                  ),
+                      onPressed: _toggleStrikethrough,
+                    ),
+                    _divider(),
+                    _formatButton(
+                      icon: Icons.push_pin_outlined,
+                      active: locked,
+                      onPressed: () => _toggleSizeLock(clip, view.scale),
+                    ),
+                  ],
                 ),
               ),
             ),

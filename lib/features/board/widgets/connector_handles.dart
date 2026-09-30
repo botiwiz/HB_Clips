@@ -29,7 +29,8 @@ class ConnectorHandles extends ConsumerWidget {
     final children = <Widget>[];
 
     final selection = ref.watch(selectedClipIdsProvider);
-    if (selection.length == 1) {
+    final editingId = ref.watch(editingTextClipIdProvider);
+    if (selection.length == 1 && selection.first != editingId) {
       var clip = ClipGeometry.findById(clips, selection.first);
       final clipDrag = dragging?[selection.first];
       if (clip != null && clip.type == ClipType.text) {

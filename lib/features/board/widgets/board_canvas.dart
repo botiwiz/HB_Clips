@@ -461,6 +461,28 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
   }
 
   void _handlePointerDown(PointerDownEvent event) {
+    // A click landing on the text-edit toolbar must not steal focus away
+    // from the TextField before the toolbar's own button gets a chance to
+    // handle the tap - checked before anything else in this function
+    // touches focus (see TextClipEditOverlay.screenRectFor's doc comment;
+    // same click-through-guard role the image opacity slider's own check
+    // plays further down, just needed earlier here since focus, not
+    // selection, is what's at stake).
+    final editingTextClipId = ref.read(editingTextClipIdProvider);
+    if (editingTextClipId != null) {
+      final editingClip = ClipGeometry.findById(
+        ref.read(activeClipsProvider).valueOrNull ?? [],
+        editingTextClipId,
+      );
+      if (editingClip != null &&
+          TextClipEditOverlay.screenRectFor(
+            editingClip,
+            ref.read(boardViewProvider),
+          ).contains(event.localPosition)) {
+        return;
+      }
+    }
+
     _focusNode.requestFocus();
     if (ref.read(isTextToolActiveProvider)) {
       _handleTextToolPointerDown(event);
