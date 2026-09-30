@@ -144,10 +144,6 @@ final groupDragProvider = StateProvider<Map<String, DraggingClip>?>(
 /// no marquee is active. Selection is only recomputed on pointer-up.
 final marqueeRectProvider = StateProvider<Rect?>((ref) => null);
 
-/// True while a drag is currently hovering over the bin drop target, so the
-/// bin widget can highlight itself.
-final isDraggingOverBinProvider = StateProvider<bool>((ref) => false);
-
 /// When true, drag/resize positions and sizes snap to [kBoardGridSpacing] -
 /// a per-session UI preference, not persisted.
 final snapToGridProvider = StateProvider<bool>((ref) => false);

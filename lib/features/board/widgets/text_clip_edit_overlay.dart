@@ -273,23 +273,28 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
               bindings: {
                 const SingleActivator(LogicalKeyboardKey.escape):
                     _commitAndExit,
-                // Swallows the bare Space key so it doesn't bubble up to
-                // board_canvas.dart's ancestor Focus (which binds a
-                // tap-Space-to-fit-viewport-to-selection shortcut) -
-                // without this, every space typed re-triggered that
-                // shortcut, since EditableText doesn't claim plain
-                // printable characters at the raw-key level (it inserts
-                // them via the platform text-input/IME channel instead).
-                const SingleActivator(LogicalKeyboardKey.space): () {},
                 // Swallows bare Backspace/Delete so they don't bubble up
                 // to board_screen.dart's ancestor CallbackShortcuts
                 // (which bins the whole board selection on those keys) -
                 // without this, backspacing while editing a note also
                 // binned everything on the board. Deletion of the
-                // character itself is unaffected, same as Space's
-                // insertion above.
+                // character itself is unaffected - that's handled by
+                // EditableText's own internal Actions, a descendant of
+                // this CallbackShortcuts, so it already ran before the
+                // event bubbles up here.
                 const SingleActivator(LogicalKeyboardKey.backspace): () {},
                 const SingleActivator(LogicalKeyboardKey.delete): () {},
+                // Same reasoning for the 4 arrow keys - board_screen.dart
+                // binds all of them to nudge the selected clip's
+                // position, and with no matching binding here they used
+                // to bubble all the way up uncontested, moving the note
+                // instead of the text caret. Caret movement itself is,
+                // like Backspace/Delete, a descendant EditableText Action
+                // that already ran by the time this fires.
+                const SingleActivator(LogicalKeyboardKey.arrowLeft): () {},
+                const SingleActivator(LogicalKeyboardKey.arrowRight): () {},
+                const SingleActivator(LogicalKeyboardKey.arrowUp): () {},
+                const SingleActivator(LogicalKeyboardKey.arrowDown): () {},
                 const SingleActivator(
                   LogicalKeyboardKey.keyB,
                   control: true,

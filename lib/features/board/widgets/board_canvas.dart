@@ -29,7 +29,6 @@ import '../services/eyedropper_service.dart';
 import '../services/image_file_formats.dart';
 import '../services/remote_image_fetch_service.dart';
 import 'arrange_selection_button.dart';
-import 'bin_drop_target.dart';
 import 'board_minimap.dart';
 import 'clip_style_popover.dart';
 import 'clip_widget.dart';
@@ -90,7 +89,6 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
 
   // Group move drag.
   Map<String, Offset>? _groupDragStartPositions;
-  String? _groupDragPrimaryId;
   bool _groupDragMoved = false;
   String? _pendingCollapseId;
 
@@ -238,13 +236,6 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     return boardPoint * view.scale + view.panOffset;
   }
 
-  Rect get _binRectScreen => Rect.fromLTWH(
-    _canvasSize.width - 24 - kBinTargetSize,
-    _canvasSize.height - 24 - kBinTargetSize,
-    kBinTargetSize,
-    kBinTargetSize,
-  );
-
   BoardClip? _hitTestClip(List<BoardClip> clips, Offset boardPoint) {
     final sorted = [...clips]..sort((a, b) => b.zIndex.compareTo(a.zIndex));
     for (final clip in sorted) {
@@ -348,7 +339,6 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     _groupScaleStartClips = null;
     _groupScaleStartRect = null;
     _groupDragStartPositions = null;
-    _groupDragPrimaryId = null;
     _groupDragMoved = false;
     _pendingCollapseId = null;
     _gestureStartPointerBoard = null;
@@ -408,6 +398,14 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
   /// existing space-to-pan check reads) is engine-level global state,
   /// unaffected by whether a widget "handles" the key event.
   KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
+    // While a note is being edited, this handler does nothing at all - no
+    // `_spaceKeyDown` bookkeeping, no `_focusOnSelection()` call on key-up
+    // - rather than trying to block the raw key event somewhere upstream
+    // (which previously suppressed Space from reaching the platform text-
+    // input channel entirely, breaking character insertion for it).
+    if (ref.read(editingTextClipIdProvider) != null) {
+      return KeyEventResult.ignored;
+    }
     if (event.logicalKey != LogicalKeyboardKey.space) {
       return KeyEventResult.ignored;
     }
@@ -784,6 +782,15 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       // (matches) or explicitly exits edit mode for whatever else was
       // being edited (doesn't match) - covers every branch below.
       _exitTextEditUnlessClip(hit.id);
+      // A click/drag landing on the clip currently being text-edited is
+      // left entirely to the TextField's own gesture handling (caret
+      // placement, click-drag-to-select, double-click-to-select-word) -
+      // this app's own clip-selection/drag logic below would otherwise
+      // start a clip-drag on the very same gesture (this raw Listener
+      // sees every pointer event regardless of what a descendant
+      // GestureDetector's gesture arena decides), moving the note instead
+      // of letting a text-selection drag actually select text.
+      if (hit.id == ref.read(editingTextClipIdProvider)) return;
       if (hit.type == ClipType.image &&
           _isDoubleClickOn(hit.id, event.localPosition)) {
         ref.read(selectedClipIdsProvider.notifier).state = {hit.id};
@@ -842,7 +849,6 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
         );
       }
       _groupDragStartPositions = startPositions;
-      _groupDragPrimaryId = hit.id;
       _gestureStartPointerBoard = boardPos;
       ref.read(groupDragProvider.notifier).state = dragMap;
       return;
@@ -1210,19 +1216,6 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
               : entry.value,
       };
       ref.read(groupDragProvider.notifier).state = updated;
-
-      final primary = updated[_groupDragPrimaryId];
-      if (primary != null) {
-        final center = Offset(
-          primary.x + primary.width / 2,
-          primary.y + primary.height / 2,
-        );
-        final centerScreen = _boardToScreen(center, view);
-        final overBin = _binRectScreen.inflate(16).contains(centerScreen);
-        if (ref.read(isDraggingOverBinProvider) != overBin) {
-          ref.read(isDraggingOverBinProvider.notifier).state = overBin;
-        }
-      }
       return;
     }
 
@@ -1473,50 +1466,41 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
 
     if (_groupDragStartPositions != null) {
       final dragMap = ref.read(groupDragProvider);
-      final overBin = ref.read(isDraggingOverBinProvider);
       if (_groupDragMoved && dragMap != null) {
-        if (overBin) {
-          await Future.wait([for (final id in dragMap.keys) repo.binClip(id)]);
-          if (!mounted) return;
-          ref.read(selectedClipIdsProvider.notifier).state = {};
-        } else {
-          final frames = ref.read(boardFramesProvider).valueOrNull ?? [];
-          final clipsNow = ref.read(activeClipsProvider).valueOrNull ?? [];
-          final writes = <Future<void>>[];
-          for (final entry in dragMap.entries) {
-            writes.add(
-              repo.updateTransform(entry.key, x: entry.value.x, y: entry.value.y),
-            );
+        final frames = ref.read(boardFramesProvider).valueOrNull ?? [];
+        final clipsNow = ref.read(activeClipsProvider).valueOrNull ?? [];
+        final writes = <Future<void>>[];
+        for (final entry in dragMap.entries) {
+          writes.add(
+            repo.updateTransform(entry.key, x: entry.value.x, y: entry.value.y),
+          );
 
-            // Miro-style frame containment: whichever frame now contains
-            // this clip's center becomes its parent (moving with the frame
-            // from here on); dragging it out clears that back to null.
-            final center = Offset(
-              entry.value.x + entry.value.width / 2,
-              entry.value.y + entry.value.height / 2,
-            );
-            final containingFrame = _hitTestFrame(frames, center);
-            final currentFrameId = ClipGeometry.findById(
-              clipsNow,
-              entry.key,
-            )?.frameId;
-            if (containingFrame?.id != currentFrameId) {
-              writes.add(repo.setFrameId(entry.key, containingFrame?.id));
-            }
+          // Miro-style frame containment: whichever frame now contains
+          // this clip's center becomes its parent (moving with the frame
+          // from here on); dragging it out clears that back to null.
+          final center = Offset(
+            entry.value.x + entry.value.width / 2,
+            entry.value.y + entry.value.height / 2,
+          );
+          final containingFrame = _hitTestFrame(frames, center);
+          final currentFrameId = ClipGeometry.findById(
+            clipsNow,
+            entry.key,
+          )?.frameId;
+          if (containingFrame?.id != currentFrameId) {
+            writes.add(repo.setFrameId(entry.key, containingFrame?.id));
           }
-          await Future.wait(writes);
-          if (!mounted) return;
         }
+        await Future.wait(writes);
+        if (!mounted) return;
       } else if (!_groupDragMoved && _pendingCollapseId != null) {
         ref.read(selectedClipIdsProvider.notifier).state = {
           _pendingCollapseId!,
         };
       }
       ref.read(groupDragProvider.notifier).state = null;
-      ref.read(isDraggingOverBinProvider.notifier).state = false;
       ref.read(snapGuidesProvider.notifier).state = (x: null, y: null);
       _groupDragStartPositions = null;
-      _groupDragPrimaryId = null;
       _pendingCollapseId = null;
       _groupDragMoved = false;
       _gestureStartPointerBoard = null;
@@ -2096,7 +2080,6 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     final view = ref.watch(boardViewProvider);
     final dragging = ref.watch(groupDragProvider);
     final selection = ref.watch(selectedClipIdsProvider);
-    final overBin = ref.watch(isDraggingOverBinProvider);
     final isDrawMode = ref.watch(isDrawModeProvider);
     final isTextToolActive = ref.watch(isTextToolActiveProvider);
     final panZoomClipId = ref.watch(panZoomClipIdProvider);
@@ -2188,14 +2171,6 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
                         const ClipStylePopover(),
                         const ArrangeSelectionButton(),
                       ],
-                      Positioned(
-                        right: 24,
-                        bottom: 24,
-                        child: BinDropTarget(
-                          highlighted: overBin,
-                          onTap: () {},
-                        ),
-                      ),
                       const Positioned(
                         left: 24,
                         bottom: 24,

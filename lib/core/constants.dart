@@ -4,9 +4,6 @@ const double kDefaultClipHeight = 240;
 const double kDefaultTextNoteWidth = 220;
 const double kDefaultTextNoteHeight = 140;
 
-/// Diameter of the fixed bin drop-target shown on the board.
-const double kBinTargetSize = 64;
-
 /// Placeholder board id used before auth/multi-board support (Phase 5+)
 /// exists. Every local clip belongs to this single implicit board.
 const String kLocalBoardId = 'local-board';
