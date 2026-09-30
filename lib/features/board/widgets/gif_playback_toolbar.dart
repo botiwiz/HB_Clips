@@ -8,6 +8,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../data/models/clip.dart';
 import '../../../data/providers.dart';
 import '../services/gif_controller_service.dart';
+import 'board_toolbar.dart';
 
 const _uuid = Uuid();
 
@@ -69,11 +70,9 @@ class GifPlaybackToolbar extends ConsumerWidget {
         padding: const EdgeInsets.symmetric(horizontal: 12),
         child: Row(
           children: [
-            IconButton(
+            PillIconButton(
               tooltip: playing ? 'Pause' : 'Play',
-              icon: Icon(playing ? Icons.pause : Icons.play_arrow),
-              iconSize: 20,
-              visualDensity: VisualDensity.compact,
+              icon: playing ? Icons.pause : Icons.play_arrow,
               onPressed: isThisClip
                   ? () => ref
                         .read(gifPlaybackControllerProvider.notifier)
@@ -111,11 +110,9 @@ class GifPlaybackToolbar extends ConsumerWidget {
                     }
                   : null,
             ),
-            IconButton(
+            PillIconButton(
               tooltip: 'Extract this frame as a new clip',
-              icon: const Icon(Icons.image_outlined),
-              iconSize: 18,
-              visualDensity: VisualDensity.compact,
+              icon: Icons.image_outlined,
               onPressed: isThisClip ? () => _extractFrame(ref) : null,
             ),
           ],

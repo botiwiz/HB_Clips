@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/color_swatch_button.dart';
 import '../../data/providers.dart';
+import '../board/widgets/board_toolbar.dart';
 import 'controllers/annotation_controller.dart';
 import 'stroke_painter.dart';
 
@@ -33,30 +34,24 @@ class DrawToolbar extends ConsumerWidget {
         padding: const EdgeInsets.symmetric(horizontal: 12),
         child: Row(
           children: [
-            IconButton(
+            PillIconButton(
               tooltip: 'Pen',
-              icon: const Icon(Icons.edit),
+              icon: Icons.edit,
               color: tool == DrawTool.pen ? AppTheme.red : null,
-              iconSize: 18,
-              visualDensity: VisualDensity.compact,
               onPressed: () =>
                   ref.read(drawToolProvider.notifier).state = DrawTool.pen,
             ),
-            IconButton(
+            PillIconButton(
               tooltip: 'Eraser',
-              icon: const Icon(Icons.auto_fix_off_outlined),
+              icon: Icons.auto_fix_off_outlined,
               color: tool == DrawTool.eraser ? AppTheme.red : null,
-              iconSize: 18,
-              visualDensity: VisualDensity.compact,
               onPressed: () =>
                   ref.read(drawToolProvider.notifier).state = DrawTool.eraser,
             ),
-            IconButton(
+            PillIconButton(
               tooltip: 'Eyedropper',
-              icon: const Icon(Icons.colorize),
+              icon: Icons.colorize,
               color: tool == DrawTool.eyedropper ? AppTheme.red : null,
-              iconSize: 18,
-              visualDensity: VisualDensity.compact,
               onPressed: () => ref.read(drawToolProvider.notifier).state =
                   DrawTool.eyedropper,
             ),
@@ -74,22 +69,18 @@ class DrawToolbar extends ConsumerWidget {
             const SizedBox(width: 8),
             const VerticalDivider(color: AppTheme.border, width: 1),
             const SizedBox(width: 8),
-            IconButton(
+            PillIconButton(
               tooltip: 'Dashed line',
-              icon: const Icon(Icons.more_horiz),
+              icon: Icons.more_horiz,
               color: dashed ? AppTheme.red : null,
-              iconSize: 18,
-              visualDensity: VisualDensity.compact,
               onPressed: () => ref
                   .read(strokeDashedProvider.notifier)
                   .update((value) => !value),
             ),
-            IconButton(
+            PillIconButton(
               tooltip: 'Arrow end',
-              icon: const Icon(Icons.arrow_right_alt),
+              icon: Icons.arrow_right_alt,
               color: arrowEnd ? AppTheme.red : null,
-              iconSize: 18,
-              visualDensity: VisualDensity.compact,
               onPressed: () => ref
                   .read(strokeArrowProvider.notifier)
                   .update((value) => !value),
@@ -109,9 +100,9 @@ class DrawToolbar extends ConsumerWidget {
                     ref.read(strokeWidthValueProvider.notifier).state = value,
               ),
             ),
-            IconButton(
+            PillIconButton(
               tooltip: 'Undo last stroke',
-              icon: const Icon(Icons.undo),
+              icon: Icons.undo,
               onPressed: () => ref
                   .read(strokesRepositoryProvider)
                   .deleteMostRecentStroke(ref.read(currentBoardIdProvider)),

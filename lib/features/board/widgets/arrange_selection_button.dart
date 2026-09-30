@@ -112,7 +112,7 @@ class ArrangeSelectionButton extends ConsumerWidget {
               child: Center(
                 child: Icon(
                   Icons.grid_view_rounded,
-                  size: 16,
+                  size: 20,
                   color: AppTheme.textPrimary,
                 ),
               ),

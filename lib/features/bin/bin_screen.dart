@@ -84,7 +84,7 @@ class BinScreen extends ConsumerWidget {
             TextButton.icon(
               onPressed: () => _emptyBin(context, ref, binned),
               style: TextButton.styleFrom(foregroundColor: AppTheme.red),
-              icon: const Icon(Icons.delete_forever_outlined),
+              icon: const Icon(Icons.delete_forever_outlined, size: 20),
               label: const Text('Empty Bin'),
             ),
           const SizedBox(width: 8),
@@ -145,13 +145,13 @@ class _BinnedClipTile extends ConsumerWidget {
           TextButton.icon(
             onPressed: () =>
                 ref.read(clipsRepositoryProvider).restoreClip(clip.id),
-            icon: const Icon(Icons.restore, size: 16),
+            icon: const Icon(Icons.restore, size: 20),
             label: const Text('Restore'),
           ),
           TextButton.icon(
             onPressed: () => _deleteForever(context, ref),
             style: TextButton.styleFrom(foregroundColor: AppTheme.danger),
-            icon: const Icon(Icons.delete_forever_outlined, size: 16),
+            icon: const Icon(Icons.delete_forever_outlined, size: 20),
             label: const Text('Delete Forever'),
           ),
         ],

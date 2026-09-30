@@ -40,7 +40,7 @@ class PillIconButton extends StatelessWidget {
   final String tooltip;
   final IconData icon;
   final Color? color;
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
 
   const PillIconButton({
     super.key,

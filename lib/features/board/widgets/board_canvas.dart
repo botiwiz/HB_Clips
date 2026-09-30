@@ -30,7 +30,6 @@ import '../services/image_file_formats.dart';
 import '../services/remote_image_fetch_service.dart';
 import 'arrange_selection_button.dart';
 import 'board_minimap.dart';
-import 'clip_style_popover.dart';
 import 'clip_widget.dart';
 import 'connector_draft_overlay.dart';
 import 'connector_handles.dart';
@@ -190,6 +189,17 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
   Object? _lastLoggedDropSession;
 
   Size _canvasSize = Size.zero;
+
+  /// Screen-space rect of the minimap panel (mirrors its own fixed
+  /// `left: 24, bottom: 24` Positioned in build()) - used as a
+  /// click-through guard so a drag on the minimap doesn't also start a
+  /// marquee-select on the canvas underneath it.
+  Rect get _minimapRectScreen => Rect.fromLTWH(
+    24,
+    _canvasSize.height - 24 - BoardMinimap.panelHeight,
+    BoardMinimap.panelWidth,
+    BoardMinimap.panelHeight,
+  );
 
   // Space-tap-to-focus: distinguishes a plain tap (fit the viewport to the
   // selection) from Space held through a pan-drag (the existing
@@ -498,6 +508,16 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       }
     }
 
+    // A click/drag landing on the minimap is navigation only - it must
+    // never also start a marquee-select on the real canvas underneath it
+    // (this raw Listener sees every pointer event regardless of what the
+    // minimap's own nested GestureDetector decides). Exiting an active
+    // text edit still applies here, same as any other "click elsewhere".
+    if (_minimapRectScreen.contains(event.localPosition)) {
+      _exitTextEditUnlessClip(null);
+      return;
+    }
+
     _focusNode.requestFocus();
     if (ref.read(isTextToolActiveProvider)) {
       _handleTextToolPointerDown(event);
@@ -600,22 +620,10 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       ref.read(selectedConnectorIdProvider.notifier).state = null;
     }
 
-    // 0. A click landing on the floating clip-style popover (opacity
-    // slider / text-note color swatches) or the Arrange-selection button is
-    // left entirely to that widget's own tap/drag handling - otherwise this
-    // canvas would see it as an empty-canvas click and clear the very
-    // selection those widgets depend on to render at all.
-    if (selection.length == 1) {
-      final selectedClip = ClipGeometry.findById(clips, selection.first);
-      if (selectedClip != null &&
-          selectedClip.type == ClipType.image &&
-          ClipStylePopover.screenRectFor(
-            selectedClip,
-            view,
-          ).contains(event.localPosition)) {
-        return;
-      }
-    }
+    // 0. A click landing on the Arrange-selection button is left entirely
+    // to that widget's own tap/drag handling - otherwise this canvas would
+    // see it as an empty-canvas click and clear the very selection that
+    // widget depends on to render at all.
     if (selection.length >= 2) {
       final selectedClips = [
         for (final c in clips)
@@ -2168,7 +2176,6 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
                         const SelectionHandles(),
                         const ConnectorHandles(),
                         const GroupScaleHandles(),
-                        const ClipStylePopover(),
                         const ArrangeSelectionButton(),
                       ],
                       const Positioned(

@@ -15,8 +15,8 @@ import '../controllers/board_controller.dart';
 class BoardMinimap extends ConsumerWidget {
   const BoardMinimap({super.key});
 
-  static const double _panelWidth = 180;
-  static const double _panelHeight = 120;
+  static const double panelWidth = 180;
+  static const double panelHeight = 120;
 
   /// Board-space margin added around the content/viewport union so clips
   /// and the viewport outline never sit flush against the panel's edge.
@@ -32,15 +32,15 @@ class BoardMinimap extends ConsumerWidget {
     final contentRect = _contentRect(clips, viewportRect);
     final transform = _MinimapTransform(
       contentRect: contentRect,
-      panelSize: const Size(_panelWidth, _panelHeight),
+      panelSize: const Size(panelWidth, panelHeight),
     );
 
     return GestureDetector(
       onTapDown: (details) => _jumpTo(ref, transform, details.localPosition, screenSize),
       onPanUpdate: (details) => _jumpTo(ref, transform, details.localPosition, screenSize),
       child: Container(
-        width: _panelWidth,
-        height: _panelHeight,
+        width: panelWidth,
+        height: panelHeight,
         decoration: BoxDecoration(
           color: AppTheme.surfaceElevated.withValues(alpha: 0.9),
           borderRadius: BorderRadius.circular(10),

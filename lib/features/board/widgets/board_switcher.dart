@@ -6,6 +6,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../data/local/database.dart';
 import '../../../data/providers.dart';
 import '../../../data/repositories/boards_repository.dart';
+import 'board_toolbar.dart';
 
 const _uuid = Uuid();
 
@@ -92,7 +93,7 @@ class BoardSwitcher extends ConsumerWidget {
                     board.id == currentId
                         ? Icons.check_circle
                         : Icons.circle_outlined,
-                    size: 16,
+                    size: 20,
                     color: board.id == currentId
                         ? AppTheme.red
                         : AppTheme.textSecondary,
@@ -109,7 +110,7 @@ class BoardSwitcher extends ConsumerWidget {
             value: '__new__',
             child: Row(
               children: [
-                Icon(Icons.add, size: 16),
+                Icon(Icons.add, size: 20),
                 SizedBox(width: 8),
                 Text('New board'),
               ],
@@ -119,7 +120,7 @@ class BoardSwitcher extends ConsumerWidget {
             value: '__manage__',
             child: Row(
               children: [
-                Icon(Icons.settings_outlined, size: 16),
+                Icon(Icons.settings_outlined, size: 20),
                 SizedBox(width: 8),
                 Text('Manage boards...'),
               ],
@@ -131,7 +132,7 @@ class BoardSwitcher extends ConsumerWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.dashboard_outlined, size: 16),
+              const Icon(Icons.dashboard_outlined, size: 20),
               const SizedBox(width: 6),
               ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 120),
@@ -142,7 +143,7 @@ class BoardSwitcher extends ConsumerWidget {
                 ),
               ),
               const SizedBox(width: 4),
-              const Icon(Icons.arrow_drop_down, size: 16),
+              const Icon(Icons.arrow_drop_down, size: 20),
             ],
           ),
         ),
@@ -244,14 +245,14 @@ class _ManageBoardsDialog extends ConsumerWidget {
               trailing: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  IconButton(
+                  PillIconButton(
                     tooltip: 'Rename',
-                    icon: const Icon(Icons.edit_outlined, size: 18),
+                    icon: Icons.edit_outlined,
                     onPressed: () => _rename(context, ref, board),
                   ),
-                  IconButton(
+                  PillIconButton(
                     tooltip: 'Delete',
-                    icon: const Icon(Icons.delete_outline, size: 18),
+                    icon: Icons.delete_outline,
                     onPressed: boards.length > 1
                         ? () => _delete(context, ref, board)
                         : null,

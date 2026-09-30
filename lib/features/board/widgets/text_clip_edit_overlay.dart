@@ -10,6 +10,7 @@ import '../../annotation/stroke_painter.dart' show hexToColor;
 import '../controllers/board_controller.dart';
 import '../geometry/selection_geometry.dart';
 import '../geometry/text_style_ranges.dart';
+import 'board_toolbar.dart';
 
 /// A minimum/maximum for the whole-note font-size stepper in the edit
 /// toolbar - keeps a note readable without letting it grow/shrink to
@@ -70,19 +71,21 @@ class _RichTextEditingController extends TextEditingController {
 class TextClipEditOverlay extends ConsumerStatefulWidget {
   const TextClipEditOverlay({super.key});
 
-  /// The toolbar's fixed height - its row's tallest child is a 28px format
-  /// button, plus the `Material`'s own 2px top/bottom padding. A known
-  /// constant (not a guess) so `screenRectFor` and the widget's own
-  /// positioning always agree exactly.
-  static const double toolbarHeight = 32;
+  /// The toolbar's fixed height - its row's tallest child is the stacked
+  /// font-size chevron column (two 40x40 `PillIconButton`s, the same
+  /// footprint every other icon button in the app now uses), plus the
+  /// `Material`'s own 2px top/bottom padding. A known constant (not a
+  /// guess) so `screenRectFor` and the widget's own positioning always
+  /// agree exactly.
+  static const double toolbarHeight = 84;
 
   /// Screen-space bounds of the edit-mode toolbar for [clip] at the
   /// current [view] - lets `board_canvas.dart` recognize a click landing
-  /// on the toolbar as "not an empty-canvas/board click" (same
-  /// click-through-guard role `ClipStylePopover.screenRectFor` plays for
-  /// the image opacity slider), so it doesn't steal focus away from the
-  /// TextField and exit edit mode before the toolbar's own button gets a
-  /// chance to handle the tap.
+  /// on the toolbar as "not an empty-canvas/board click" (the same
+  /// click-through-guard pattern used elsewhere for other floating
+  /// overlays, e.g. `ArrangeSelectionButton.screenRectFor`), so it doesn't
+  /// steal focus away from the TextField and exit edit mode before the
+  /// toolbar's own button gets a chance to handle the tap.
   static Rect screenRectFor(BoardClip clip, BoardViewState view) {
     final effectiveScale = clip.sizeLockScale ?? view.scale;
     final topLeft = Offset(clip.x, clip.y) * view.scale + view.panOffset;
@@ -92,8 +95,11 @@ class TextClipEditOverlay extends ConsumerStatefulWidget {
     // be wider than the note itself) - matching board_canvas.dart's other
     // guards, an approximate-but-safe rect is fine here since a miss only
     // means a click just outside the toolbar's edge falls through to
-    // normal canvas handling, same as clicking genuinely elsewhere.
-    final width = boxWidth < 220 ? 220.0 : boxWidth;
+    // normal canvas handling, same as clicking genuinely elsewhere. 300
+    // comfortably covers the row's content now that every button is a
+    // 40x40 PillIconButton (font-size label + chevron column + 6 format
+    // buttons + 2 dividers).
+    final width = boxWidth < 300 ? 300.0 : boxWidth;
     return Rect.fromLTWH(topLeft.dx, top, width, toolbarHeight);
   }
 
@@ -385,74 +391,85 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
                   horizontal: 4,
                   vertical: 2,
                 ),
-                child: IconTheme(
-                  data: const IconThemeData(
-                    color: AppTheme.textPrimary,
-                    opacity: 1.0,
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 4),
-                        child: Text(
-                          '${(clip.fontSize ?? kTextNoteFontSize).round()}',
-                          style: const TextStyle(
-                            color: AppTheme.textSecondary,
-                            fontSize: 12,
-                          ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      child: Text(
+                        '${(clip.fontSize ?? kTextNoteFontSize).round()}',
+                        style: const TextStyle(
+                          color: AppTheme.textSecondary,
+                          fontSize: 12,
                         ),
                       ),
-                      Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          _chevron(
-                            Icons.keyboard_arrow_up,
-                            () => _adjustFontSize(clip, _fontSizeStep),
-                          ),
-                          _chevron(
-                            Icons.keyboard_arrow_down,
-                            () => _adjustFontSize(clip, -_fontSizeStep),
-                          ),
-                        ],
-                      ),
-                      _divider(),
-                      _formatButton(
-                        icon: Icons.format_bold,
-                        active: _selectionHasStyle(
-                          _controller?.formatting.bold ?? const [],
+                    ),
+                    Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        PillIconButton(
+                          tooltip: 'Increase font size',
+                          icon: Icons.keyboard_arrow_up,
+                          onPressed: () =>
+                              _adjustFontSize(clip, _fontSizeStep),
                         ),
-                        onPressed: _toggleBold,
-                      ),
-                      _formatButton(
-                        icon: Icons.format_italic,
-                        active: _selectionHasStyle(
-                          _controller?.formatting.italic ?? const [],
+                        PillIconButton(
+                          tooltip: 'Decrease font size',
+                          icon: Icons.keyboard_arrow_down,
+                          onPressed: () =>
+                              _adjustFontSize(clip, -_fontSizeStep),
                         ),
-                        onPressed: _toggleItalic,
-                      ),
-                      _formatButton(
-                        icon: Icons.format_underlined,
-                        active: _selectionHasStyle(
-                          _controller?.formatting.underline ?? const [],
-                        ),
-                        onPressed: _toggleUnderline,
-                      ),
-                      _formatButton(
-                        icon: Icons.format_strikethrough,
-                        active: _selectionHasStyle(
-                          _controller?.formatting.strikethrough ?? const [],
-                        ),
-                        onPressed: _toggleStrikethrough,
-                      ),
-                      _divider(),
-                      _formatButton(
-                        icon: Icons.push_pin_outlined,
-                        active: locked,
-                        onPressed: () => _toggleSizeLock(clip, view.scale),
-                      ),
-                    ],
-                  ),
+                      ],
+                    ),
+                    _divider(),
+                    PillIconButton(
+                      tooltip: 'Bold',
+                      icon: Icons.format_bold,
+                      color: _selectionHasStyle(
+                            _controller?.formatting.bold ?? const [],
+                          )
+                          ? AppTheme.red
+                          : null,
+                      onPressed: _toggleBold,
+                    ),
+                    PillIconButton(
+                      tooltip: 'Italic',
+                      icon: Icons.format_italic,
+                      color: _selectionHasStyle(
+                            _controller?.formatting.italic ?? const [],
+                          )
+                          ? AppTheme.red
+                          : null,
+                      onPressed: _toggleItalic,
+                    ),
+                    PillIconButton(
+                      tooltip: 'Underline',
+                      icon: Icons.format_underlined,
+                      color: _selectionHasStyle(
+                            _controller?.formatting.underline ?? const [],
+                          )
+                          ? AppTheme.red
+                          : null,
+                      onPressed: _toggleUnderline,
+                    ),
+                    PillIconButton(
+                      tooltip: 'Strikethrough',
+                      icon: Icons.format_strikethrough,
+                      color: _selectionHasStyle(
+                            _controller?.formatting.strikethrough ?? const [],
+                          )
+                          ? AppTheme.red
+                          : null,
+                      onPressed: _toggleStrikethrough,
+                    ),
+                    _divider(),
+                    PillIconButton(
+                      tooltip: locked ? 'Unlock size' : 'Lock size',
+                      icon: Icons.push_pin_outlined,
+                      color: locked ? AppTheme.red : null,
+                      onPressed: () => _toggleSizeLock(clip, view.scale),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -468,32 +485,6 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
       height: 20,
       margin: const EdgeInsets.symmetric(horizontal: 4),
       color: AppTheme.border,
-    );
-  }
-
-  Widget _chevron(IconData icon, VoidCallback onPressed) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onPressed,
-      child: Icon(icon, size: 14),
-    );
-  }
-
-  Widget _formatButton({
-    required IconData icon,
-    required bool active,
-    required VoidCallback onPressed,
-  }) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onPressed,
-      child: SizedBox(
-        width: 28,
-        height: 28,
-        child: Center(
-          child: Icon(icon, size: 16, color: active ? AppTheme.red : null),
-        ),
-      ),
     );
   }
 }

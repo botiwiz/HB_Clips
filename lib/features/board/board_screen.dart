@@ -692,7 +692,12 @@ class BoardScreen extends ConsumerWidget {
             Positioned(
               top: 16,
               left: 16,
-              right: 16,
+              // Reserves room for the independent Bin/About pill anchored
+              // to this same row's right edge below, so the two can never
+              // visually overlap - PillGroup's own internal horizontal
+              // scroll continues to absorb overflow on this side exactly
+              // as it does today if this button set grows.
+              right: 116,
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -840,32 +845,27 @@ class BoardScreen extends ConsumerWidget {
                       ],
                     ),
                   ),
-                  const Spacer(),
-                  Row(
-                    children: [
-                      PillGroup(
-                        children: [
-                          PillIconButton(
-                            tooltip: 'Bin',
-                            icon: Icons.delete_outline,
-                            onPressed: () => Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => const BinScreen(),
-                              ),
-                            ),
-                          ),
-                          PillIconButton(
-                            tooltip: 'About',
-                            icon: Icons.info_outline,
-                            onPressed: () => Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => const AboutScreen(),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
+                ],
+              ),
+            ),
+            Positioned(
+              top: 16,
+              right: 16,
+              child: PillGroup(
+                children: [
+                  PillIconButton(
+                    tooltip: 'Bin',
+                    icon: Icons.delete_outline,
+                    onPressed: () => Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const BinScreen()),
+                    ),
+                  ),
+                  PillIconButton(
+                    tooltip: 'About',
+                    icon: Icons.info_outline,
+                    onPressed: () => Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const AboutScreen()),
+                    ),
                   ),
                 ],
               ),
