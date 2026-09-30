@@ -1,6 +1,59 @@
+import 'dart:convert';
+
 import '../local/database.dart';
 
 enum ClipType { image, text }
+
+/// A half-open `[start, end)` character range into a text clip's
+/// `textContent`, used by [TextFormatting]'s 3 independent range lists.
+typedef IntRange = ({int start, int end});
+
+/// Bold/italic/strikethrough ranges over a text clip's `textContent` -
+/// each of the 3 lists is independently normalized (sorted, merged,
+/// non-overlapping) by `TextStyleRanges.toggle`. Whole-note font size
+/// lives on [BoardClip.fontSize] instead, since it's not a per-range
+/// attribute (confirmed scope: whole textbox, not per-selection).
+class TextFormatting {
+  final List<IntRange> bold;
+  final List<IntRange> italic;
+  final List<IntRange> strikethrough;
+
+  const TextFormatting({
+    this.bold = const [],
+    this.italic = const [],
+    this.strikethrough = const [],
+  });
+
+  static const empty = TextFormatting();
+
+  factory TextFormatting.fromJson(String? json) {
+    if (json == null || json.isEmpty) return empty;
+    final decoded = jsonDecode(json) as Map<String, dynamic>;
+    List<IntRange> ranges(String key) {
+      final raw = decoded[key] as List<dynamic>? ?? const [];
+      return raw.map((entry) {
+        final pair = entry as List<dynamic>;
+        return (start: pair[0] as int, end: pair[1] as int);
+      }).toList();
+    }
+
+    return TextFormatting(
+      bold: ranges('bold'),
+      italic: ranges('italic'),
+      strikethrough: ranges('strikethrough'),
+    );
+  }
+
+  String toJson() {
+    List<List<int>> encode(List<IntRange> ranges) =>
+        ranges.map((r) => [r.start, r.end]).toList();
+    return jsonEncode({
+      'bold': encode(bold),
+      'italic': encode(italic),
+      'strikethrough': encode(strikethrough),
+    });
+  }
+}
 
 extension ClipTypeStorage on ClipType {
   String get storageValue => switch (this) {
@@ -38,6 +91,9 @@ class BoardClip {
   final double imagePanY;
   final double imageZoom;
   final double? imageAspectRatio;
+  final TextFormatting textFormatting;
+  final double? fontSize;
+  final double? sizeLockScale;
   final bool isBinned;
   final DateTime? binnedAt;
   final DateTime createdAt;
@@ -63,6 +119,9 @@ class BoardClip {
     this.imagePanY = 0.0,
     this.imageZoom = 1.0,
     this.imageAspectRatio,
+    this.textFormatting = TextFormatting.empty,
+    this.fontSize,
+    this.sizeLockScale,
     this.isBinned = false,
     this.binnedAt,
     required this.createdAt,
@@ -89,6 +148,9 @@ class BoardClip {
     imagePanY: row.imagePanY,
     imageZoom: row.imageZoom,
     imageAspectRatio: row.imageAspectRatio,
+    textFormatting: TextFormatting.fromJson(row.textFormattingJson),
+    fontSize: row.fontSize,
+    sizeLockScale: row.sizeLockScale,
     isBinned: row.isBinned,
     binnedAt: row.binnedAt,
     createdAt: row.createdAt,
@@ -110,6 +172,9 @@ class BoardClip {
     double? imagePanX,
     double? imagePanY,
     double? imageZoom,
+    TextFormatting? textFormatting,
+    double? fontSize,
+    double? sizeLockScale,
     bool? isBinned,
     DateTime? binnedAt,
   }) {
@@ -133,6 +198,9 @@ class BoardClip {
       imagePanY: imagePanY ?? this.imagePanY,
       imageZoom: imageZoom ?? this.imageZoom,
       imageAspectRatio: imageAspectRatio,
+      textFormatting: textFormatting ?? this.textFormatting,
+      fontSize: fontSize ?? this.fontSize,
+      sizeLockScale: sizeLockScale ?? this.sizeLockScale,
       isBinned: isBinned ?? this.isBinned,
       binnedAt: binnedAt ?? this.binnedAt,
       createdAt: createdAt,

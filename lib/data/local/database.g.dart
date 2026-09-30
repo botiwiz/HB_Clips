@@ -213,6 +213,39 @@ class $ClipsTable extends Clips with TableInfo<$ClipsTable, ClipRow> {
     type: DriftSqlType.double,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _textFormattingJsonMeta =
+      const VerificationMeta('textFormattingJson');
+  @override
+  late final GeneratedColumn<String> textFormattingJson =
+      GeneratedColumn<String>(
+        'text_formatting_json',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _fontSizeMeta = const VerificationMeta(
+    'fontSize',
+  );
+  @override
+  late final GeneratedColumn<double> fontSize = GeneratedColumn<double>(
+    'font_size',
+    aliasedName,
+    true,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _sizeLockScaleMeta = const VerificationMeta(
+    'sizeLockScale',
+  );
+  @override
+  late final GeneratedColumn<double> sizeLockScale = GeneratedColumn<double>(
+    'size_lock_scale',
+    aliasedName,
+    true,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _isBinnedMeta = const VerificationMeta(
     'isBinned',
   );
@@ -284,6 +317,9 @@ class $ClipsTable extends Clips with TableInfo<$ClipsTable, ClipRow> {
     imagePanY,
     imageZoom,
     imageAspectRatio,
+    textFormattingJson,
+    fontSize,
+    sizeLockScale,
     isBinned,
     binnedAt,
     createdAt,
@@ -424,6 +460,30 @@ class $ClipsTable extends Clips with TableInfo<$ClipsTable, ClipRow> {
         ),
       );
     }
+    if (data.containsKey('text_formatting_json')) {
+      context.handle(
+        _textFormattingJsonMeta,
+        textFormattingJson.isAcceptableOrUnknown(
+          data['text_formatting_json']!,
+          _textFormattingJsonMeta,
+        ),
+      );
+    }
+    if (data.containsKey('font_size')) {
+      context.handle(
+        _fontSizeMeta,
+        fontSize.isAcceptableOrUnknown(data['font_size']!, _fontSizeMeta),
+      );
+    }
+    if (data.containsKey('size_lock_scale')) {
+      context.handle(
+        _sizeLockScaleMeta,
+        sizeLockScale.isAcceptableOrUnknown(
+          data['size_lock_scale']!,
+          _sizeLockScaleMeta,
+        ),
+      );
+    }
     if (data.containsKey('is_binned')) {
       context.handle(
         _isBinnedMeta,
@@ -533,6 +593,18 @@ class $ClipsTable extends Clips with TableInfo<$ClipsTable, ClipRow> {
         DriftSqlType.double,
         data['${effectivePrefix}image_aspect_ratio'],
       ),
+      textFormattingJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}text_formatting_json'],
+      ),
+      fontSize: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}font_size'],
+      ),
+      sizeLockScale: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}size_lock_scale'],
+      ),
       isBinned: attachedDatabase.typeMapping.read(
         DriftSqlType.bool,
         data['${effectivePrefix}is_binned'],
@@ -607,6 +679,23 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
   /// or text notes, treated as "matches the frame's own aspect" (renders
   /// identically to a plain cover-fit with no pan/zoom available yet).
   final double? imageAspectRatio;
+
+  /// JSON-encoded bold/italic/strikethrough ranges over [textContent] - see
+  /// `TextFormatting`. Null/empty means no rich formatting. Ignored for
+  /// image clips.
+  final String? textFormattingJson;
+
+  /// Board-space (world) font size override for a text note - null means
+  /// use the app default (`kTextNoteFontSize`). Whole-note scope, not
+  /// per-character-range. Ignored for image clips.
+  final double? fontSize;
+
+  /// When non-null, the board-view scale this text note's on-screen size
+  /// was pinned to (see the edit toolbar's "constant size" toggle) - the
+  /// clip renders at `width/height * sizeLockScale` regardless of the
+  /// current live zoom, instead of the usual `* view.scale`. Null means
+  /// normal world-space scaling. Ignored for image clips.
+  final double? sizeLockScale;
   final bool isBinned;
   final DateTime? binnedAt;
   final DateTime createdAt;
@@ -631,6 +720,9 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
     required this.imagePanY,
     required this.imageZoom,
     this.imageAspectRatio,
+    this.textFormattingJson,
+    this.fontSize,
+    this.sizeLockScale,
     required this.isBinned,
     this.binnedAt,
     required this.createdAt,
@@ -669,6 +761,15 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
     map['image_zoom'] = Variable<double>(imageZoom);
     if (!nullToAbsent || imageAspectRatio != null) {
       map['image_aspect_ratio'] = Variable<double>(imageAspectRatio);
+    }
+    if (!nullToAbsent || textFormattingJson != null) {
+      map['text_formatting_json'] = Variable<String>(textFormattingJson);
+    }
+    if (!nullToAbsent || fontSize != null) {
+      map['font_size'] = Variable<double>(fontSize);
+    }
+    if (!nullToAbsent || sizeLockScale != null) {
+      map['size_lock_scale'] = Variable<double>(sizeLockScale);
     }
     map['is_binned'] = Variable<bool>(isBinned);
     if (!nullToAbsent || binnedAt != null) {
@@ -712,6 +813,15 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
       imageAspectRatio: imageAspectRatio == null && nullToAbsent
           ? const Value.absent()
           : Value(imageAspectRatio),
+      textFormattingJson: textFormattingJson == null && nullToAbsent
+          ? const Value.absent()
+          : Value(textFormattingJson),
+      fontSize: fontSize == null && nullToAbsent
+          ? const Value.absent()
+          : Value(fontSize),
+      sizeLockScale: sizeLockScale == null && nullToAbsent
+          ? const Value.absent()
+          : Value(sizeLockScale),
       isBinned: Value(isBinned),
       binnedAt: binnedAt == null && nullToAbsent
           ? const Value.absent()
@@ -748,6 +858,11 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
       imagePanY: serializer.fromJson<double>(json['imagePanY']),
       imageZoom: serializer.fromJson<double>(json['imageZoom']),
       imageAspectRatio: serializer.fromJson<double?>(json['imageAspectRatio']),
+      textFormattingJson: serializer.fromJson<String?>(
+        json['textFormattingJson'],
+      ),
+      fontSize: serializer.fromJson<double?>(json['fontSize']),
+      sizeLockScale: serializer.fromJson<double?>(json['sizeLockScale']),
       isBinned: serializer.fromJson<bool>(json['isBinned']),
       binnedAt: serializer.fromJson<DateTime?>(json['binnedAt']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
@@ -777,6 +892,9 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
       'imagePanY': serializer.toJson<double>(imagePanY),
       'imageZoom': serializer.toJson<double>(imageZoom),
       'imageAspectRatio': serializer.toJson<double?>(imageAspectRatio),
+      'textFormattingJson': serializer.toJson<String?>(textFormattingJson),
+      'fontSize': serializer.toJson<double?>(fontSize),
+      'sizeLockScale': serializer.toJson<double?>(sizeLockScale),
       'isBinned': serializer.toJson<bool>(isBinned),
       'binnedAt': serializer.toJson<DateTime?>(binnedAt),
       'createdAt': serializer.toJson<DateTime>(createdAt),
@@ -804,6 +922,9 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
     double? imagePanY,
     double? imageZoom,
     Value<double?> imageAspectRatio = const Value.absent(),
+    Value<String?> textFormattingJson = const Value.absent(),
+    Value<double?> fontSize = const Value.absent(),
+    Value<double?> sizeLockScale = const Value.absent(),
     bool? isBinned,
     Value<DateTime?> binnedAt = const Value.absent(),
     DateTime? createdAt,
@@ -834,6 +955,13 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
     imageAspectRatio: imageAspectRatio.present
         ? imageAspectRatio.value
         : this.imageAspectRatio,
+    textFormattingJson: textFormattingJson.present
+        ? textFormattingJson.value
+        : this.textFormattingJson,
+    fontSize: fontSize.present ? fontSize.value : this.fontSize,
+    sizeLockScale: sizeLockScale.present
+        ? sizeLockScale.value
+        : this.sizeLockScale,
     isBinned: isBinned ?? this.isBinned,
     binnedAt: binnedAt.present ? binnedAt.value : this.binnedAt,
     createdAt: createdAt ?? this.createdAt,
@@ -868,6 +996,13 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
       imageAspectRatio: data.imageAspectRatio.present
           ? data.imageAspectRatio.value
           : this.imageAspectRatio,
+      textFormattingJson: data.textFormattingJson.present
+          ? data.textFormattingJson.value
+          : this.textFormattingJson,
+      fontSize: data.fontSize.present ? data.fontSize.value : this.fontSize,
+      sizeLockScale: data.sizeLockScale.present
+          ? data.sizeLockScale.value
+          : this.sizeLockScale,
       isBinned: data.isBinned.present ? data.isBinned.value : this.isBinned,
       binnedAt: data.binnedAt.present ? data.binnedAt.value : this.binnedAt,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
@@ -897,6 +1032,9 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
           ..write('imagePanY: $imagePanY, ')
           ..write('imageZoom: $imageZoom, ')
           ..write('imageAspectRatio: $imageAspectRatio, ')
+          ..write('textFormattingJson: $textFormattingJson, ')
+          ..write('fontSize: $fontSize, ')
+          ..write('sizeLockScale: $sizeLockScale, ')
           ..write('isBinned: $isBinned, ')
           ..write('binnedAt: $binnedAt, ')
           ..write('createdAt: $createdAt, ')
@@ -926,6 +1064,9 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
     imagePanY,
     imageZoom,
     imageAspectRatio,
+    textFormattingJson,
+    fontSize,
+    sizeLockScale,
     isBinned,
     binnedAt,
     createdAt,
@@ -954,6 +1095,9 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
           other.imagePanY == this.imagePanY &&
           other.imageZoom == this.imageZoom &&
           other.imageAspectRatio == this.imageAspectRatio &&
+          other.textFormattingJson == this.textFormattingJson &&
+          other.fontSize == this.fontSize &&
+          other.sizeLockScale == this.sizeLockScale &&
           other.isBinned == this.isBinned &&
           other.binnedAt == this.binnedAt &&
           other.createdAt == this.createdAt &&
@@ -980,6 +1124,9 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
   final Value<double> imagePanY;
   final Value<double> imageZoom;
   final Value<double?> imageAspectRatio;
+  final Value<String?> textFormattingJson;
+  final Value<double?> fontSize;
+  final Value<double?> sizeLockScale;
   final Value<bool> isBinned;
   final Value<DateTime?> binnedAt;
   final Value<DateTime> createdAt;
@@ -1005,6 +1152,9 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
     this.imagePanY = const Value.absent(),
     this.imageZoom = const Value.absent(),
     this.imageAspectRatio = const Value.absent(),
+    this.textFormattingJson = const Value.absent(),
+    this.fontSize = const Value.absent(),
+    this.sizeLockScale = const Value.absent(),
     this.isBinned = const Value.absent(),
     this.binnedAt = const Value.absent(),
     this.createdAt = const Value.absent(),
@@ -1031,6 +1181,9 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
     this.imagePanY = const Value.absent(),
     this.imageZoom = const Value.absent(),
     this.imageAspectRatio = const Value.absent(),
+    this.textFormattingJson = const Value.absent(),
+    this.fontSize = const Value.absent(),
+    this.sizeLockScale = const Value.absent(),
     this.isBinned = const Value.absent(),
     this.binnedAt = const Value.absent(),
     this.createdAt = const Value.absent(),
@@ -1059,6 +1212,9 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
     Expression<double>? imagePanY,
     Expression<double>? imageZoom,
     Expression<double>? imageAspectRatio,
+    Expression<String>? textFormattingJson,
+    Expression<double>? fontSize,
+    Expression<double>? sizeLockScale,
     Expression<bool>? isBinned,
     Expression<DateTime>? binnedAt,
     Expression<DateTime>? createdAt,
@@ -1086,6 +1242,10 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
       if (imagePanY != null) 'image_pan_y': imagePanY,
       if (imageZoom != null) 'image_zoom': imageZoom,
       if (imageAspectRatio != null) 'image_aspect_ratio': imageAspectRatio,
+      if (textFormattingJson != null)
+        'text_formatting_json': textFormattingJson,
+      if (fontSize != null) 'font_size': fontSize,
+      if (sizeLockScale != null) 'size_lock_scale': sizeLockScale,
       if (isBinned != null) 'is_binned': isBinned,
       if (binnedAt != null) 'binned_at': binnedAt,
       if (createdAt != null) 'created_at': createdAt,
@@ -1114,6 +1274,9 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
     Value<double>? imagePanY,
     Value<double>? imageZoom,
     Value<double?>? imageAspectRatio,
+    Value<String?>? textFormattingJson,
+    Value<double?>? fontSize,
+    Value<double?>? sizeLockScale,
     Value<bool>? isBinned,
     Value<DateTime?>? binnedAt,
     Value<DateTime>? createdAt,
@@ -1140,6 +1303,9 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
       imagePanY: imagePanY ?? this.imagePanY,
       imageZoom: imageZoom ?? this.imageZoom,
       imageAspectRatio: imageAspectRatio ?? this.imageAspectRatio,
+      textFormattingJson: textFormattingJson ?? this.textFormattingJson,
+      fontSize: fontSize ?? this.fontSize,
+      sizeLockScale: sizeLockScale ?? this.sizeLockScale,
       isBinned: isBinned ?? this.isBinned,
       binnedAt: binnedAt ?? this.binnedAt,
       createdAt: createdAt ?? this.createdAt,
@@ -1208,6 +1374,15 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
     if (imageAspectRatio.present) {
       map['image_aspect_ratio'] = Variable<double>(imageAspectRatio.value);
     }
+    if (textFormattingJson.present) {
+      map['text_formatting_json'] = Variable<String>(textFormattingJson.value);
+    }
+    if (fontSize.present) {
+      map['font_size'] = Variable<double>(fontSize.value);
+    }
+    if (sizeLockScale.present) {
+      map['size_lock_scale'] = Variable<double>(sizeLockScale.value);
+    }
     if (isBinned.present) {
       map['is_binned'] = Variable<bool>(isBinned.value);
     }
@@ -1248,6 +1423,9 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
           ..write('imagePanY: $imagePanY, ')
           ..write('imageZoom: $imageZoom, ')
           ..write('imageAspectRatio: $imageAspectRatio, ')
+          ..write('textFormattingJson: $textFormattingJson, ')
+          ..write('fontSize: $fontSize, ')
+          ..write('sizeLockScale: $sizeLockScale, ')
           ..write('isBinned: $isBinned, ')
           ..write('binnedAt: $binnedAt, ')
           ..write('createdAt: $createdAt, ')
@@ -3565,6 +3743,9 @@ typedef $$ClipsTableCreateCompanionBuilder =
       Value<double> imagePanY,
       Value<double> imageZoom,
       Value<double?> imageAspectRatio,
+      Value<String?> textFormattingJson,
+      Value<double?> fontSize,
+      Value<double?> sizeLockScale,
       Value<bool> isBinned,
       Value<DateTime?> binnedAt,
       Value<DateTime> createdAt,
@@ -3592,6 +3773,9 @@ typedef $$ClipsTableUpdateCompanionBuilder =
       Value<double> imagePanY,
       Value<double> imageZoom,
       Value<double?> imageAspectRatio,
+      Value<String?> textFormattingJson,
+      Value<double?> fontSize,
+      Value<double?> sizeLockScale,
       Value<bool> isBinned,
       Value<DateTime?> binnedAt,
       Value<DateTime> createdAt,
@@ -3699,6 +3883,21 @@ class $$ClipsTableFilterComposer extends Composer<_$AppDatabase, $ClipsTable> {
 
   ColumnFilters<double> get imageAspectRatio => $composableBuilder(
     column: $table.imageAspectRatio,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get textFormattingJson => $composableBuilder(
+    column: $table.textFormattingJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get fontSize => $composableBuilder(
+    column: $table.fontSize,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get sizeLockScale => $composableBuilder(
+    column: $table.sizeLockScale,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -3827,6 +4026,21 @@ class $$ClipsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get textFormattingJson => $composableBuilder(
+    column: $table.textFormattingJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get fontSize => $composableBuilder(
+    column: $table.fontSize,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get sizeLockScale => $composableBuilder(
+    column: $table.sizeLockScale,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<bool> get isBinned => $composableBuilder(
     column: $table.isBinned,
     builder: (column) => ColumnOrderings(column),
@@ -3922,6 +4136,19 @@ class $$ClipsTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<String> get textFormattingJson => $composableBuilder(
+    column: $table.textFormattingJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<double> get fontSize =>
+      $composableBuilder(column: $table.fontSize, builder: (column) => column);
+
+  GeneratedColumn<double> get sizeLockScale => $composableBuilder(
+    column: $table.sizeLockScale,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<bool> get isBinned =>
       $composableBuilder(column: $table.isBinned, builder: (column) => column);
 
@@ -3982,6 +4209,9 @@ class $$ClipsTableTableManager
                 Value<double> imagePanY = const Value.absent(),
                 Value<double> imageZoom = const Value.absent(),
                 Value<double?> imageAspectRatio = const Value.absent(),
+                Value<String?> textFormattingJson = const Value.absent(),
+                Value<double?> fontSize = const Value.absent(),
+                Value<double?> sizeLockScale = const Value.absent(),
                 Value<bool> isBinned = const Value.absent(),
                 Value<DateTime?> binnedAt = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
@@ -4007,6 +4237,9 @@ class $$ClipsTableTableManager
                 imagePanY: imagePanY,
                 imageZoom: imageZoom,
                 imageAspectRatio: imageAspectRatio,
+                textFormattingJson: textFormattingJson,
+                fontSize: fontSize,
+                sizeLockScale: sizeLockScale,
                 isBinned: isBinned,
                 binnedAt: binnedAt,
                 createdAt: createdAt,
@@ -4034,6 +4267,9 @@ class $$ClipsTableTableManager
                 Value<double> imagePanY = const Value.absent(),
                 Value<double> imageZoom = const Value.absent(),
                 Value<double?> imageAspectRatio = const Value.absent(),
+                Value<String?> textFormattingJson = const Value.absent(),
+                Value<double?> fontSize = const Value.absent(),
+                Value<double?> sizeLockScale = const Value.absent(),
                 Value<bool> isBinned = const Value.absent(),
                 Value<DateTime?> binnedAt = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
@@ -4059,6 +4295,9 @@ class $$ClipsTableTableManager
                 imagePanY: imagePanY,
                 imageZoom: imageZoom,
                 imageAspectRatio: imageAspectRatio,
+                textFormattingJson: textFormattingJson,
+                fontSize: fontSize,
+                sizeLockScale: sizeLockScale,
                 isBinned: isBinned,
                 binnedAt: binnedAt,
                 createdAt: createdAt,

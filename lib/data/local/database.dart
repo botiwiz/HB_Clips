@@ -19,7 +19,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 14;
+  int get schemaVersion => 15;
 
   Future<void> _seedDefaultBoard(Migrator m) {
     return into(boards).insert(
@@ -84,6 +84,11 @@ class AppDatabase extends _$AppDatabase {
       }
       if (from < 14) {
         await m.createTable(connectors);
+      }
+      if (from < 15) {
+        await m.addColumn(clips, clips.textFormattingJson);
+        await m.addColumn(clips, clips.fontSize);
+        await m.addColumn(clips, clips.sizeLockScale);
       }
     },
   );

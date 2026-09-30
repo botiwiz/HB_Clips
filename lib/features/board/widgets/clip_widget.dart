@@ -5,6 +5,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../data/models/clip.dart';
 import '../../annotation/stroke_painter.dart';
 import '../controllers/board_controller.dart' show ImagePanZoomLive;
+import '../geometry/text_style_ranges.dart';
 import 'gif_playback_view.dart';
 import 'image_pan_zoom_frame.dart';
 import 'local_image.dart';
@@ -23,10 +24,12 @@ class ClipWidget extends StatelessWidget {
   /// position/size), not watched by this widget directly.
   final ImagePanZoomLive? panZoomLive;
 
-  /// Current board-view zoom, so a text clip's font renders at a
-  /// world-space size (`kTextNoteFontSize * viewScale`) like every other
-  /// clip's content, instead of a constant screen size regardless of zoom.
-  /// Unused for image clips.
+  /// The caller's already-resolved effective scale (board-view zoom,
+  /// unless the clip's "constant size" toggle pins it to a different
+  /// value - see `board_canvas.dart._positionedClip`), so a text clip's
+  /// font renders at a world-space size (`kTextNoteFontSize * viewScale`)
+  /// like every other clip's content, instead of a constant screen size
+  /// regardless of zoom. Unused for image clips.
   final double viewScale;
 
   const ClipWidget({
@@ -99,14 +102,25 @@ class ClipWidget extends StatelessWidget {
   }
 
   Widget _buildText() {
+    // Note: [viewScale] is the caller's already-resolved effective scale -
+    // `clip.sizeLockScale ?? view.scale` - not necessarily the board's raw
+    // live zoom (see `board_canvas.dart._positionedClip`'s "constant size"
+    // toggle handling), so the box and its font always agree on how big to
+    // render regardless of which one is in effect.
+    final baseStyle = TextStyle(
+      color: AppTheme.textNoteText,
+      fontSize: (clip.fontSize ?? kTextNoteFontSize) * viewScale,
+      height: 1.3,
+    );
     return Padding(
       padding: const EdgeInsets.all(10),
-      child: Text(
-        clip.textContent ?? '',
-        style: TextStyle(
-          color: AppTheme.textNoteText,
-          fontSize: kTextNoteFontSize * viewScale,
-          height: 1.3,
+      child: Text.rich(
+        TextSpan(
+          children: TextStyleRanges.buildSpans(
+            clip.textContent ?? '',
+            clip.textFormatting,
+            baseStyle,
+          ),
         ),
       ),
     );

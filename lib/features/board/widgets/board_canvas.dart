@@ -656,6 +656,12 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
         ref.read(panZoomClipIdProvider.notifier).state = hit.id;
         return;
       }
+      if (hit.type == ClipType.text &&
+          _isDoubleClickOn(hit.id, event.localPosition)) {
+        ref.read(selectedClipIdsProvider.notifier).state = {hit.id};
+        ref.read(editingTextClipIdProvider.notifier).state = hit.id;
+        return;
+      }
       if (_multiSelectModifierHeld) {
         final newSelection = {...selection};
         if (!newSelection.remove(hit.id)) newSelection.add(hit.id);
@@ -2070,8 +2076,14 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     final height = drag?.height ?? clip.height;
     final rotation = drag?.rotation ?? clip.rotation;
     final topLeft = _boardToScreen(Offset(x, y), view);
-    final boxWidth = width * view.scale;
-    final boxHeight = height * view.scale;
+    // The "constant size" edit-toolbar toggle pins a text clip's on-screen
+    // size to whatever the view scale was when it was switched on, instead
+    // of the usual live view.scale - position still tracks the true view
+    // (panning/zooming moves the box around as normal), only its size
+    // freezes. Unset (null) for every clip except a locked text note.
+    final effectiveScale = clip.sizeLockScale ?? view.scale;
+    final boxWidth = width * effectiveScale;
+    final boxHeight = height * effectiveScale;
 
     final child = IgnorePointer(
       child: Transform.rotate(
@@ -2083,7 +2095,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
               child: ClipWidget(
                 clip: clip,
                 selected: selection.contains(clip.id),
-                viewScale: view.scale,
+                viewScale: effectiveScale,
                 panZoomLive: panZoomLive,
               ),
             ),
@@ -2102,7 +2114,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
                             )
                             .toList(),
                         color: hexToColor(stroke.colorHex),
-                        width: stroke.strokeWidth * view.scale,
+                        width: stroke.strokeWidth * effectiveScale,
                         dashed: stroke.dashed,
                         arrowEnd: stroke.arrowEnd,
                       ),

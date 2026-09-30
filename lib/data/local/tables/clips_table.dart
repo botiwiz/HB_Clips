@@ -57,6 +57,23 @@ class Clips extends Table {
   /// identically to a plain cover-fit with no pan/zoom available yet).
   RealColumn get imageAspectRatio => real().nullable()();
 
+  /// JSON-encoded bold/italic/strikethrough ranges over [textContent] - see
+  /// `TextFormatting`. Null/empty means no rich formatting. Ignored for
+  /// image clips.
+  TextColumn get textFormattingJson => text().nullable()();
+
+  /// Board-space (world) font size override for a text note - null means
+  /// use the app default (`kTextNoteFontSize`). Whole-note scope, not
+  /// per-character-range. Ignored for image clips.
+  RealColumn get fontSize => real().nullable()();
+
+  /// When non-null, the board-view scale this text note's on-screen size
+  /// was pinned to (see the edit toolbar's "constant size" toggle) - the
+  /// clip renders at `width/height * sizeLockScale` regardless of the
+  /// current live zoom, instead of the usual `* view.scale`. Null means
+  /// normal world-space scaling. Ignored for image clips.
+  RealColumn get sizeLockScale => real().nullable()();
+
   BoolColumn get isBinned => boolean().withDefault(const Constant(false))();
   DateTimeColumn get binnedAt => dateTime().nullable()();
 

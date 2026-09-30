@@ -148,6 +148,39 @@ class ClipsRepository {
     );
   }
 
+  /// Sets a text note's bold/italic/strikethrough ranges.
+  Future<void> updateTextFormatting(String id, TextFormatting formatting) {
+    return (_db.update(_db.clips)..where((c) => c.id.equals(id))).write(
+      ClipsCompanion(
+        textFormattingJson: Value(formatting.toJson()),
+        updatedAt: Value(DateTime.now()),
+      ),
+    );
+  }
+
+  /// Sets a text note's whole-box font size, or clears it back to the app
+  /// default (`kTextNoteFontSize`) when [fontSize] is null.
+  Future<void> updateFontSize(String id, double? fontSize) {
+    return (_db.update(_db.clips)..where((c) => c.id.equals(id))).write(
+      ClipsCompanion(
+        fontSize: Value(fontSize),
+        updatedAt: Value(DateTime.now()),
+      ),
+    );
+  }
+
+  /// Pins a text note's on-screen size to [scale] (the board-view scale at
+  /// the moment the "constant size" toggle was switched on), or clears it
+  /// back to normal world-space scaling when [scale] is null.
+  Future<void> updateSizeLockScale(String id, double? scale) {
+    return (_db.update(_db.clips)..where((c) => c.id.equals(id))).write(
+      ClipsCompanion(
+        sizeLockScale: Value(scale),
+        updatedAt: Value(DateTime.now()),
+      ),
+    );
+  }
+
   /// Sets or clears which frame this clip is nested inside - called
   /// whenever a clip drag ends and its new center point has entered or
   /// left a frame's bounds (Miro's frame-containment behavior).

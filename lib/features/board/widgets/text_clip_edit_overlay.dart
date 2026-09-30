@@ -9,6 +9,48 @@ import '../../../data/providers.dart';
 import '../../annotation/stroke_painter.dart' show hexToColor;
 import '../controllers/board_controller.dart';
 import '../geometry/selection_geometry.dart';
+import '../geometry/text_style_ranges.dart';
+import 'clip_style_popover.dart';
+
+/// A minimum/maximum for the whole-note font-size stepper in the edit
+/// toolbar - keeps a note readable without letting it grow/shrink to
+/// absurd sizes.
+const double _minFontSize = 8;
+const double _maxFontSize = 72;
+const double _fontSizeStep = 2;
+
+/// A [TextEditingController] that paints bold/italic/strikethrough ranges
+/// live (via [buildTextSpan]) while keeping the underlying value a single
+/// plain string - so typing/cursor/selection behave exactly like a normal
+/// `TextField`, and only the *painting* reflects rich formatting. This is
+/// the standard, officially-supported extension point for exactly this: no
+/// invisible marker characters embedded in the text, no custom
+/// cursor-offset math.
+class _RichTextEditingController extends TextEditingController {
+  TextFormatting formatting;
+
+  _RichTextEditingController({required super.text, required this.formatting});
+
+  void setFormatting(TextFormatting next) {
+    formatting = next;
+    notifyListeners();
+  }
+
+  @override
+  TextSpan buildTextSpan({
+    required BuildContext context,
+    TextStyle? style,
+    required bool withComposing,
+  }) {
+    return TextSpan(
+      children: TextStyleRanges.buildSpans(
+        text,
+        formatting,
+        style ?? const TextStyle(),
+      ),
+    );
+  }
+}
 
 /// Renders an actively-focused, editable `TextField` directly over the
 /// text-note clip named by [editingTextClipIdProvider], positioned/sized
@@ -21,9 +63,11 @@ import '../geometry/selection_geometry.dart';
 ///
 /// Commits text live via `updateTextContent` on every keystroke - simpler
 /// than tracking dirty state for a blur-only commit, and means losing
-/// focus (click away) or Escape never loses typed text. Renders nothing
-/// unless the named clip still exists and is a text clip, so a stale id
-/// (clip binned mid-edit) can't crash this.
+/// focus (click away) or Escape never loses typed text. Bold/italic/
+/// strikethrough toggles (Ctrl+B/I/S, or the toolbar buttons) and the
+/// font-size stepper write through the same "just write it" convention.
+/// Renders nothing unless the named clip still exists and is a text clip,
+/// so a stale id (clip binned mid-edit) can't crash this.
 class TextClipEditOverlay extends ConsumerStatefulWidget {
   const TextClipEditOverlay({super.key});
 
@@ -33,14 +77,17 @@ class TextClipEditOverlay extends ConsumerStatefulWidget {
 }
 
 class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
-  TextEditingController? _controller;
+  _RichTextEditingController? _controller;
   FocusNode? _focusNode;
   String? _boundClipId;
 
-  void _bind(String clipId, String initialText) {
-    _controller = TextEditingController(text: initialText);
-    _focusNode = FocusNode(debugLabel: 'TextClipEdit-$clipId');
-    _boundClipId = clipId;
+  void _bind(BoardClip clip) {
+    _controller = _RichTextEditingController(
+      text: clip.textContent ?? '',
+      formatting: clip.textFormatting,
+    );
+    _focusNode = FocusNode(debugLabel: 'TextClipEdit-${clip.id}');
+    _boundClipId = clip.id;
     _focusNode!.addListener(() {
       if (!_focusNode!.hasFocus) _commitAndExit();
     });
@@ -76,6 +123,65 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
     super.dispose();
   }
 
+  void _toggleAttribute({
+    required List<IntRange> Function(TextFormatting) select,
+    required TextFormatting Function(TextFormatting, List<IntRange>) update,
+  }) {
+    final controller = _controller;
+    final id = _boundClipId;
+    if (controller == null || id == null) return;
+    final sel = controller.selection;
+    if (!sel.isValid || sel.isCollapsed) return;
+
+    final toggled = TextStyleRanges.toggle(
+      select(controller.formatting),
+      sel.start,
+      sel.end,
+    );
+    final next = update(controller.formatting, toggled);
+    controller.setFormatting(next);
+    ref.read(clipsRepositoryProvider).updateTextFormatting(id, next);
+  }
+
+  void _toggleBold() => _toggleAttribute(
+    select: (f) => f.bold,
+    update: (f, r) =>
+        TextFormatting(bold: r, italic: f.italic, strikethrough: f.strikethrough),
+  );
+
+  void _toggleItalic() => _toggleAttribute(
+    select: (f) => f.italic,
+    update: (f, r) =>
+        TextFormatting(bold: f.bold, italic: r, strikethrough: f.strikethrough),
+  );
+
+  void _toggleStrikethrough() => _toggleAttribute(
+    select: (f) => f.strikethrough,
+    update: (f, r) =>
+        TextFormatting(bold: f.bold, italic: f.italic, strikethrough: r),
+  );
+
+  void _adjustFontSize(BoardClip clip, double delta) {
+    final current = clip.fontSize ?? kTextNoteFontSize;
+    final next = (current + delta).clamp(_minFontSize, _maxFontSize);
+    ref.read(clipsRepositoryProvider).updateFontSize(clip.id, next);
+  }
+
+  void _toggleSizeLock(BoardClip clip, double viewScale) {
+    final locked = clip.sizeLockScale != null;
+    ref
+        .read(clipsRepositoryProvider)
+        .updateSizeLockScale(clip.id, locked ? null : viewScale);
+  }
+
+  bool _selectionHasStyle(List<IntRange> ranges) {
+    final controller = _controller;
+    if (controller == null) return false;
+    final sel = controller.selection;
+    if (!sel.isValid || sel.isCollapsed) return false;
+    return TextStyleRanges.isFullyCovered(ranges, sel.start, sel.end);
+  }
+
   @override
   Widget build(BuildContext context) {
     final editingId = ref.watch(editingTextClipIdProvider);
@@ -92,53 +198,171 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
 
     if (_boundClipId != editingId) {
       _disposeBinding();
-      _bind(editingId, clip.textContent ?? '');
+      _bind(clip);
+    } else {
+      // Keep the live controller's formatting in sync if it was mutated
+      // elsewhere (e.g. a toggle just landed and activeClipsProvider's
+      // stream re-emitted) - a no-op rebuild otherwise.
+      _controller!.formatting = clip.textFormatting;
     }
 
     final view = ref.watch(boardViewProvider);
+    final effectiveScale = clip.sizeLockScale ?? view.scale;
     final topLeft = Offset(clip.x, clip.y) * view.scale + view.panOffset;
+    final boxWidth = clip.width * effectiveScale;
+    final boxHeight = clip.height * effectiveScale;
 
-    return Positioned(
-      left: topLeft.dx,
-      top: topLeft.dy,
-      width: clip.width * view.scale,
-      height: clip.height * view.scale,
-      child: CallbackShortcuts(
-        bindings: {
-          const SingleActivator(LogicalKeyboardKey.escape): _commitAndExit,
-        },
-        child: Container(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: AppTheme.red, width: 2.5),
-            color: clip.backgroundColorHex != null
-                ? hexToColor(clip.backgroundColorHex!)
-                : AppTheme.textNoteSurface,
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: Padding(
-            padding: const EdgeInsets.all(10),
-            child: TextField(
-              controller: _controller,
-              focusNode: _focusNode,
-              maxLines: null,
-              expands: true,
-              style: TextStyle(
-                color: AppTheme.textNoteText,
-                fontSize: kTextNoteFontSize * view.scale,
-                height: 1.3,
+    // Float the format toolbar above ClipStylePopover's own pill (which
+    // keeps showing for the selected text clip regardless of edit mode),
+    // rather than the two floating panels overlapping.
+    final popoverRect = ClipStylePopover.screenRectFor(clip, view);
+    const toolbarHeight = 40.0;
+    final locked = clip.sizeLockScale != null;
+
+    return Positioned.fill(
+      child: Stack(
+        children: [
+          Positioned(
+            left: topLeft.dx,
+            top: topLeft.dy,
+            width: boxWidth,
+            height: boxHeight,
+            child: CallbackShortcuts(
+              bindings: {
+                const SingleActivator(LogicalKeyboardKey.escape):
+                    _commitAndExit,
+                const SingleActivator(LogicalKeyboardKey.keyB, control: true):
+                    _toggleBold,
+                const SingleActivator(LogicalKeyboardKey.keyI, control: true):
+                    _toggleItalic,
+                const SingleActivator(LogicalKeyboardKey.keyS, control: true):
+                    _toggleStrikethrough,
+              },
+              child: Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: AppTheme.red, width: 2.5),
+                  color: clip.backgroundColorHex != null
+                      ? hexToColor(clip.backgroundColorHex!)
+                      : AppTheme.textNoteSurface,
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: Padding(
+                  padding: const EdgeInsets.all(10),
+                  child: TextField(
+                    controller: _controller,
+                    focusNode: _focusNode,
+                    maxLines: null,
+                    expands: true,
+                    style: TextStyle(
+                      color: AppTheme.textNoteText,
+                      fontSize: (clip.fontSize ?? kTextNoteFontSize) *
+                          effectiveScale,
+                      height: 1.3,
+                    ),
+                    decoration: const InputDecoration(
+                      border: InputBorder.none,
+                      isCollapsed: true,
+                    ),
+                    onChanged: (text) => ref
+                        .read(clipsRepositoryProvider)
+                        .updateTextContent(editingId, text),
+                  ),
+                ),
               ),
-              decoration: const InputDecoration(
-                border: InputBorder.none,
-                isCollapsed: true,
-              ),
-              onChanged: (text) => ref
-                  .read(clipsRepositoryProvider)
-                  .updateTextContent(editingId, text),
             ),
           ),
-        ),
+          Positioned(
+            left: popoverRect.left,
+            top: popoverRect.top - toolbarHeight - 8,
+            child: Material(
+              color: AppTheme.surfaceElevated,
+              borderRadius: BorderRadius.circular(10),
+              elevation: 6,
+              shadowColor: Colors.black54,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _formatButton(
+                      icon: Icons.format_bold,
+                      active: _selectionHasStyle(_controller?.formatting.bold ?? const []),
+                      onPressed: _toggleBold,
+                    ),
+                    _formatButton(
+                      icon: Icons.format_italic,
+                      active: _selectionHasStyle(_controller?.formatting.italic ?? const []),
+                      onPressed: _toggleItalic,
+                    ),
+                    _formatButton(
+                      icon: Icons.format_strikethrough,
+                      active: _selectionHasStyle(
+                        _controller?.formatting.strikethrough ?? const [],
+                      ),
+                      onPressed: _toggleStrikethrough,
+                    ),
+                    const SizedBox(
+                      height: 24,
+                      child: VerticalDivider(width: 1, color: AppTheme.border),
+                    ),
+                    _iconButton(
+                      icon: Icons.remove,
+                      onPressed: () => _adjustFontSize(clip, -_fontSizeStep),
+                    ),
+                    SizedBox(
+                      width: 28,
+                      child: Text(
+                        '${(clip.fontSize ?? kTextNoteFontSize).round()}',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: AppTheme.textSecondary,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                    _iconButton(
+                      icon: Icons.add,
+                      onPressed: () => _adjustFontSize(clip, _fontSizeStep),
+                    ),
+                    const SizedBox(
+                      height: 24,
+                      child: VerticalDivider(width: 1, color: AppTheme.border),
+                    ),
+                    _formatButton(
+                      icon: Icons.push_pin_outlined,
+                      active: locked,
+                      onPressed: () => _toggleSizeLock(clip, view.scale),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
+    );
+  }
+
+  Widget _iconButton({required IconData icon, required VoidCallback onPressed}) {
+    return IconButton(
+      icon: Icon(icon, size: 16),
+      color: AppTheme.textPrimary,
+      visualDensity: VisualDensity.compact,
+      onPressed: onPressed,
+    );
+  }
+
+  Widget _formatButton({
+    required IconData icon,
+    required bool active,
+    required VoidCallback onPressed,
+  }) {
+    return IconButton(
+      icon: Icon(icon, size: 16),
+      color: active ? AppTheme.red : AppTheme.textPrimary,
+      visualDensity: VisualDensity.compact,
+      onPressed: onPressed,
     );
   }
 }
