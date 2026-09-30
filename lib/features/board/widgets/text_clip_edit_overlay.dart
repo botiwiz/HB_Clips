@@ -249,56 +249,79 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
             top: topLeft.dy,
             width: boxWidth,
             height: boxHeight,
-            child: CallbackShortcuts(
-              bindings: {
-                const SingleActivator(LogicalKeyboardKey.escape):
-                    _commitAndExit,
-                // Swallows the bare Space key so it doesn't bubble up to
-                // board_canvas.dart's ancestor Focus (which binds a
-                // tap-Space-to-fit-viewport-to-selection shortcut) -
-                // without this, every space typed re-triggered that
-                // shortcut, since EditableText doesn't claim plain
-                // printable characters at the raw-key level (it inserts
-                // them via the platform text-input/IME channel instead).
-                const SingleActivator(LogicalKeyboardKey.space): () {},
-                const SingleActivator(LogicalKeyboardKey.keyB, control: true):
-                    _toggleBold,
-                const SingleActivator(LogicalKeyboardKey.keyI, control: true):
-                    _toggleItalic,
-                const SingleActivator(LogicalKeyboardKey.keyU, control: true):
-                    _toggleUnderline,
-                const SingleActivator(LogicalKeyboardKey.keyS, control: true):
-                    _toggleStrikethrough,
-              },
-              child: Container(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: AppTheme.red, width: 2.5),
-                  color: clip.backgroundColorHex != null
-                      ? hexToColor(clip.backgroundColorHex!)
-                      : AppTheme.textNoteSurface,
-                ),
-                clipBehavior: Clip.antiAlias,
-                child: Padding(
-                  padding: const EdgeInsets.all(10),
-                  child: TextField(
-                    controller: _controller,
-                    focusNode: _focusNode,
-                    maxLines: null,
-                    expands: true,
-                    style: TextStyle(
-                      color: AppTheme.textNoteText,
-                      fontSize:
-                          (clip.fontSize ?? kTextNoteFontSize) * effectiveScale,
-                      height: 1.3,
+            // The outer Focus unconditionally swallows any key event that
+            // reaches it, so nothing un-matched by the inner
+            // CallbackShortcuts (bare Backspace, Delete, arrow keys,
+            // Ctrl+A, Ctrl+V, ...) can keep bubbling up to
+            // board_screen.dart's ancestor CallbackShortcuts, which binds
+            // Backspace/Delete to binning the current board selection.
+            // EditableText's own internal editing (deleting a character,
+            // moving the cursor, etc.) happens inside the TextField below
+            // this wrapper, so normal typing/editing is unaffected - this
+            // only blocks further upward propagation once the field (and
+            // the inner CallbackShortcuts) have already had their turn.
+            child: Focus(
+              onKeyEvent: (node, event) => KeyEventResult.handled,
+              child: CallbackShortcuts(
+                bindings: {
+                  const SingleActivator(LogicalKeyboardKey.escape):
+                      _commitAndExit,
+                  // Swallows the bare Space key so it doesn't bubble up to
+                  // board_canvas.dart's ancestor Focus (which binds a
+                  // tap-Space-to-fit-viewport-to-selection shortcut) -
+                  // without this, every space typed re-triggered that
+                  // shortcut, since EditableText doesn't claim plain
+                  // printable characters at the raw-key level (it inserts
+                  // them via the platform text-input/IME channel instead).
+                  const SingleActivator(LogicalKeyboardKey.space): () {},
+                  const SingleActivator(
+                    LogicalKeyboardKey.keyB,
+                    control: true,
+                  ): _toggleBold,
+                  const SingleActivator(
+                    LogicalKeyboardKey.keyI,
+                    control: true,
+                  ): _toggleItalic,
+                  const SingleActivator(
+                    LogicalKeyboardKey.keyU,
+                    control: true,
+                  ): _toggleUnderline,
+                  const SingleActivator(
+                    LogicalKeyboardKey.keyS,
+                    control: true,
+                  ): _toggleStrikethrough,
+                },
+                child: Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: AppTheme.red, width: 2.5),
+                    color: clip.backgroundColorHex != null
+                        ? hexToColor(clip.backgroundColorHex!)
+                        : AppTheme.textNoteSurface,
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: Padding(
+                    padding: const EdgeInsets.all(10),
+                    child: TextField(
+                      controller: _controller,
+                      focusNode: _focusNode,
+                      maxLines: null,
+                      expands: true,
+                      style: TextStyle(
+                        color: AppTheme.textNoteText,
+                        fontSize:
+                            (clip.fontSize ?? kTextNoteFontSize) *
+                            effectiveScale,
+                        height: 1.3,
+                      ),
+                      decoration: const InputDecoration(
+                        border: InputBorder.none,
+                        isCollapsed: true,
+                      ),
+                      onChanged: (text) => ref
+                          .read(clipsRepositoryProvider)
+                          .updateTextContent(editingId, text),
                     ),
-                    decoration: const InputDecoration(
-                      border: InputBorder.none,
-                      isCollapsed: true,
-                    ),
-                    onChanged: (text) => ref
-                        .read(clipsRepositoryProvider)
-                        .updateTextContent(editingId, text),
                   ),
                 ),
               ),
