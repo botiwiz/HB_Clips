@@ -262,184 +262,197 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
     final locked = clip.sizeLockScale != null;
 
     return Positioned.fill(
-      child: TextFieldTapRegion(
-        // Flutter's TextField/EditableText auto-unfocuses on any tap
-        // outside its own tap-region group (via a TapRegionSurface near
-        // the app's root Overlay) - entirely separate from this app's own
-        // custom gesture Listener in board_canvas.dart. Wrapping both the
-        // TextField and the toolbar in one shared TextFieldTapRegion (no
-        // groupId - they share the nearest enclosing group) tells that
-        // framework mechanism a toolbar tap is still "inside" the field,
-        // so it stops stealing focus and exiting edit mode before the
-        // toolbar's own button gets a chance to handle the tap.
-        child: Stack(
-          children: [
-            Positioned(
-              left: topLeft.dx,
-              top: topLeft.dy,
-              width: boxWidth,
-              height: boxHeight,
-              child: CallbackShortcuts(
-                bindings: {
-                  const SingleActivator(LogicalKeyboardKey.escape):
-                      _commitAndExit,
-                  // Swallows the bare Space key so it doesn't bubble up to
-                  // board_canvas.dart's ancestor Focus (which binds a
-                  // tap-Space-to-fit-viewport-to-selection shortcut) -
-                  // without this, every space typed re-triggered that
-                  // shortcut, since EditableText doesn't claim plain
-                  // printable characters at the raw-key level (it inserts
-                  // them via the platform text-input/IME channel instead).
-                  const SingleActivator(LogicalKeyboardKey.space): () {},
-                  // Swallows bare Backspace/Delete so they don't bubble up
-                  // to board_screen.dart's ancestor CallbackShortcuts
-                  // (which bins the whole board selection on those keys) -
-                  // without this, backspacing while editing a note also
-                  // binned everything on the board. Deletion of the
-                  // character itself is unaffected, same as Space's
-                  // insertion above.
-                  const SingleActivator(LogicalKeyboardKey.backspace): () {},
-                  const SingleActivator(LogicalKeyboardKey.delete): () {},
-                  const SingleActivator(
-                    LogicalKeyboardKey.keyB,
-                    control: true,
-                  ): _toggleBold,
-                  const SingleActivator(
-                    LogicalKeyboardKey.keyI,
-                    control: true,
-                  ): _toggleItalic,
-                  const SingleActivator(
-                    LogicalKeyboardKey.keyU,
-                    control: true,
-                  ): _toggleUnderline,
-                  const SingleActivator(
-                    LogicalKeyboardKey.keyS,
-                    control: true,
-                  ): _toggleStrikethrough,
-                },
-                child: Container(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: AppTheme.red, width: 2.5),
-                    color: clip.backgroundColorHex != null
-                        ? hexToColor(clip.backgroundColorHex!)
-                        : AppTheme.textNoteSurface,
-                  ),
-                  clipBehavior: Clip.antiAlias,
-                  child: Padding(
-                    padding: const EdgeInsets.all(10),
-                    child: TextField(
-                      controller: _controller,
-                      focusNode: _focusNode,
-                      maxLines: null,
-                      expands: true,
-                      style: TextStyle(
-                        color: AppTheme.textNoteText,
-                        fontSize:
-                            (clip.fontSize ?? kTextNoteFontSize) *
-                            effectiveScale,
-                        height: 1.3,
-                      ),
-                      decoration: const InputDecoration(
-                        border: InputBorder.none,
-                        isCollapsed: true,
-                      ),
-                      onChanged: (text) => ref
-                          .read(clipsRepositoryProvider)
-                          .updateTextContent(editingId, text),
-                    ),
-                  ),
+      child: Stack(
+        children: [
+          Positioned(
+            left: topLeft.dx,
+            top: topLeft.dy,
+            width: boxWidth,
+            height: boxHeight,
+            child: CallbackShortcuts(
+              bindings: {
+                const SingleActivator(LogicalKeyboardKey.escape):
+                    _commitAndExit,
+                // Swallows the bare Space key so it doesn't bubble up to
+                // board_canvas.dart's ancestor Focus (which binds a
+                // tap-Space-to-fit-viewport-to-selection shortcut) -
+                // without this, every space typed re-triggered that
+                // shortcut, since EditableText doesn't claim plain
+                // printable characters at the raw-key level (it inserts
+                // them via the platform text-input/IME channel instead).
+                const SingleActivator(LogicalKeyboardKey.space): () {},
+                // Swallows bare Backspace/Delete so they don't bubble up
+                // to board_screen.dart's ancestor CallbackShortcuts
+                // (which bins the whole board selection on those keys) -
+                // without this, backspacing while editing a note also
+                // binned everything on the board. Deletion of the
+                // character itself is unaffected, same as Space's
+                // insertion above.
+                const SingleActivator(LogicalKeyboardKey.backspace): () {},
+                const SingleActivator(LogicalKeyboardKey.delete): () {},
+                const SingleActivator(
+                  LogicalKeyboardKey.keyB,
+                  control: true,
+                ): _toggleBold,
+                const SingleActivator(
+                  LogicalKeyboardKey.keyI,
+                  control: true,
+                ): _toggleItalic,
+                const SingleActivator(
+                  LogicalKeyboardKey.keyU,
+                  control: true,
+                ): _toggleUnderline,
+                const SingleActivator(
+                  LogicalKeyboardKey.keyS,
+                  control: true,
+                ): _toggleStrikethrough,
+              },
+              child: Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: AppTheme.red, width: 2.5),
+                  // Opaque even when the note has no custom background
+                  // color - AppTheme.textNoteSurface (the static, non-
+                  // editing look) is fully transparent by design, and
+                  // reusing it here let the clip's own static Text
+                  // (rendered underneath, earlier in the same Stack) show
+                  // through and overlap with the live TextField's text,
+                  // each frame drifting further out of alignment as the
+                  // two independent layouts diverged - the "ghosting" bug.
+                  // This Container is meant to fully occlude that static
+                  // text while editing (see the class doc comment), which
+                  // requires actual opacity, not just paint order.
+                  color: clip.backgroundColorHex != null
+                      ? hexToColor(clip.backgroundColorHex!)
+                      : AppTheme.canvasBackground,
                 ),
-              ),
-            ),
-            Positioned(
-              left: topLeft.dx,
-              top: topLeft.dy - 8 - TextClipEditOverlay.toolbarHeight,
-              height: TextClipEditOverlay.toolbarHeight,
-              child: Material(
-                color: AppTheme.surfaceElevated,
-                borderRadius: BorderRadius.circular(8),
-                elevation: 6,
-                shadowColor: Colors.black54,
+                clipBehavior: Clip.antiAlias,
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 4,
-                    vertical: 2,
-                  ),
-                  child: IconTheme(
-                    data: const IconThemeData(
-                      color: AppTheme.textPrimary,
-                      opacity: 1.0,
+                  padding: const EdgeInsets.all(10),
+                  child: TextField(
+                    controller: _controller,
+                    focusNode: _focusNode,
+                    maxLines: null,
+                    expands: true,
+                    // Overrides EditableText's default "auto-unfocus on
+                    // any tap outside this field" behavior with a no-op -
+                    // board_canvas.dart's own explicit
+                    // editingTextClipIdProvider clearing (at each point a
+                    // click resolves onto a different clip/frame/
+                    // connector/empty canvas) is what deliberately ends
+                    // edit mode now, not Flutter's internal tap-region
+                    // mechanism, which proved unreliable in this heavily
+                    // custom-transformed board (wrapping in
+                    // TextFieldTapRegion previously caused new regressions
+                    // - dropped character insertion and a text-rendering
+                    // artifact - without even fixing the original bug).
+                    onTapOutside: (event) {},
+                    style: TextStyle(
+                      color: AppTheme.textNoteText,
+                      fontSize:
+                          (clip.fontSize ?? kTextNoteFontSize) *
+                          effectiveScale,
+                      height: 1.3,
                     ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 4),
-                          child: Text(
-                            '${(clip.fontSize ?? kTextNoteFontSize).round()}',
-                            style: const TextStyle(
-                              color: AppTheme.textSecondary,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ),
-                        Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            _chevron(
-                              Icons.keyboard_arrow_up,
-                              () => _adjustFontSize(clip, _fontSizeStep),
-                            ),
-                            _chevron(
-                              Icons.keyboard_arrow_down,
-                              () => _adjustFontSize(clip, -_fontSizeStep),
-                            ),
-                          ],
-                        ),
-                        _divider(),
-                        _formatButton(
-                          icon: Icons.format_bold,
-                          active: _selectionHasStyle(
-                            _controller?.formatting.bold ?? const [],
-                          ),
-                          onPressed: _toggleBold,
-                        ),
-                        _formatButton(
-                          icon: Icons.format_italic,
-                          active: _selectionHasStyle(
-                            _controller?.formatting.italic ?? const [],
-                          ),
-                          onPressed: _toggleItalic,
-                        ),
-                        _formatButton(
-                          icon: Icons.format_underlined,
-                          active: _selectionHasStyle(
-                            _controller?.formatting.underline ?? const [],
-                          ),
-                          onPressed: _toggleUnderline,
-                        ),
-                        _formatButton(
-                          icon: Icons.format_strikethrough,
-                          active: _selectionHasStyle(
-                            _controller?.formatting.strikethrough ?? const [],
-                          ),
-                          onPressed: _toggleStrikethrough,
-                        ),
-                        _divider(),
-                        _formatButton(
-                          icon: Icons.push_pin_outlined,
-                          active: locked,
-                          onPressed: () => _toggleSizeLock(clip, view.scale),
-                        ),
-                      ],
+                    decoration: const InputDecoration(
+                      border: InputBorder.none,
+                      isCollapsed: true,
                     ),
+                    onChanged: (text) => ref
+                        .read(clipsRepositoryProvider)
+                        .updateTextContent(editingId, text),
                   ),
                 ),
               ),
             ),
-          ],
-        ),
+          ),
+          Positioned(
+            left: topLeft.dx,
+            top: topLeft.dy - 8 - TextClipEditOverlay.toolbarHeight,
+            height: TextClipEditOverlay.toolbarHeight,
+            child: Material(
+              color: AppTheme.surfaceElevated,
+              borderRadius: BorderRadius.circular(8),
+              elevation: 6,
+              shadowColor: Colors.black54,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 4,
+                  vertical: 2,
+                ),
+                child: IconTheme(
+                  data: const IconThemeData(
+                    color: AppTheme.textPrimary,
+                    opacity: 1.0,
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                        child: Text(
+                          '${(clip.fontSize ?? kTextNoteFontSize).round()}',
+                          style: const TextStyle(
+                            color: AppTheme.textSecondary,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                      Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _chevron(
+                            Icons.keyboard_arrow_up,
+                            () => _adjustFontSize(clip, _fontSizeStep),
+                          ),
+                          _chevron(
+                            Icons.keyboard_arrow_down,
+                            () => _adjustFontSize(clip, -_fontSizeStep),
+                          ),
+                        ],
+                      ),
+                      _divider(),
+                      _formatButton(
+                        icon: Icons.format_bold,
+                        active: _selectionHasStyle(
+                          _controller?.formatting.bold ?? const [],
+                        ),
+                        onPressed: _toggleBold,
+                      ),
+                      _formatButton(
+                        icon: Icons.format_italic,
+                        active: _selectionHasStyle(
+                          _controller?.formatting.italic ?? const [],
+                        ),
+                        onPressed: _toggleItalic,
+                      ),
+                      _formatButton(
+                        icon: Icons.format_underlined,
+                        active: _selectionHasStyle(
+                          _controller?.formatting.underline ?? const [],
+                        ),
+                        onPressed: _toggleUnderline,
+                      ),
+                      _formatButton(
+                        icon: Icons.format_strikethrough,
+                        active: _selectionHasStyle(
+                          _controller?.formatting.strikethrough ?? const [],
+                        ),
+                        onPressed: _toggleStrikethrough,
+                      ),
+                      _divider(),
+                      _formatButton(
+                        icon: Icons.push_pin_outlined,
+                        active: locked,
+                        onPressed: () => _toggleSizeLock(clip, view.scale),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
