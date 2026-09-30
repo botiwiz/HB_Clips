@@ -260,6 +260,23 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     return null;
   }
 
+  /// Explicitly exits text-edit mode when a click resolves onto anything
+  /// other than the clip named by [keepEditingClipId] - a deliberate,
+  /// traceable "click elsewhere" action taken at the point this canvas
+  /// already decides what a click hit, rather than an emergent side
+  /// effect of whichever widget happens to steal Flutter's focus (that
+  /// approach proved unreliable - see TextClipEditOverlay's own
+  /// TextFieldTapRegion wrapper for the fix to the actual unfocus bug).
+  /// A no-op if nothing is currently being edited, or if the click landed
+  /// back on the very clip already being edited (e.g. repositioning the
+  /// cursor inside it).
+  void _exitTextEditUnlessClip(String? keepEditingClipId) {
+    final editing = ref.read(editingTextClipIdProvider);
+    if (editing != null && editing != keepEditingClipId) {
+      ref.read(editingTextClipIdProvider.notifier).state = null;
+    }
+  }
+
   /// The connector's target endpoint in board space, honoring its stored
   /// relative surface point when set (falls back to the nearest-boundary
   /// anchor otherwise) - shared by the endpoint-drag hit-test and the
@@ -752,6 +769,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
         p3: bezier.p3 * view.scale + view.panOffset,
       );
       if (ConnectorGeometry.hitTestCurve(screenBezier, event.localPosition)) {
+        _exitTextEditUnlessClip(null);
         ref.read(selectedConnectorIdProvider.notifier).state = connector.id;
         ref.read(selectedClipIdsProvider.notifier).state = {};
         ref.read(selectedFrameIdProvider.notifier).state = null;
@@ -762,6 +780,10 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     // 2. Clip body hit-test.
     final hit = _hitTestClip(clips, boardPos);
     if (hit != null) {
+      // A click resolving to this clip either continues editing it
+      // (matches) or explicitly exits edit mode for whatever else was
+      // being edited (doesn't match) - covers every branch below.
+      _exitTextEditUnlessClip(hit.id);
       if (hit.type == ClipType.image &&
           _isDoubleClickOn(hit.id, event.localPosition)) {
         ref.read(selectedClipIdsProvider.notifier).state = {hit.id};
@@ -838,6 +860,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
             view,
             event.localPosition,
           )) {
+        _exitTextEditUnlessClip(null);
         _frameResizing = true;
         _frameDragId = selectedFrame.id;
         _frameDragStartRect = FrameGeometry.boardRect(selectedFrame);
@@ -872,6 +895,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     }
     final hitFrame = _hitTestFrameForSelection(frames, boardPos);
     if (hitFrame != null) {
+      _exitTextEditUnlessClip(null);
       ref.read(selectedFrameIdProvider.notifier).state = hitFrame.id;
       _frameDragId = hitFrame.id;
       _frameDragStartRect = FrameGeometry.boardRect(hitFrame);
@@ -908,6 +932,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
 
     // 3. Empty canvas: always a marquee now (pan was already handled above,
     // before any hit-testing even started).
+    _exitTextEditUnlessClip(null);
     _marqueeStartBoard = boardPos;
     ref.read(marqueeRectProvider.notifier).state = Rect.fromPoints(
       boardPos,
