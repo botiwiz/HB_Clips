@@ -239,9 +239,9 @@ class BoardScreen extends ConsumerWidget {
     if (!context.mounted) return;
 
     if (result == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Nothing to export.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Nothing to export.')));
       return;
     }
 
@@ -275,8 +275,7 @@ class BoardScreen extends ConsumerWidget {
     if (!context.mounted) return;
 
     final summary = result.summary;
-    final pageCount =
-        summary.framePages + (summary.hasOverviewPage ? 1 : 0);
+    final pageCount = summary.framePages + (summary.hasOverviewPage ? 1 : 0);
     final parts = <String>[
       '$pageCount page${pageCount == 1 ? '' : 's'}',
       '${summary.imagesDrawn} image${summary.imagesDrawn == 1 ? '' : 's'}',
@@ -369,20 +368,22 @@ class BoardScreen extends ConsumerWidget {
       ref.read(selectedConnectorIdProvider.notifier).state = null;
       if (connector != null) {
         final c = connector;
-        ref.read(undoManagerProvider.notifier).push(
-          UndoableAction(
-            undo: () => connRepo.addConnector(
-              id: c.id,
-              boardId: c.boardId,
-              fromClipId: c.fromClipId,
-              fromSide: c.fromSide,
-              toClipId: c.toClipId,
-              toRelX: c.toRelX,
-              toRelY: c.toRelY,
-            ),
-            redo: () => connRepo.deleteConnector(c.id),
-          ),
-        );
+        ref
+            .read(undoManagerProvider.notifier)
+            .push(
+              UndoableAction(
+                undo: () => connRepo.addConnector(
+                  id: c.id,
+                  boardId: c.boardId,
+                  fromClipId: c.fromClipId,
+                  fromSide: c.fromSide,
+                  toClipId: c.toClipId,
+                  toRelX: c.toRelX,
+                  toRelY: c.toRelY,
+                ),
+                redo: () => connRepo.deleteConnector(c.id),
+              ),
+            );
       }
       return;
     }
@@ -395,12 +396,15 @@ class BoardScreen extends ConsumerWidget {
       repo.binClip(id);
     }
     ref.read(selectedClipIdsProvider.notifier).state = {};
-    ref.read(undoManagerProvider.notifier).push(
-      UndoableAction(
-        undo: () => Future.wait([for (final id in ids) repo.restoreClip(id)]),
-        redo: () => Future.wait([for (final id in ids) repo.binClip(id)]),
-      ),
-    );
+    ref
+        .read(undoManagerProvider.notifier)
+        .push(
+          UndoableAction(
+            undo: () =>
+                Future.wait([for (final id in ids) repo.restoreClip(id)]),
+            redo: () => Future.wait([for (final id in ids) repo.binClip(id)]),
+          ),
+        );
   }
 
   void _nudgeSelection(WidgetRef ref, Offset delta) {
@@ -419,18 +423,73 @@ class BoardScreen extends ConsumerWidget {
       repo.updateTransform(id, x: next.dx, y: next.dy);
     }
     if (before.isEmpty) return;
-    ref.read(undoManagerProvider.notifier).push(
-      UndoableAction(
-        undo: () => Future.wait([
-          for (final entry in before.entries)
-            repo.updateTransform(entry.key, x: entry.value.dx, y: entry.value.dy),
-        ]),
-        redo: () => Future.wait([
-          for (final entry in after.entries)
-            repo.updateTransform(entry.key, x: entry.value.dx, y: entry.value.dy),
-        ]),
-      ),
-    );
+    ref
+        .read(undoManagerProvider.notifier)
+        .push(
+          UndoableAction(
+            undo: () => Future.wait([
+              for (final entry in before.entries)
+                repo.updateTransform(
+                  entry.key,
+                  x: entry.value.dx,
+                  y: entry.value.dy,
+                ),
+            ]),
+            redo: () => Future.wait([
+              for (final entry in after.entries)
+                repo.updateTransform(
+                  entry.key,
+                  x: entry.value.dx,
+                  y: entry.value.dy,
+                ),
+            ]),
+          ),
+        );
+  }
+
+  /// Handles bare/shift Backspace, Delete, and the 4 arrow keys as a
+  /// `Focus.onKeyEvent` (not a `CallbackShortcuts` binding) specifically
+  /// so it can conditionally ignore the event - a plain `CallbackShortcuts`
+  /// binding always marks a match "handled" and stops it there, which
+  /// would permanently block these keys from ever reaching Flutter's
+  /// `DefaultTextEditingShortcuts` (mounted once at the app root - see
+  /// `text_clip_edit_overlay.dart`'s doc comment on why its own
+  /// `CallbackShortcuts` deliberately does NOT bind these keys either).
+  /// While a text note is being edited, these keys are for the TextField
+  /// itself (delete a character, move the caret) - ignored here so they
+  /// keep bubbling up to that root-level handling. Outside of editing,
+  /// they bin the selection / nudge it, exactly as before.
+  KeyEventResult _handleEditAwareShortcut(WidgetRef ref, KeyEvent event) {
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
+    final key = event.logicalKey;
+    final isBinKey =
+        key == LogicalKeyboardKey.backspace || key == LogicalKeyboardKey.delete;
+    final isArrowKey =
+        key == LogicalKeyboardKey.arrowLeft ||
+        key == LogicalKeyboardKey.arrowRight ||
+        key == LogicalKeyboardKey.arrowUp ||
+        key == LogicalKeyboardKey.arrowDown;
+    if (!isBinKey && !isArrowKey) return KeyEventResult.ignored;
+    if (ref.read(editingTextClipIdProvider) != null) {
+      return KeyEventResult.ignored;
+    }
+    if (isBinKey) {
+      _binSelected(ref);
+      return KeyEventResult.handled;
+    }
+    final shift = HardwareKeyboard.instance.isShiftPressed;
+    final step = shift ? _nudgeStepFast : _nudgeStep;
+    final delta = switch (key) {
+      LogicalKeyboardKey.arrowLeft => Offset(-step, 0),
+      LogicalKeyboardKey.arrowRight => Offset(step, 0),
+      LogicalKeyboardKey.arrowUp => Offset(0, -step),
+      LogicalKeyboardKey.arrowDown => Offset(0, step),
+      _ => Offset.zero,
+    };
+    _nudgeSelection(ref, delta);
+    return KeyEventResult.handled;
   }
 
   void _toggleDrawMode(WidgetRef ref) {
@@ -710,278 +769,275 @@ class BoardScreen extends ConsumerWidget {
             false);
 
     return Scaffold(
-      body: CallbackShortcuts(
-        bindings: {
-          const SingleActivator(LogicalKeyboardKey.delete): () =>
-              _binSelected(ref),
-          const SingleActivator(LogicalKeyboardKey.backspace): () =>
-              _binSelected(ref),
-          const SingleActivator(LogicalKeyboardKey.keyZ, control: true): () =>
-              ref.read(undoManagerProvider.notifier).undo(),
-          const SingleActivator(LogicalKeyboardKey.keyZ, meta: true): () =>
-              ref.read(undoManagerProvider.notifier).undo(),
-          const SingleActivator(
-            LogicalKeyboardKey.keyZ,
-            control: true,
-            shift: true,
-          ): () => ref.read(undoManagerProvider.notifier).redo(),
-          const SingleActivator(
-            LogicalKeyboardKey.keyZ,
-            meta: true,
-            shift: true,
-          ): () => ref.read(undoManagerProvider.notifier).redo(),
-          // Windows' other common redo convention, alongside Ctrl+Shift+Z.
-          const SingleActivator(LogicalKeyboardKey.keyY, control: true): () =>
-              ref.read(undoManagerProvider.notifier).redo(),
-          const SingleActivator(LogicalKeyboardKey.keyA, control: true): () =>
-              _selectAll(ref),
-          const SingleActivator(LogicalKeyboardKey.keyA, meta: true): () =>
-              _selectAll(ref),
-          const SingleActivator(LogicalKeyboardKey.keyV, control: true): () =>
-              pasteImageFromClipboard(context, ref),
-          const SingleActivator(LogicalKeyboardKey.keyV, meta: true): () =>
-              pasteImageFromClipboard(context, ref),
-          const SingleActivator(LogicalKeyboardKey.arrowLeft): () =>
-              _nudgeSelection(ref, const Offset(-_nudgeStep, 0)),
-          const SingleActivator(LogicalKeyboardKey.arrowRight): () =>
-              _nudgeSelection(ref, const Offset(_nudgeStep, 0)),
-          const SingleActivator(LogicalKeyboardKey.arrowUp): () =>
-              _nudgeSelection(ref, const Offset(0, -_nudgeStep)),
-          const SingleActivator(LogicalKeyboardKey.arrowDown): () =>
-              _nudgeSelection(ref, const Offset(0, _nudgeStep)),
-          const SingleActivator(
-            LogicalKeyboardKey.arrowLeft,
-            shift: true,
-          ): () =>
-              _nudgeSelection(ref, const Offset(-_nudgeStepFast, 0)),
-          const SingleActivator(
-            LogicalKeyboardKey.arrowRight,
-            shift: true,
-          ): () =>
-              _nudgeSelection(ref, const Offset(_nudgeStepFast, 0)),
-          const SingleActivator(LogicalKeyboardKey.arrowUp, shift: true): () =>
-              _nudgeSelection(ref, const Offset(0, -_nudgeStepFast)),
-          const SingleActivator(
-            LogicalKeyboardKey.arrowDown,
-            shift: true,
-          ): () =>
-              _nudgeSelection(ref, const Offset(0, _nudgeStepFast)),
-        },
-        child: Stack(
-          children: [
-            const Positioned.fill(child: BoardCanvas()),
-            Positioned(
-              top: 16,
-              left: 16,
-              // Reserves room for the independent Bin/About pill anchored
-              // to this same row's right edge below, so the two can never
-              // visually overlap - PillGroup's own internal horizontal
-              // scroll continues to absorb overflow on this side exactly
-              // as it does today if this button set grows.
-              right: 116,
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const BoardSwitcher(),
-                  const SizedBox(width: 8),
-                  Flexible(
-                    child: PillGroup(
-                      children: [
-                        PillIconButton(
-                          tooltip: 'Undo',
-                          icon: Icons.arrow_back,
-                          onPressed: undoState.canUndo
-                              ? () => ref.read(undoManagerProvider.notifier).undo()
-                              : null,
-                        ),
-                        PillIconButton(
-                          tooltip: 'Redo',
-                          icon: Icons.arrow_forward,
-                          onPressed: undoState.canRedo
-                              ? () => ref.read(undoManagerProvider.notifier).redo()
-                              : null,
-                        ),
-                        PillIconButton(
-                          tooltip: isDrawMode
-                              ? 'Exit draw mode'
-                              : 'Draw / annotate',
-                          icon: isDrawMode ? Icons.edit : Icons.edit_outlined,
-                          color: isDrawMode ? AppTheme.red : null,
-                          onPressed: () => _toggleDrawMode(ref),
-                        ),
-                        PillIconButton(
-                          tooltip: isTextToolActive
-                              ? 'Cancel text tool'
-                              : 'Text tool',
-                          icon: Icons.text_fields,
-                          color: isTextToolActive ? AppTheme.red : null,
-                          onPressed: () => _toggleTextTool(ref),
-                        ),
-                        PillIconButton(
-                          tooltip: snapToGrid
-                              ? 'Disable snap to grid'
-                              : 'Snap to grid',
-                          icon: snapToGrid ? Icons.grid_on : Icons.grid_off,
-                          color: snapToGrid ? AppTheme.red : null,
-                          onPressed: () =>
-                              ref.read(snapToGridProvider.notifier).state =
-                                  !snapToGrid,
-                        ),
-                        if (!isDrawMode && !isTextToolActive && hasSelection) ...[
-                          if (canGroup)
-                            PillIconButton(
-                              tooltip: 'Group',
-                              icon: Icons.group_work_outlined,
-                              onPressed: () => _groupSelection(ref),
-                            ),
-                          if (canUngroup)
-                            PillIconButton(
-                              tooltip: 'Ungroup',
-                              icon: Icons.group_off_outlined,
-                              onPressed: () =>
-                                  _ungroupSelection(ref, commonGroupId),
-                            ),
-                          PillIconButton(
-                            tooltip: 'Bring to front',
-                            icon: Icons.flip_to_front_outlined,
-                            onPressed: () => _applyZOrder(
-                              ref,
-                              (repo, id, boardId) =>
-                                  repo.bringToFront(id, boardId),
-                            ),
-                          ),
-                          PillIconButton(
-                            tooltip: 'Send to back',
-                            icon: Icons.flip_to_back_outlined,
-                            onPressed: () => _applyZOrder(
-                              ref,
-                              (repo, id, boardId) =>
-                                  repo.sendToBack(id, boardId),
-                            ),
-                          ),
-                          PillIconButton(
-                            tooltip: 'Bin selected',
-                            icon: Icons.delete_sweep_outlined,
-                            onPressed: () => _binSelected(ref),
-                          ),
-                        ],
-                        if (selectedFrame != null) ...[
-                          PillIconButton(
-                            tooltip: 'Rename frame',
-                            icon: Icons.edit_outlined,
-                            onPressed: () =>
-                                _renameFrame(context, ref, selectedFrame!),
-                          ),
-                          PillIconButton(
-                            tooltip: 'Frame color',
-                            icon: Icons.palette_outlined,
-                            onPressed: () =>
-                                _setFrameColor(context, ref, selectedFrame!),
-                          ),
-                          PillIconButton(
-                            tooltip: 'Frame size preset',
-                            icon: Icons.aspect_ratio,
-                            onPressed: () =>
-                                _pickFramePreset(context, ref, selectedFrame!),
-                          ),
-                          PillIconButton(
-                            tooltip: 'Delete frame',
-                            icon: Icons.delete_outline,
-                            onPressed: () =>
-                                _deleteFrame(ref, selectedFrame!.id),
-                          ),
-                        ],
-                        PillIconButton(
-                          tooltip: 'New frame',
-                          icon: Icons.crop_5_4_outlined,
-                          onPressed: () => _addFrame(context, ref),
-                        ),
-                        PillIconButton(
-                          tooltip: framesPanelOpen
-                              ? 'Hide frames panel'
-                              : 'Show frames panel',
-                          icon: Icons.view_list_outlined,
-                          color: framesPanelOpen ? AppTheme.red : null,
-                          onPressed: () =>
-                              ref.read(framesPanelOpenProvider.notifier).state =
-                                  !framesPanelOpen,
-                        ),
-                        PillIconButton(
-                          tooltip: 'Paste image (Ctrl+V)',
-                          icon: Icons.content_paste_outlined,
-                          onPressed: () =>
-                              pasteImageFromClipboard(context, ref),
-                        ),
-                        PillIconButton(
-                          tooltip: 'Add text note',
-                          icon: Icons.note_add_outlined,
-                          onPressed: () => _addTextNote(context, ref),
-                        ),
-                        PillIconButton(
-                          tooltip: 'Add image clip',
-                          icon: Icons.add_photo_alternate_outlined,
-                          onPressed: () => _addImageClip(context, ref),
-                        ),
-                        PillIconButton(
-                          tooltip: 'Import PureRef (.pur) file',
-                          icon: Icons.file_open_outlined,
-                          onPressed: () => _importPurFile(context, ref),
-                        ),
-                        PillIconButton(
-                          tooltip: 'Export board as .pur',
-                          icon: Icons.file_download_outlined,
-                          onPressed: () => _exportPurFile(context, ref),
-                        ),
-                        PillIconButton(
-                          tooltip: 'Export board as .pdf',
-                          icon: Icons.picture_as_pdf_outlined,
-                          onPressed: () => _exportPdfFile(context, ref),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Positioned(
-              top: 16,
-              right: 16,
-              child: PillGroup(
-                children: [
-                  PillIconButton(
-                    tooltip: 'Bin',
-                    icon: Icons.delete_outline,
-                    onPressed: () => Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const BinScreen()),
-                    ),
-                  ),
-                  PillIconButton(
-                    tooltip: 'About',
-                    icon: Icons.info_outline,
-                    onPressed: () => Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const AboutScreen()),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            if (isDrawMode)
-              const Positioned(
-                top: 76,
-                left: 0,
-                right: 0,
-                child: Center(child: DrawToolbar()),
-              ),
-            if (canPlayGif)
+      body: Focus(
+        onKeyEvent: (node, event) => _handleEditAwareShortcut(ref, event),
+        child: CallbackShortcuts(
+          bindings: {
+            const SingleActivator(LogicalKeyboardKey.keyZ, control: true): () =>
+                ref.read(undoManagerProvider.notifier).undo(),
+            const SingleActivator(LogicalKeyboardKey.keyZ, meta: true): () =>
+                ref.read(undoManagerProvider.notifier).undo(),
+            const SingleActivator(
+              LogicalKeyboardKey.keyZ,
+              control: true,
+              shift: true,
+            ): () =>
+                ref.read(undoManagerProvider.notifier).redo(),
+            const SingleActivator(
+              LogicalKeyboardKey.keyZ,
+              meta: true,
+              shift: true,
+            ): () =>
+                ref.read(undoManagerProvider.notifier).redo(),
+            // Windows' other common redo convention, alongside Ctrl+Shift+Z.
+            const SingleActivator(LogicalKeyboardKey.keyY, control: true): () =>
+                ref.read(undoManagerProvider.notifier).redo(),
+            const SingleActivator(LogicalKeyboardKey.keyA, control: true): () =>
+                _selectAll(ref),
+            const SingleActivator(LogicalKeyboardKey.keyA, meta: true): () =>
+                _selectAll(ref),
+            const SingleActivator(LogicalKeyboardKey.keyV, control: true): () =>
+                pasteImageFromClipboard(context, ref),
+            const SingleActivator(LogicalKeyboardKey.keyV, meta: true): () =>
+                pasteImageFromClipboard(context, ref),
+          },
+          child: Stack(
+            children: [
+              const Positioned.fill(child: BoardCanvas()),
               Positioned(
-                top: 76,
-                left: 0,
-                right: 0,
-                child: Center(
-                  child: GifPlaybackToolbar(clip: selectedClips.first),
+                top: 16,
+                left: 16,
+                // Reserves room for the independent Bin/About pill anchored
+                // to this same row's right edge below, so the two can never
+                // visually overlap - PillGroup's own internal horizontal
+                // scroll continues to absorb overflow on this side exactly
+                // as it does today if this button set grows.
+                right: 116,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const BoardSwitcher(),
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: PillGroup(
+                        children: [
+                          PillIconButton(
+                            tooltip: 'Undo',
+                            icon: Icons.arrow_back,
+                            onPressed: undoState.canUndo
+                                ? () => ref
+                                      .read(undoManagerProvider.notifier)
+                                      .undo()
+                                : null,
+                          ),
+                          // TEMPORARY diagnostic (Part 17B) - a loud
+                          // background behind the reportedly-invisible
+                          // redo icon, to tell apart "the icon/color
+                          // isn't rendering" (this box shows, empty)
+                          // from "nothing here is rendering at all"
+                          // (this box doesn't show either). Revert once
+                          // we have an answer.
+                          ColoredBox(
+                            color: Colors.yellow,
+                            child: PillIconButton(
+                              tooltip: 'Redo',
+                              icon: Icons.arrow_forward,
+                              onPressed: undoState.canRedo
+                                  ? () => ref
+                                        .read(undoManagerProvider.notifier)
+                                        .redo()
+                                  : null,
+                            ),
+                          ),
+                          PillIconButton(
+                            tooltip: isDrawMode
+                                ? 'Exit draw mode'
+                                : 'Draw / annotate',
+                            icon: isDrawMode ? Icons.edit : Icons.edit_outlined,
+                            color: isDrawMode ? AppTheme.red : null,
+                            onPressed: () => _toggleDrawMode(ref),
+                          ),
+                          PillIconButton(
+                            tooltip: isTextToolActive
+                                ? 'Cancel text tool'
+                                : 'Text tool',
+                            icon: Icons.text_fields,
+                            color: isTextToolActive ? AppTheme.red : null,
+                            onPressed: () => _toggleTextTool(ref),
+                          ),
+                          PillIconButton(
+                            tooltip: snapToGrid
+                                ? 'Disable snap to grid'
+                                : 'Snap to grid',
+                            icon: snapToGrid ? Icons.grid_on : Icons.grid_off,
+                            color: snapToGrid ? AppTheme.red : null,
+                            onPressed: () =>
+                                ref.read(snapToGridProvider.notifier).state =
+                                    !snapToGrid,
+                          ),
+                          if (!isDrawMode &&
+                              !isTextToolActive &&
+                              hasSelection) ...[
+                            if (canGroup)
+                              PillIconButton(
+                                tooltip: 'Group',
+                                icon: Icons.group_work_outlined,
+                                onPressed: () => _groupSelection(ref),
+                              ),
+                            if (canUngroup)
+                              PillIconButton(
+                                tooltip: 'Ungroup',
+                                icon: Icons.group_off_outlined,
+                                onPressed: () =>
+                                    _ungroupSelection(ref, commonGroupId),
+                              ),
+                            PillIconButton(
+                              tooltip: 'Bring to front',
+                              icon: Icons.flip_to_front_outlined,
+                              onPressed: () => _applyZOrder(
+                                ref,
+                                (repo, id, boardId) =>
+                                    repo.bringToFront(id, boardId),
+                              ),
+                            ),
+                            PillIconButton(
+                              tooltip: 'Send to back',
+                              icon: Icons.flip_to_back_outlined,
+                              onPressed: () => _applyZOrder(
+                                ref,
+                                (repo, id, boardId) =>
+                                    repo.sendToBack(id, boardId),
+                              ),
+                            ),
+                            PillIconButton(
+                              tooltip: 'Bin selected',
+                              icon: Icons.delete_sweep_outlined,
+                              onPressed: () => _binSelected(ref),
+                            ),
+                          ],
+                          if (selectedFrame != null) ...[
+                            PillIconButton(
+                              tooltip: 'Rename frame',
+                              icon: Icons.edit_outlined,
+                              onPressed: () =>
+                                  _renameFrame(context, ref, selectedFrame!),
+                            ),
+                            PillIconButton(
+                              tooltip: 'Frame color',
+                              icon: Icons.palette_outlined,
+                              onPressed: () =>
+                                  _setFrameColor(context, ref, selectedFrame!),
+                            ),
+                            PillIconButton(
+                              tooltip: 'Frame size preset',
+                              icon: Icons.aspect_ratio,
+                              onPressed: () => _pickFramePreset(
+                                context,
+                                ref,
+                                selectedFrame!,
+                              ),
+                            ),
+                            PillIconButton(
+                              tooltip: 'Delete frame',
+                              icon: Icons.delete_outline,
+                              onPressed: () =>
+                                  _deleteFrame(ref, selectedFrame!.id),
+                            ),
+                          ],
+                          PillIconButton(
+                            tooltip: 'New frame',
+                            icon: Icons.crop_5_4_outlined,
+                            onPressed: () => _addFrame(context, ref),
+                          ),
+                          PillIconButton(
+                            tooltip: framesPanelOpen
+                                ? 'Hide frames panel'
+                                : 'Show frames panel',
+                            icon: Icons.view_list_outlined,
+                            color: framesPanelOpen ? AppTheme.red : null,
+                            onPressed: () =>
+                                ref
+                                        .read(framesPanelOpenProvider.notifier)
+                                        .state =
+                                    !framesPanelOpen,
+                          ),
+                          PillIconButton(
+                            tooltip: 'Paste image (Ctrl+V)',
+                            icon: Icons.content_paste_outlined,
+                            onPressed: () =>
+                                pasteImageFromClipboard(context, ref),
+                          ),
+                          PillIconButton(
+                            tooltip: 'Add text note',
+                            icon: Icons.note_add_outlined,
+                            onPressed: () => _addTextNote(context, ref),
+                          ),
+                          PillIconButton(
+                            tooltip: 'Add image clip',
+                            icon: Icons.add_photo_alternate_outlined,
+                            onPressed: () => _addImageClip(context, ref),
+                          ),
+                          PillIconButton(
+                            tooltip: 'Import PureRef (.pur) file',
+                            icon: Icons.file_open_outlined,
+                            onPressed: () => _importPurFile(context, ref),
+                          ),
+                          PillIconButton(
+                            tooltip: 'Export board as .pur',
+                            icon: Icons.file_download_outlined,
+                            onPressed: () => _exportPurFile(context, ref),
+                          ),
+                          PillIconButton(
+                            tooltip: 'Export board as .pdf',
+                            icon: Icons.picture_as_pdf_outlined,
+                            onPressed: () => _exportPdfFile(context, ref),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               ),
-          ],
+              Positioned(
+                top: 16,
+                right: 16,
+                child: PillGroup(
+                  children: [
+                    PillIconButton(
+                      tooltip: 'Bin',
+                      icon: Icons.delete_outline,
+                      onPressed: () => Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const BinScreen()),
+                      ),
+                    ),
+                    PillIconButton(
+                      tooltip: 'About',
+                      icon: Icons.info_outline,
+                      onPressed: () => Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const AboutScreen()),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (isDrawMode)
+                const Positioned(
+                  top: 76,
+                  left: 0,
+                  right: 0,
+                  child: Center(child: DrawToolbar()),
+                ),
+              if (canPlayGif)
+                Positioned(
+                  top: 76,
+                  left: 0,
+                  right: 0,
+                  child: Center(
+                    child: GifPlaybackToolbar(clip: selectedClips.first),
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );

@@ -307,44 +307,41 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
               bindings: {
                 const SingleActivator(LogicalKeyboardKey.escape):
                     _commitAndExit,
-                // Swallows bare Backspace/Delete so they don't bubble up
-                // to board_screen.dart's ancestor CallbackShortcuts
-                // (which bins the whole board selection on those keys) -
-                // without this, backspacing while editing a note also
-                // binned everything on the board. Deletion of the
-                // character itself is unaffected - that's handled by
-                // EditableText's own internal Actions, a descendant of
-                // this CallbackShortcuts, so it already ran before the
-                // event bubbles up here.
-                const SingleActivator(LogicalKeyboardKey.backspace): () {},
-                const SingleActivator(LogicalKeyboardKey.delete): () {},
-                // Same reasoning for the 4 arrow keys - board_screen.dart
-                // binds all of them to nudge the selected clip's
-                // position, and with no matching binding here they used
-                // to bubble all the way up uncontested, moving the note
-                // instead of the text caret. Caret movement itself is,
-                // like Backspace/Delete, a descendant EditableText Action
-                // that already ran by the time this fires.
-                const SingleActivator(LogicalKeyboardKey.arrowLeft): () {},
-                const SingleActivator(LogicalKeyboardKey.arrowRight): () {},
-                const SingleActivator(LogicalKeyboardKey.arrowUp): () {},
-                const SingleActivator(LogicalKeyboardKey.arrowDown): () {},
-                const SingleActivator(
-                  LogicalKeyboardKey.keyB,
-                  control: true,
-                ): _toggleBold,
-                const SingleActivator(
-                  LogicalKeyboardKey.keyI,
-                  control: true,
-                ): _toggleItalic,
-                const SingleActivator(
-                  LogicalKeyboardKey.keyU,
-                  control: true,
-                ): _toggleUnderline,
-                const SingleActivator(
-                  LogicalKeyboardKey.keyS,
-                  control: true,
-                ): _toggleStrikethrough,
+                // Deliberately NOT bound here: bare Backspace/Delete.
+                // CallbackShortcuts always marks a matched binding
+                // "handled" - even a no-op one - which stops the raw key
+                // event from propagating any further up the focus chain.
+                // Character deletion isn't handled by EditableText
+                // locally; it's translated from the raw key into a
+                // DeleteCharacterIntent by DefaultTextEditingShortcuts,
+                // which Flutter mounts once at the very root of the app
+                // (WidgetsApp.build()) - far above this widget. A no-op
+                // binding here previously swallowed the event before it
+                // could ever reach that root-level translation, silently
+                // breaking deletion. board_screen.dart's own
+                // Backspace/Delete handling (bin the selection) is now a
+                // Focus.onKeyEvent wrapper instead of a CallbackShortcuts
+                // binding, specifically so it can conditionally ignore
+                // the event while a note is being edited (letting it keep
+                // bubbling to the root) rather than unconditionally
+                // claiming it.
+                // Same reasoning applies to the 4 arrow keys - also not
+                // bound here. Caret movement is translated from the raw
+                // key the same way deletion is (DefaultTextEditingShortcuts,
+                // mounted at the app root), so a no-op binding here would
+                // equally have swallowed it before it could reach that
+                // root-level translation. board_screen.dart's arrow-key
+                // nudge bindings are a Focus.onKeyEvent wrapper that
+                // ignores the event while a note is being edited, same as
+                // its Backspace/Delete handling.
+                const SingleActivator(LogicalKeyboardKey.keyB, control: true):
+                    _toggleBold,
+                const SingleActivator(LogicalKeyboardKey.keyI, control: true):
+                    _toggleItalic,
+                const SingleActivator(LogicalKeyboardKey.keyU, control: true):
+                    _toggleUnderline,
+                const SingleActivator(LogicalKeyboardKey.keyS, control: true):
+                    _toggleStrikethrough,
               },
               child: Container(
                 decoration: BoxDecoration(
@@ -389,8 +386,7 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
                     style: TextStyle(
                       color: AppTheme.textNoteText,
                       fontSize:
-                          (clip.fontSize ?? kTextNoteFontSize) *
-                          effectiveScale,
+                          (clip.fontSize ?? kTextNoteFontSize) * effectiveScale,
                       height: 1.3,
                     ),
                     decoration: const InputDecoration(
@@ -415,10 +411,7 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
               elevation: 6,
               shadowColor: Colors.black54,
               child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 4,
-                  vertical: 2,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -432,66 +425,94 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
                         ),
                       ),
                     ),
-                    Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        _chevron(
-                          Icons.keyboard_arrow_up,
-                          () => _adjustFontSize(clip, _fontSizeStep),
-                        ),
-                        _chevron(
-                          Icons.keyboard_arrow_down,
-                          () => _adjustFontSize(clip, -_fontSizeStep),
-                        ),
-                      ],
+                    // TEMPORARY diagnostic (Part 17B) - loud backgrounds
+                    // behind the reportedly-invisible toolbar buttons, to
+                    // tell apart "the icon/color isn't rendering" (a
+                    // colored box shows, empty) from "nothing here is
+                    // rendering at all" (no box either). Revert once we
+                    // have an answer.
+                    ColoredBox(
+                      color: Colors.yellow,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _chevron(
+                            Icons.keyboard_arrow_up,
+                            () => _adjustFontSize(clip, _fontSizeStep),
+                          ),
+                          _chevron(
+                            Icons.keyboard_arrow_down,
+                            () => _adjustFontSize(clip, -_fontSizeStep),
+                          ),
+                        ],
+                      ),
                     ),
                     _divider(),
-                    PillIconButton(
-                      tooltip: 'Bold',
-                      icon: Icons.format_bold,
-                      color: _selectionHasStyle(
-                            _controller?.formatting.bold ?? const [],
-                          )
-                          ? AppTheme.red
-                          : null,
-                      onPressed: _toggleBold,
+                    ColoredBox(
+                      color: Colors.yellow,
+                      child: PillIconButton(
+                        tooltip: 'Bold',
+                        icon: Icons.format_bold,
+                        color:
+                            _selectionHasStyle(
+                              _controller?.formatting.bold ?? const [],
+                            )
+                            ? AppTheme.red
+                            : null,
+                        onPressed: _toggleBold,
+                      ),
                     ),
-                    PillIconButton(
-                      tooltip: 'Italic',
-                      icon: Icons.format_italic,
-                      color: _selectionHasStyle(
-                            _controller?.formatting.italic ?? const [],
-                          )
-                          ? AppTheme.red
-                          : null,
-                      onPressed: _toggleItalic,
+                    ColoredBox(
+                      color: Colors.yellow,
+                      child: PillIconButton(
+                        tooltip: 'Italic',
+                        icon: Icons.format_italic,
+                        color:
+                            _selectionHasStyle(
+                              _controller?.formatting.italic ?? const [],
+                            )
+                            ? AppTheme.red
+                            : null,
+                        onPressed: _toggleItalic,
+                      ),
                     ),
-                    PillIconButton(
-                      tooltip: 'Underline',
-                      icon: Icons.format_underlined,
-                      color: _selectionHasStyle(
-                            _controller?.formatting.underline ?? const [],
-                          )
-                          ? AppTheme.red
-                          : null,
-                      onPressed: _toggleUnderline,
+                    ColoredBox(
+                      color: Colors.yellow,
+                      child: PillIconButton(
+                        tooltip: 'Underline',
+                        icon: Icons.format_underlined,
+                        color:
+                            _selectionHasStyle(
+                              _controller?.formatting.underline ?? const [],
+                            )
+                            ? AppTheme.red
+                            : null,
+                        onPressed: _toggleUnderline,
+                      ),
                     ),
-                    PillIconButton(
-                      tooltip: 'Strikethrough',
-                      icon: Icons.format_strikethrough,
-                      color: _selectionHasStyle(
-                            _controller?.formatting.strikethrough ?? const [],
-                          )
-                          ? AppTheme.red
-                          : null,
-                      onPressed: _toggleStrikethrough,
+                    ColoredBox(
+                      color: Colors.yellow,
+                      child: PillIconButton(
+                        tooltip: 'Strikethrough',
+                        icon: Icons.format_strikethrough,
+                        color:
+                            _selectionHasStyle(
+                              _controller?.formatting.strikethrough ?? const [],
+                            )
+                            ? AppTheme.red
+                            : null,
+                        onPressed: _toggleStrikethrough,
+                      ),
                     ),
                     _divider(),
-                    PillIconButton(
-                      tooltip: locked ? 'Unlock size' : 'Lock size',
-                      icon: Icons.push_pin_outlined,
-                      color: locked ? AppTheme.red : null,
-                      onPressed: () => _toggleSizeLock(clip, view.scale),
+                    ColoredBox(
+                      color: Colors.yellow,
+                      child: PillIconButton(
+                        tooltip: locked ? 'Unlock size' : 'Lock size',
+                        icon: Icons.push_pin_outlined,
+                        color: locked ? AppTheme.red : null,
+                        onPressed: () => _toggleSizeLock(clip, view.scale),
+                      ),
                     ),
                   ],
                 ),
