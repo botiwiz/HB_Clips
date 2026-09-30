@@ -9,11 +9,11 @@ import '../geometry/connector_geometry.dart';
 import '../geometry/selection_geometry.dart';
 import 'connector_painter.dart';
 
-/// Paints every persisted connector on the board as a curved line under
-/// the clips (see `board_canvas.dart`'s Stack ordering - this sits right
-/// after the frame loop and before the clip loop, so each clip's own
-/// opaque box naturally occludes the segment that would otherwise "enter"
-/// it). Resolves each connector's two clips against the live clip list,
+/// Paints every persisted connector on the board as a curved line always
+/// on top of every clip (see `board_canvas.dart`'s Stack ordering - this
+/// sits right after the clip loop, so a connector stays visible crossing
+/// over an image instead of being occluded by it). Resolves each
+/// connector's two clips against the live clip list,
 /// overriding with in-progress drag state the same way `SelectionHandles`
 /// does, so a connector visibly follows a clip mid-drag, not just after
 /// the drag commits. Skips (does not render) any connector whose endpoint

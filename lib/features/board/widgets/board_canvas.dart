@@ -713,6 +713,30 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       }
     }
 
+    // 1.8. A connector's curve - checked before the clip-body hit-test
+    // since connectors now paint on top of every clip in the Stack, so a
+    // click precisely on a connector line crossing an image selects the
+    // connector, not the image underneath it (the curve's hit tolerance is
+    // narrow - see `ConnectorGeometry.handleHitRadius` - so this doesn't
+    // meaningfully shrink the clickable area of the image itself).
+    final connectorsList = ref.read(activeConnectorsProvider).valueOrNull ?? [];
+    for (final connector in connectorsList) {
+      final bezier = _connectorBezierBoard(connector, clips);
+      if (bezier == null) continue;
+      final screenBezier = (
+        p0: bezier.p0 * view.scale + view.panOffset,
+        c1: bezier.c1 * view.scale + view.panOffset,
+        c2: bezier.c2 * view.scale + view.panOffset,
+        p3: bezier.p3 * view.scale + view.panOffset,
+      );
+      if (ConnectorGeometry.hitTestCurve(screenBezier, event.localPosition)) {
+        ref.read(selectedConnectorIdProvider.notifier).state = connector.id;
+        ref.read(selectedClipIdsProvider.notifier).state = {};
+        ref.read(selectedFrameIdProvider.notifier).state = null;
+        return;
+      }
+    }
+
     // 2. Clip body hit-test.
     final hit = _hitTestClip(clips, boardPos);
     if (hit != null) {
@@ -778,28 +802,6 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       _gestureStartPointerBoard = boardPos;
       ref.read(groupDragProvider.notifier).state = dragMap;
       return;
-    }
-
-    // 2.4. A connector's curve - only checked once no clip was hit
-    // (connectors paint above frames but below clips in the Stack, so a
-    // click on a connector that crosses a frame selects the connector,
-    // not the frame).
-    final connectorsList = ref.read(activeConnectorsProvider).valueOrNull ?? [];
-    for (final connector in connectorsList) {
-      final bezier = _connectorBezierBoard(connector, clips);
-      if (bezier == null) continue;
-      final screenBezier = (
-        p0: bezier.p0 * view.scale + view.panOffset,
-        c1: bezier.c1 * view.scale + view.panOffset,
-        c2: bezier.c2 * view.scale + view.panOffset,
-        p3: bezier.p3 * view.scale + view.panOffset,
-      );
-      if (ConnectorGeometry.hitTestCurve(screenBezier, event.localPosition)) {
-        ref.read(selectedConnectorIdProvider.notifier).state = connector.id;
-        ref.read(selectedClipIdsProvider.notifier).state = {};
-        ref.read(selectedFrameIdProvider.notifier).state = null;
-        return;
-      }
     }
 
     // 2.5. Frames sit behind clips - only checked once no clip was hit.
@@ -2112,7 +2114,6 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
                           frame.id == selectedFrameId,
                           view,
                         ),
-                      const Positioned.fill(child: ConnectorsOverlay()),
                       for (final clip in sorted)
                         _positionedClip(
                           clip,
@@ -2123,6 +2124,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
                           panZoomLive?.clipId == clip.id ? panZoomLive : null,
                           arrangeDragRect != null,
                         ),
+                      const Positioned.fill(child: ConnectorsOverlay()),
                       const Positioned.fill(child: DrawingOverlay()),
                       if (defineFrameRect != null) const DefineFrameOverlay(),
                       if (textToolDragRect != null) const TextToolDragOverlay(),
