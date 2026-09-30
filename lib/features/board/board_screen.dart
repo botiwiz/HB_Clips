@@ -372,6 +372,16 @@ class BoardScreen extends ConsumerWidget {
     ref.read(isDrawModeProvider.notifier).state = next;
     if (next) {
       ref.read(selectedClipIdsProvider.notifier).state = {};
+      ref.read(isTextToolActiveProvider.notifier).state = false;
+    }
+  }
+
+  void _toggleTextTool(WidgetRef ref) {
+    final next = !ref.read(isTextToolActiveProvider);
+    ref.read(isTextToolActiveProvider.notifier).state = next;
+    if (next) {
+      ref.read(selectedClipIdsProvider.notifier).state = {};
+      ref.read(isDrawModeProvider.notifier).state = false;
     }
   }
 
@@ -590,6 +600,7 @@ class BoardScreen extends ConsumerWidget {
     final selection = ref.watch(selectedClipIdsProvider);
     final hasSelection = selection.isNotEmpty;
     final isDrawMode = ref.watch(isDrawModeProvider);
+    final isTextToolActive = ref.watch(isTextToolActiveProvider);
     final panZoomClipId = ref.watch(panZoomClipIdProvider);
     final snapToGrid = ref.watch(snapToGridProvider);
     final framesPanelOpen = ref.watch(framesPanelOpenProvider);
@@ -616,6 +627,7 @@ class BoardScreen extends ConsumerWidget {
         selectedClips.every((c) => c.groupId == commonGroupId);
     final canPlayGif =
         !isDrawMode &&
+        !isTextToolActive &&
         panZoomClipId == null &&
         selectedClips.length == 1 &&
         selectedClips.first.type == ClipType.image &&
@@ -687,6 +699,14 @@ class BoardScreen extends ConsumerWidget {
                           onPressed: () => _toggleDrawMode(ref),
                         ),
                         PillIconButton(
+                          tooltip: isTextToolActive
+                              ? 'Cancel text tool'
+                              : 'Text tool',
+                          icon: Icons.text_fields,
+                          color: isTextToolActive ? AppTheme.red : null,
+                          onPressed: () => _toggleTextTool(ref),
+                        ),
+                        PillIconButton(
                           tooltip: snapToGrid
                               ? 'Disable snap to grid'
                               : 'Snap to grid',
@@ -696,7 +716,7 @@ class BoardScreen extends ConsumerWidget {
                               ref.read(snapToGridProvider.notifier).state =
                                   !snapToGrid,
                         ),
-                        if (!isDrawMode && hasSelection) ...[
+                        if (!isDrawMode && !isTextToolActive && hasSelection) ...[
                           if (canGroup)
                             PillIconButton(
                               tooltip: 'Group',

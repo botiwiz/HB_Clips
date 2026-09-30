@@ -229,4 +229,68 @@ void main() {
       expect(ClipGeometry.snap(64, 32), 64);
     });
   });
+
+  group('textToolPlacementRect', () {
+    test('a plain click (not moved) returns the default size centered on start', () {
+      final rect = ClipGeometry.textToolPlacementRect(
+        start: const Offset(100, 200),
+        end: const Offset(101, 200),
+        moved: false,
+        defaultWidth: 220,
+        defaultHeight: 140,
+      );
+
+      expect(rect.width, 220);
+      expect(rect.height, 140);
+      expect(rect.center, const Offset(100, 200));
+    });
+
+    test('a drag down-right returns the normalized dragged rect', () {
+      final rect = ClipGeometry.textToolPlacementRect(
+        start: const Offset(50, 60),
+        end: const Offset(150, 200),
+        moved: true,
+        defaultWidth: 220,
+        defaultHeight: 140,
+      );
+
+      expect(rect, const Rect.fromLTWH(50, 60, 100, 140));
+    });
+
+    test('a drag up-left returns the normalized dragged rect', () {
+      final rect = ClipGeometry.textToolPlacementRect(
+        start: const Offset(150, 200),
+        end: const Offset(50, 60),
+        moved: true,
+        defaultWidth: 220,
+        defaultHeight: 140,
+      );
+
+      expect(rect, const Rect.fromLTWH(50, 60, 100, 140));
+    });
+
+    test('a drag down-left returns the normalized dragged rect', () {
+      final rect = ClipGeometry.textToolPlacementRect(
+        start: const Offset(150, 60),
+        end: const Offset(50, 200),
+        moved: true,
+        defaultWidth: 220,
+        defaultHeight: 140,
+      );
+
+      expect(rect, const Rect.fromLTWH(50, 60, 100, 140));
+    });
+
+    test('a drag up-right returns the normalized dragged rect', () {
+      final rect = ClipGeometry.textToolPlacementRect(
+        start: const Offset(50, 200),
+        end: const Offset(150, 60),
+        moved: true,
+        defaultWidth: 220,
+        defaultHeight: 140,
+      );
+
+      expect(rect, const Rect.fromLTWH(50, 60, 100, 140));
+    });
+  });
 }

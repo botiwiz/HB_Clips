@@ -33,6 +33,29 @@ class ClipGeometry {
     return boardPoint * view.scale + view.panOffset;
   }
 
+  /// Board-space rect for a text-tool placement: a plain click ([moved]
+  /// false) gets a rect of [defaultWidth]x[defaultHeight] centered on
+  /// [start]; a click-drag gets the dragged rect verbatim, normalized from
+  /// [start] to [end] - no minimum-size floor, unlike the "C"+drag
+  /// define-frame gesture, since a plain click must still produce
+  /// something here and [moved] already distinguishes click from drag.
+  static Rect textToolPlacementRect({
+    required Offset start,
+    required Offset end,
+    required bool moved,
+    required double defaultWidth,
+    required double defaultHeight,
+  }) {
+    if (!moved) {
+      return Rect.fromCenter(
+        center: start,
+        width: defaultWidth,
+        height: defaultHeight,
+      );
+    }
+    return Rect.fromPoints(start, end);
+  }
+
   static BoardClip? findById(List<BoardClip> clips, String id) {
     for (final clip in clips) {
       if (clip.id == id) return clip;

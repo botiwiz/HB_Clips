@@ -206,3 +206,22 @@ final defineFrameRectProvider = StateProvider<Rect?>((ref) => null);
 final snapGuidesProvider = StateProvider<({double? x, double? y})>(
   (ref) => (x: null, y: null),
 );
+
+/// Whether the one-shot text tool is armed: a click or click-drag on the
+/// canvas creates a new text-note clip, then this flips back to false
+/// automatically - same "arm, use once, auto-revert" contract as the draw
+/// mode's eyedropper sub-tool.
+final isTextToolActiveProvider = StateProvider<bool>((ref) => false);
+
+/// Live board-space rect of an in-progress text-tool click-drag - same
+/// ephemeral-preview role as [defineFrameRectProvider]/[marqueeRectProvider].
+final textToolDragRectProvider = StateProvider<Rect?>((ref) => null);
+
+/// Id of the text-note clip that should render as an actively-focused,
+/// editable TextField instead of static Text - set the instant a new
+/// text-note clip is created and cleared when editing ends (blur, Escape,
+/// or a click elsewhere). Single-id: only one clip is ever in inline-edit
+/// mode at a time. Same "punch a hole in the board's blanket IgnorePointer
+/// for exactly one clip" role [panZoomClipIdProvider] plays for image
+/// pan/zoom.
+final editingTextClipIdProvider = StateProvider<String?>((ref) => null);

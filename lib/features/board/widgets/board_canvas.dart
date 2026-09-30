@@ -39,6 +39,8 @@ import 'group_scale_handles.dart';
 import 'marquee_overlay.dart';
 import 'selection_handles.dart';
 import 'snap_guides_overlay.dart';
+import 'text_clip_edit_overlay.dart';
+import 'text_tool_drag_overlay.dart';
 
 const _uuid = Uuid();
 
@@ -126,6 +128,13 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
   // longer meaningful once the frame's own aspect has changed.
   BoardClip? _defineFrameClip;
   Offset? _defineFrameStartBoard;
+
+  // Text tool: a click or click-drag while armed places a new text-note
+  // clip - default size on a plain click, sized to the dragged rect
+  // otherwise (see _textToolMoved, the same >2px moved-flag pattern
+  // _groupDragMoved/_marqueeMoved use elsewhere in this file).
+  Offset? _textToolStartBoard;
+  bool _textToolMoved = false;
 
   // Frame move/resize - only checked once a pointer-down misses every
   // clip (frames sit behind clips, see FrameGeometry's doc comment).
@@ -297,6 +306,8 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     _panZoomGestureStartBoard = null;
     _defineFrameClip = null;
     _defineFrameStartBoard = null;
+    _textToolStartBoard = null;
+    _textToolMoved = false;
     ref.read(groupDragProvider.notifier).state = null;
     ref.read(marqueeRectProvider.notifier).state = null;
     ref.read(frameDragRectProvider.notifier).state = null;
@@ -304,6 +315,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     ref.read(panZoomLiveProvider.notifier).state = null;
     ref.read(defineFrameRectProvider.notifier).state = null;
     ref.read(snapGuidesProvider.notifier).state = (x: null, y: null);
+    ref.read(textToolDragRectProvider.notifier).state = null;
   }
 
   /// Updates [snapGuidesProvider] only when it actually changed, avoiding a
@@ -399,6 +411,10 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
 
   void _handlePointerDown(PointerDownEvent event) {
     _focusNode.requestFocus();
+    if (ref.read(isTextToolActiveProvider)) {
+      _handleTextToolPointerDown(event);
+      return;
+    }
     if (ref.read(isDrawModeProvider)) {
       _handleDrawPointerDown(event);
       return;
@@ -739,6 +755,10 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
   }
 
   void _handlePointerMove(PointerMoveEvent event) {
+    if (_textToolStartBoard != null) {
+      _handleTextToolPointerMove(event);
+      return;
+    }
     if (ref.read(isDrawModeProvider)) {
       _handleDrawPointerMove(event);
       return;
@@ -1067,6 +1087,10 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
   }
 
   Future<void> _handlePointerUp(PointerUpEvent event) async {
+    if (_textToolStartBoard != null) {
+      await _handleTextToolPointerUp(event);
+      return;
+    }
     if (ref.read(isDrawModeProvider)) {
       _handleDrawPointerUp(event);
       return;
@@ -1576,6 +1600,76 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     return isDouble;
   }
 
+  /// Entry point while [isTextToolActiveProvider] is armed: seeds gesture
+  /// state for a click-or-drag text-note placement, committed in
+  /// [_handleTextToolPointerUp]. Deliberately doesn't go through
+  /// _resetGestureState() - only this tool's own fields matter while it's
+  /// active, same as the draw-mode/pan-zoom short-circuits above it in
+  /// _handlePointerDown, which return before reaching that call too.
+  void _handleTextToolPointerDown(PointerDownEvent event) {
+    if (event.buttons & kPrimaryMouseButton == 0) return;
+    final view = ref.read(boardViewProvider);
+    final boardPos = _screenToBoard(event.localPosition, view);
+    _textToolStartBoard = boardPos;
+    _textToolMoved = false;
+    ref.read(textToolDragRectProvider.notifier).state = Rect.fromPoints(
+      boardPos,
+      boardPos,
+    );
+  }
+
+  void _handleTextToolPointerMove(PointerMoveEvent event) {
+    final view = ref.read(boardViewProvider);
+    final boardPos = _screenToBoard(event.localPosition, view);
+    final delta = boardPos - _textToolStartBoard!;
+    if (delta.distance > 2) _textToolMoved = true;
+    ref.read(textToolDragRectProvider.notifier).state = Rect.fromPoints(
+      _textToolStartBoard!,
+      boardPos,
+    );
+  }
+
+  /// Commits the placement: a plain click (never exceeded the 2px moved
+  /// threshold) creates a clip at the default text-note size centered on
+  /// the click point; a drag creates one sized to the dragged rect. Either
+  /// way: one-shot, so the tool deactivates and the new clip immediately
+  /// enters inline-edit mode.
+  Future<void> _handleTextToolPointerUp(PointerUpEvent event) async {
+    final startBoard = _textToolStartBoard!;
+    final moved = _textToolMoved;
+    _textToolStartBoard = null;
+    _textToolMoved = false;
+    ref.read(textToolDragRectProvider.notifier).state = null;
+
+    final view = ref.read(boardViewProvider);
+    final endBoard = _screenToBoard(event.localPosition, view);
+    final rect = ClipGeometry.textToolPlacementRect(
+      start: startBoard,
+      end: endBoard,
+      moved: moved,
+      defaultWidth: kDefaultTextNoteWidth,
+      defaultHeight: kDefaultTextNoteHeight,
+    );
+
+    final id = _uuid.v4();
+    await ref
+        .read(clipsRepositoryProvider)
+        .addTextNote(
+          id: id,
+          boardId: ref.read(currentBoardIdProvider),
+          textContent: '',
+          x: rect.left,
+          y: rect.top,
+          width: rect.width,
+          height: rect.height,
+        );
+    if (!mounted) return;
+
+    ref.read(isTextToolActiveProvider.notifier).state = false;
+    ref.read(selectedClipIdsProvider.notifier).state = {id};
+    ref.read(editingTextClipIdProvider.notifier).state = id;
+  }
+
   /// Entry point while [panZoomClipIdProvider] names an active clip:
   /// a hit on that same clip starts a pan/zoom drag; a double-click on it
   /// or a click anywhere else exits the mode (a click on the floating
@@ -1689,7 +1783,9 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
   /// browser tab) falls back to resolving a URL off the drag and fetching
   /// it over HTTP.
   Future<void> _handlePerformDrop(PerformDropEvent event) async {
-    if (ref.read(isDrawModeProvider) || ref.read(panZoomClipIdProvider) != null) {
+    if (ref.read(isDrawModeProvider) ||
+        ref.read(panZoomClipIdProvider) != null ||
+        ref.read(isTextToolActiveProvider)) {
       return;
     }
     final view = ref.read(boardViewProvider);
@@ -1744,9 +1840,11 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     final selection = ref.watch(selectedClipIdsProvider);
     final overBin = ref.watch(isDraggingOverBinProvider);
     final isDrawMode = ref.watch(isDrawModeProvider);
+    final isTextToolActive = ref.watch(isTextToolActiveProvider);
     final panZoomClipId = ref.watch(panZoomClipIdProvider);
     final panZoomLive = ref.watch(panZoomLiveProvider);
     final defineFrameRect = ref.watch(defineFrameRectProvider);
+    final textToolDragRect = ref.watch(textToolDragRectProvider);
     final frames = ref.watch(boardFramesProvider).valueOrNull ?? [];
     final selectedFrameId = ref.watch(selectedFrameIdProvider);
     final frameDragRect = ref.watch(frameDragRectProvider);
@@ -1776,7 +1874,9 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
             autofocus: true,
             onKeyEvent: _handleKeyEvent,
             child: MouseRegion(
-              cursor: isDrawMode
+              cursor: isTextToolActive
+                  ? SystemMouseCursors.text
+                  : isDrawMode
                   ? SystemMouseCursors.precise
                   : SystemMouseCursors.basic,
               child: Listener(
@@ -1814,8 +1914,12 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
                         ),
                       const Positioned.fill(child: DrawingOverlay()),
                       if (defineFrameRect != null) const DefineFrameOverlay(),
+                      if (textToolDragRect != null) const TextToolDragOverlay(),
                       const SnapGuidesOverlay(),
-                      if (panZoomClipId == null && !isDrawMode) ...[
+                      const TextClipEditOverlay(),
+                      if (panZoomClipId == null &&
+                          !isDrawMode &&
+                          !isTextToolActive) ...[
                         const MarqueeOverlay(),
                         const SelectionHandles(),
                         const GroupScaleHandles(),
