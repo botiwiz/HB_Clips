@@ -33,11 +33,17 @@ class PurImportSummary {
   /// instead. See `PurFile.recoveredWithoutPositionCount`.
   final int imagesRecoveredWithoutPosition;
 
+  /// Every clip id this import created, in creation order - lets the
+  /// caller push one batched undo/redo entry for the whole import instead
+  /// of one per clip.
+  final List<String> createdClipIds;
+
   const PurImportSummary({
     required this.imagesImported,
     required this.textNotesImported,
     this.imagesUnrecoverable = 0,
     this.imagesRecoveredWithoutPosition = 0,
+    this.createdClipIds = const [],
   });
 }
 
@@ -103,14 +109,15 @@ Future<PurImportSummary?> importPurFile(
   final boardId = ref.read(currentBoardIdProvider);
   var imagesImported = 0;
   var textNotesImported = 0;
+  final createdClipIds = <String>[];
 
   for (final item in items) {
     switch (item) {
       case _ImportImage():
-        await _importImage(item, blobStore, repo, boardId);
+        createdClipIds.add(await _importImage(item, blobStore, repo, boardId));
         imagesImported++;
       case _ImportText():
-        await _importText(item, repo, boardId);
+        createdClipIds.add(await _importText(item, repo, boardId));
         textNotesImported++;
     }
   }
@@ -120,10 +127,11 @@ Future<PurImportSummary?> importPurFile(
     textNotesImported: textNotesImported,
     imagesUnrecoverable: parsed.unrecoverableImageCount,
     imagesRecoveredWithoutPosition: parsed.recoveredWithoutPositionCount,
+    createdClipIds: createdClipIds,
   );
 }
 
-Future<void> _importImage(
+Future<String> _importImage(
   _ImportImage item,
   LocalBlobStore blobStore,
   ClipsRepository repo,
@@ -197,21 +205,24 @@ Future<void> _importImage(
     rotation: transform.rotationRadians,
     imageAspectRatio: boardWidth / boardHeight,
   );
+  return id;
 }
 
-Future<void> _importText(
+Future<String> _importText(
   _ImportText item,
   ClipsRepository repo,
   String boardId,
 ) async {
   final text = item.text;
+  final id = _uuid.v4();
   await repo.addTextNote(
-    id: _uuid.v4(),
+    id: id,
     boardId: boardId,
     textContent: text.text,
     x: text.x - kDefaultTextNoteWidth / 2,
     y: text.y - kDefaultTextNoteHeight / 2,
   );
+  return id;
 }
 
 void _showError(BuildContext context, String message) {

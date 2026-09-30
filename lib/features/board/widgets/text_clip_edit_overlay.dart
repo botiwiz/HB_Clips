@@ -8,6 +8,7 @@ import '../../../data/models/clip.dart';
 import '../../../data/providers.dart';
 import '../../annotation/stroke_painter.dart' show hexToColor;
 import '../controllers/board_controller.dart';
+import '../controllers/undo_controller.dart';
 import '../geometry/selection_geometry.dart';
 import '../geometry/text_style_ranges.dart';
 import 'board_toolbar.dart';
@@ -140,12 +141,19 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
   _RichTextEditingController? _controller;
   FocusNode? _focusNode;
   String? _boundClipId;
+  // The note's text as of the moment this edit session started - lets
+  // _commitAndExit push a single undo step for the whole session (undo
+  // restores the pre-edit text) instead of one per keystroke, since
+  // updateTextContent already writes live on every keystroke for
+  // responsiveness.
+  String? _textBeforeEdit;
 
   void _bind(BoardClip clip) {
     _controller = _RichTextEditingController(
       text: clip.textContent ?? '',
       formatting: clip.textFormatting,
     );
+    _textBeforeEdit = clip.textContent ?? '';
     _focusNode = FocusNode(debugLabel: 'TextClipEdit-${clip.id}');
     _boundClipId = clip.id;
     _focusNode!.addListener(() {
@@ -160,9 +168,20 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
   void _commitAndExit() {
     final id = _boundClipId;
     if (id != null) {
-      ref
-          .read(clipsRepositoryProvider)
-          .updateTextContent(id, _controller?.text ?? '');
+      final finalText = _controller?.text ?? '';
+      final repo = ref.read(clipsRepositoryProvider);
+      repo.updateTextContent(id, finalText);
+      final before = _textBeforeEdit ?? '';
+      if (before != finalText) {
+        ref
+            .read(undoManagerProvider.notifier)
+            .push(
+              UndoableAction(
+                undo: () => repo.updateTextContent(id, before),
+                redo: () => repo.updateTextContent(id, finalText),
+              ),
+            );
+      }
     }
     if (mounted) {
       ref.read(editingTextClipIdProvider.notifier).state = null;
@@ -175,6 +194,7 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
     _controller = null;
     _focusNode = null;
     _boundClipId = null;
+    _textBeforeEdit = null;
   }
 
   @override
@@ -193,14 +213,20 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
     final sel = controller.selection;
     if (!sel.isValid || sel.isCollapsed) return;
 
-    final toggled = TextStyleRanges.toggle(
-      select(controller.formatting),
-      sel.start,
-      sel.end,
-    );
-    final next = update(controller.formatting, toggled);
+    final before = controller.formatting;
+    final toggled = TextStyleRanges.toggle(select(before), sel.start, sel.end);
+    final next = update(before, toggled);
     controller.setFormatting(next);
-    ref.read(clipsRepositoryProvider).updateTextFormatting(id, next);
+    final repo = ref.read(clipsRepositoryProvider);
+    repo.updateTextFormatting(id, next);
+    ref
+        .read(undoManagerProvider.notifier)
+        .push(
+          UndoableAction(
+            undo: () => repo.updateTextFormatting(id, before),
+            redo: () => repo.updateTextFormatting(id, next),
+          ),
+        );
   }
 
   void _toggleBold() => _toggleAttribute(
@@ -244,16 +270,35 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
   );
 
   void _adjustFontSize(BoardClip clip, double delta) {
-    final current = clip.fontSize ?? kTextNoteFontSize;
+    final beforeRaw = clip.fontSize;
+    final current = beforeRaw ?? kTextNoteFontSize;
     final next = (current + delta).clamp(_minFontSize, _maxFontSize);
-    ref.read(clipsRepositoryProvider).updateFontSize(clip.id, next);
+    final repo = ref.read(clipsRepositoryProvider);
+    repo.updateFontSize(clip.id, next);
+    ref
+        .read(undoManagerProvider.notifier)
+        .push(
+          UndoableAction(
+            undo: () => repo.updateFontSize(clip.id, beforeRaw),
+            redo: () => repo.updateFontSize(clip.id, next),
+          ),
+        );
   }
 
   void _toggleSizeLock(BoardClip clip, double viewScale) {
-    final locked = clip.sizeLockScale != null;
+    final before = clip.sizeLockScale;
+    final locked = before != null;
+    final next = locked ? null : viewScale;
+    final repo = ref.read(clipsRepositoryProvider);
+    repo.updateSizeLockScale(clip.id, next);
     ref
-        .read(clipsRepositoryProvider)
-        .updateSizeLockScale(clip.id, locked ? null : viewScale);
+        .read(undoManagerProvider.notifier)
+        .push(
+          UndoableAction(
+            undo: () => repo.updateSizeLockScale(clip.id, before),
+            redo: () => repo.updateSizeLockScale(clip.id, next),
+          ),
+        );
   }
 
   bool _selectionHasStyle(List<IntRange> ranges) {

@@ -191,6 +191,9 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
   // of `_connectorFromClipId` when repositioning rather than creating.
   String? _retargetingConnectorId;
 
+  // The connector's target before a retarget-drag started, for undo.
+  ({String toClipId, double? toRelX, double? toRelY})? _retargetBefore;
+
   // Debug diagnostic (see _handleDropOver/_handlePerformDrop): the last
   // drag session whose platform formats were already logged, so a
   // repeated hover tick over the same drag doesn't spam the console.
@@ -321,7 +324,10 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
   /// only for starting a frame selection/drag, so clicking near a frame's
   /// name label (which floats above its body, often the only part not
   /// covered by child clips) reliably grabs the frame itself.
-  FrameRow? _hitTestFrameForSelection(List<FrameRow> frames, Offset boardPoint) {
+  FrameRow? _hitTestFrameForSelection(
+    List<FrameRow> frames,
+    Offset boardPoint,
+  ) {
     for (final frame in frames.reversed) {
       if (FrameGeometry.pointInFrameOrTitleBand(boardPoint, frame)) {
         return frame;
@@ -376,6 +382,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     _connectorFromClipId = null;
     _connectorFromSide = null;
     _retargetingConnectorId = null;
+    _retargetBefore = null;
     _panZoomDragClip = null;
     _panZoomDragStartPan = null;
     _panZoomGestureStartBoard = null;
@@ -418,7 +425,16 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
   /// start. A no-op if nothing was captured (a gesture kind that doesn't
   /// support undo - this app has several) or nothing actually changed
   /// (e.g. a click with no drag).
-  void _commitTransformUndo(Map<String, DraggingClip> after) {
+  ///
+  /// [frameIdBefore]/[frameIdAfter] optionally fold a same-gesture
+  /// frame-reparent (clip dragged into/out of a frame) into this exact
+  /// same undo entry, so undoing the drag also restores frame membership
+  /// atomically instead of leaving the clip parented wherever it landed.
+  void _commitTransformUndo(
+    Map<String, DraggingClip> after, {
+    Map<String, String?>? frameIdBefore,
+    Map<String, String?>? frameIdAfter,
+  }) {
     final before = _undoTransformBefore;
     _undoTransformBefore = null;
     if (before == null) return;
@@ -433,35 +449,47 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
           b.height != a.height ||
           b.rotation != a.rotation;
     });
-    if (!changed) return;
+    final frameIdChanged =
+        frameIdBefore != null &&
+        frameIdAfter != null &&
+        frameIdAfter.entries.any((e) => frameIdBefore[e.key] != e.value);
+    if (!changed && !frameIdChanged) return;
     final repo = ref.read(clipsRepositoryProvider);
-    ref.read(undoManagerProvider.notifier).push(
-      UndoableAction(
-        undo: () => Future.wait([
-          for (final entry in before.entries)
-            if (afterSnapshot.containsKey(entry.key))
-              repo.updateTransform(
-                entry.key,
-                x: entry.value.x,
-                y: entry.value.y,
-                width: entry.value.width,
-                height: entry.value.height,
-                rotation: entry.value.rotation,
-              ),
-        ]),
-        redo: () => Future.wait([
-          for (final entry in afterSnapshot.entries)
-            repo.updateTransform(
-              entry.key,
-              x: entry.value.x,
-              y: entry.value.y,
-              width: entry.value.width,
-              height: entry.value.height,
-              rotation: entry.value.rotation,
-            ),
-        ]),
-      ),
-    );
+    ref
+        .read(undoManagerProvider.notifier)
+        .push(
+          UndoableAction(
+            undo: () => Future.wait([
+              for (final entry in before.entries)
+                if (afterSnapshot.containsKey(entry.key))
+                  repo.updateTransform(
+                    entry.key,
+                    x: entry.value.x,
+                    y: entry.value.y,
+                    width: entry.value.width,
+                    height: entry.value.height,
+                    rotation: entry.value.rotation,
+                  ),
+              if (frameIdBefore != null)
+                for (final entry in frameIdBefore.entries)
+                  repo.setFrameId(entry.key, entry.value),
+            ]),
+            redo: () => Future.wait([
+              for (final entry in afterSnapshot.entries)
+                repo.updateTransform(
+                  entry.key,
+                  x: entry.value.x,
+                  y: entry.value.y,
+                  width: entry.value.width,
+                  height: entry.value.height,
+                  rotation: entry.value.rotation,
+                ),
+              if (frameIdAfter != null)
+                for (final entry in frameIdAfter.entries)
+                  repo.setFrameId(entry.key, entry.value),
+            ]),
+          ),
+        );
   }
 
   void _handlePointerCancel(PointerCancelEvent event) {
@@ -651,7 +679,9 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     // tool's "click a button, then resize the pre-seeded full rect" flow).
     // Same "wins over whatever's under the cursor" priority as Space+drag.
     final isDefineFrameGesture =
-        HardwareKeyboard.instance.isLogicalKeyPressed(LogicalKeyboardKey.keyC) &&
+        HardwareKeyboard.instance.isLogicalKeyPressed(
+          LogicalKeyboardKey.keyC,
+        ) &&
         (event.buttons & kPrimaryMouseButton != 0);
     if (isDefineFrameGesture) {
       if (selection.length == 1) {
@@ -692,6 +722,11 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
         if ((p3Screen - event.localPosition).distance <=
             ConnectorGeometry.handleHitRadius) {
           _retargetingConnectorId = connector!.id;
+          _retargetBefore = (
+            toClipId: connector.toClipId,
+            toRelX: connector.toRelX,
+            toRelY: connector.toRelY,
+          );
           ref.read(connectorDraftProvider.notifier).state = ConnectorDraft(
             fromClipId: connector.fromClipId,
             fromSide: connector.fromSide,
@@ -719,13 +754,14 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
           boardRect,
           view,
         ).contains(event.localPosition)) {
-          final images = [
-            for (final c in selectedClips)
-              if (c.type == ClipType.image) c,
-          ]..sort((a, b) {
-            final byY = a.y.compareTo(b.y);
-            return byY != 0 ? byY : a.x.compareTo(b.x);
-          });
+          final images =
+              [
+                for (final c in selectedClips)
+                  if (c.type == ClipType.image) c,
+              ]..sort((a, b) {
+                final byY = a.y.compareTo(b.y);
+                return byY != 0 ? byY : a.x.compareTo(b.x);
+              });
           if (images.length >= 2) {
             _arrangeAnchor = boardRect.bottomLeft;
             _arrangeStartCorner = boardRect.topRight;
@@ -825,9 +861,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
         );
         if (handle != null) {
           _activeGroupScaleHandle = handle;
-          _groupScaleStartClips = {
-            for (final c in selectedClips) c.id: c,
-          };
+          _groupScaleStartClips = {for (final c in selectedClips) c.id: c};
           _groupScaleStartRect = groupRect;
           _gestureStartPointerBoard = boardPos;
           final startMap = {
@@ -978,9 +1012,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
             .where((c) => c.frameId == selectedFrame.id)
             .toList();
         if (resizingChildren.isNotEmpty) {
-          _frameResizeChildStart = {
-            for (final c in resizingChildren) c.id: c,
-          };
+          _frameResizeChildStart = {for (final c in resizingChildren) c.id: c};
           ref.read(groupDragProvider.notifier).state = {
             for (final c in resizingChildren)
               c.id: DraggingClip(
@@ -1132,12 +1164,8 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
         );
         ref.read(groupDragProvider.notifier).state = {
           id: current.copyWith(
-            x: snap
-                ? ClipGeometry.snap(result.x, kBoardGridSpacing)
-                : result.x,
-            y: snap
-                ? ClipGeometry.snap(result.y, kBoardGridSpacing)
-                : result.y,
+            x: snap ? ClipGeometry.snap(result.x, kBoardGridSpacing) : result.x,
+            y: snap ? ClipGeometry.snap(result.y, kBoardGridSpacing) : result.y,
             width: snap
                 ? ClipGeometry.snap(result.width, kBoardGridSpacing)
                 : result.width,
@@ -1334,7 +1362,8 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
         pointerBoard: boardPos,
       );
       ref.read(frameDragRectProvider.notifier).state = resized;
-      if (_frameResizeChildStart != null && _frameResizeChildStart!.isNotEmpty) {
+      if (_frameResizeChildStart != null &&
+          _frameResizeChildStart!.isNotEmpty) {
         final results = FrameGeometry.scaleChildren(
           startClips: _frameResizeChildStart!,
           startRect: _frameDragStartRect!,
@@ -1409,20 +1438,22 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
             (before.dx != drag.panX || before.dy != drag.panY)) {
           final clipId = drag.clipId;
           final afterPan = Offset(drag.panX, drag.panY);
-          ref.read(undoManagerProvider.notifier).push(
-            UndoableAction(
-              undo: () => panZoomRepo.updateTransform(
-                clipId,
-                panX: before.dx,
-                panY: before.dy,
-              ),
-              redo: () => panZoomRepo.updateTransform(
-                clipId,
-                panX: afterPan.dx,
-                panY: afterPan.dy,
-              ),
-            ),
-          );
+          ref
+              .read(undoManagerProvider.notifier)
+              .push(
+                UndoableAction(
+                  undo: () => panZoomRepo.updateTransform(
+                    clipId,
+                    panX: before.dx,
+                    panY: before.dy,
+                  ),
+                  redo: () => panZoomRepo.updateTransform(
+                    clipId,
+                    panX: afterPan.dx,
+                    panY: afterPan.dy,
+                  ),
+                ),
+              );
         }
       }
       ref.read(panZoomLiveProvider.notifier).state = null;
@@ -1440,18 +1471,44 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       final target = _hitTestClip(clipsNow, boardPos);
       if (target != null && target.type == ClipType.image) {
         final rel = ConnectorGeometry.relativePointInClip(target, boardPos);
-        await ref
-            .read(connectorsRepositoryProvider)
-            .updateConnectorTarget(
-              _retargetingConnectorId!,
-              toClipId: target.id,
-              toRelX: rel.dx,
-              toRelY: rel.dy,
-            );
+        final connId = _retargetingConnectorId!;
+        final before = _retargetBefore;
+        final connRepo = ref.read(connectorsRepositoryProvider);
+        await connRepo.updateConnectorTarget(
+          connId,
+          toClipId: target.id,
+          toRelX: rel.dx,
+          toRelY: rel.dy,
+        );
+        if (!mounted) return;
+        if (before != null &&
+            (before.toClipId != target.id ||
+                before.toRelX != rel.dx ||
+                before.toRelY != rel.dy)) {
+          ref
+              .read(undoManagerProvider.notifier)
+              .push(
+                UndoableAction(
+                  undo: () => connRepo.updateConnectorTarget(
+                    connId,
+                    toClipId: before.toClipId,
+                    toRelX: before.toRelX,
+                    toRelY: before.toRelY,
+                  ),
+                  redo: () => connRepo.updateConnectorTarget(
+                    connId,
+                    toClipId: target.id,
+                    toRelX: rel.dx,
+                    toRelY: rel.dy,
+                  ),
+                ),
+              );
+        }
       }
       if (!mounted) return;
       ref.read(connectorDraftProvider.notifier).state = null;
       _retargetingConnectorId = null;
+      _retargetBefore = null;
       return;
     }
 
@@ -1480,20 +1537,22 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
           toRelY: rel.dy,
         );
         if (!mounted) return;
-        ref.read(undoManagerProvider.notifier).push(
-          UndoableAction(
-            undo: () => connRepo.deleteConnector(newId),
-            redo: () => connRepo.addConnector(
-              id: newId,
-              boardId: boardId,
-              fromClipId: fromClipId,
-              fromSide: fromSide,
-              toClipId: toClipId,
-              toRelX: rel.dx,
-              toRelY: rel.dy,
-            ),
-          ),
-        );
+        ref
+            .read(undoManagerProvider.notifier)
+            .push(
+              UndoableAction(
+                undo: () => connRepo.deleteConnector(newId),
+                redo: () => connRepo.addConnector(
+                  id: newId,
+                  boardId: boardId,
+                  fromClipId: fromClipId,
+                  fromSide: fromSide,
+                  toClipId: toClipId,
+                  toRelX: rel.dx,
+                  toRelY: rel.dy,
+                ),
+              ),
+            );
       }
       if (!mounted) return;
       ref.read(connectorDraftProvider.notifier).state = null;
@@ -1523,30 +1582,32 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
           zoom: 1.0,
         );
         if (!mounted) return;
-        ref.read(undoManagerProvider.notifier).push(
-          UndoableAction(
-            undo: () => repo.updateTransform(
-              beforeClip.id,
-              x: beforeClip.x,
-              y: beforeClip.y,
-              width: beforeClip.width,
-              height: beforeClip.height,
-              panX: beforeClip.imagePanX,
-              panY: beforeClip.imagePanY,
-              zoom: beforeClip.imageZoom,
-            ),
-            redo: () => repo.updateTransform(
-              beforeClip.id,
-              x: rect.left,
-              y: rect.top,
-              width: rect.width,
-              height: rect.height,
-              panX: 0.0,
-              panY: 0.0,
-              zoom: 1.0,
-            ),
-          ),
-        );
+        ref
+            .read(undoManagerProvider.notifier)
+            .push(
+              UndoableAction(
+                undo: () => repo.updateTransform(
+                  beforeClip.id,
+                  x: beforeClip.x,
+                  y: beforeClip.y,
+                  width: beforeClip.width,
+                  height: beforeClip.height,
+                  panX: beforeClip.imagePanX,
+                  panY: beforeClip.imagePanY,
+                  zoom: beforeClip.imageZoom,
+                ),
+                redo: () => repo.updateTransform(
+                  beforeClip.id,
+                  x: rect.left,
+                  y: rect.top,
+                  width: rect.width,
+                  height: rect.height,
+                  panX: 0.0,
+                  panY: 0.0,
+                  zoom: 1.0,
+                ),
+              ),
+            );
       }
       if (!mounted) return;
       ref.read(defineFrameRectProvider.notifier).state = null;
@@ -1643,6 +1704,8 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
         final frames = ref.read(boardFramesProvider).valueOrNull ?? [];
         final clipsNow = ref.read(activeClipsProvider).valueOrNull ?? [];
         final writes = <Future<void>>[];
+        final frameIdBefore = <String, String?>{};
+        final frameIdAfter = <String, String?>{};
         for (final entry in dragMap.entries) {
           writes.add(
             repo.updateTransform(entry.key, x: entry.value.x, y: entry.value.y),
@@ -1662,11 +1725,17 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
           )?.frameId;
           if (containingFrame?.id != currentFrameId) {
             writes.add(repo.setFrameId(entry.key, containingFrame?.id));
+            frameIdBefore[entry.key] = currentFrameId;
+            frameIdAfter[entry.key] = containingFrame?.id;
           }
         }
         await Future.wait(writes);
         if (!mounted) return;
-        _commitTransformUndo(dragMap);
+        _commitTransformUndo(
+          dragMap,
+          frameIdBefore: frameIdBefore.isEmpty ? null : frameIdBefore,
+          frameIdAfter: frameIdAfter.isEmpty ? null : frameIdAfter,
+        );
       } else if (!_groupDragMoved && _pendingCollapseId != null) {
         ref.read(selectedClipIdsProvider.notifier).state = {
           _pendingCollapseId!,
@@ -1709,26 +1778,39 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     }
 
     if (_frameDragId != null) {
+      final frameId = _frameDragId!;
+      final beforeRect = _frameDragStartRect;
+      final beforeMove = _frameChildStartPositions == null
+          ? null
+          : Map<String, Offset>.of(_frameChildStartPositions!);
+      final beforeResize = _frameResizeChildStart == null
+          ? null
+          : Map<String, BoardClip>.of(_frameResizeChildStart!);
+      final framesRepo = ref.read(framesRepositoryProvider);
       final rect = ref.read(frameDragRectProvider);
+      Map<String, DraggingClip>? afterChildren;
       if (rect != null) {
-        await ref
-            .read(framesRepositoryProvider)
-            .updateTransform(
-              _frameDragId!,
-              x: rect.left,
-              y: rect.top,
-              width: rect.width,
-              height: rect.height,
-            );
+        await framesRepo.updateTransform(
+          frameId,
+          x: rect.left,
+          y: rect.top,
+          width: rect.width,
+          height: rect.height,
+        );
         if (!mounted) return;
       }
       if (_frameChildStartPositions != null) {
         final dragMap = ref.read(groupDragProvider);
         if (dragMap != null) {
+          afterChildren = Map<String, DraggingClip>.of(dragMap);
           await Future.wait([
             for (final entry in dragMap.entries)
               if (_frameChildStartPositions!.containsKey(entry.key))
-                repo.updateTransform(entry.key, x: entry.value.x, y: entry.value.y),
+                repo.updateTransform(
+                  entry.key,
+                  x: entry.value.x,
+                  y: entry.value.y,
+                ),
           ]);
           if (!mounted) return;
         }
@@ -1737,6 +1819,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       if (_frameResizeChildStart != null) {
         final dragMap = ref.read(groupDragProvider);
         if (dragMap != null) {
+          afterChildren = Map<String, DraggingClip>.of(dragMap);
           await Future.wait([
             for (final entry in dragMap.entries)
               if (_frameResizeChildStart!.containsKey(entry.key))
@@ -1751,6 +1834,59 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
           if (!mounted) return;
         }
         ref.read(groupDragProvider.notifier).state = null;
+      }
+      if (beforeRect != null && rect != null && beforeRect != rect) {
+        final afterRect = rect;
+        final afterChildrenSnapshot = afterChildren;
+        ref
+            .read(undoManagerProvider.notifier)
+            .push(
+              UndoableAction(
+                undo: () => Future.wait([
+                  framesRepo.updateTransform(
+                    frameId,
+                    x: beforeRect.left,
+                    y: beforeRect.top,
+                    width: beforeRect.width,
+                    height: beforeRect.height,
+                  ),
+                  if (beforeMove != null)
+                    for (final entry in beforeMove.entries)
+                      repo.updateTransform(
+                        entry.key,
+                        x: entry.value.dx,
+                        y: entry.value.dy,
+                      ),
+                  if (beforeResize != null)
+                    for (final entry in beforeResize.entries)
+                      repo.updateTransform(
+                        entry.key,
+                        x: entry.value.x,
+                        y: entry.value.y,
+                        width: entry.value.width,
+                        height: entry.value.height,
+                      ),
+                ]),
+                redo: () => Future.wait([
+                  framesRepo.updateTransform(
+                    frameId,
+                    x: afterRect.left,
+                    y: afterRect.top,
+                    width: afterRect.width,
+                    height: afterRect.height,
+                  ),
+                  if (afterChildrenSnapshot != null)
+                    for (final entry in afterChildrenSnapshot.entries)
+                      repo.updateTransform(
+                        entry.key,
+                        x: entry.value.x,
+                        y: entry.value.y,
+                        width: entry.value.width,
+                        height: entry.value.height,
+                      ),
+                ]),
+              ),
+            );
       }
       ref.read(frameDragRectProvider.notifier).state = null;
       _frameDragId = null;
@@ -1795,7 +1931,8 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       final now = DateTime.now();
       final isIsolatedStep =
           _lastZoomSignalTime == null ||
-          now.difference(_lastZoomSignalTime!) > const Duration(milliseconds: 150);
+          now.difference(_lastZoomSignalTime!) >
+              const Duration(milliseconds: 150);
       _lastZoomSignalTime = now;
 
       if (isIsolatedStep) {
@@ -1869,10 +2006,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     if (current == null) return;
     final view = ref.read(boardViewProvider);
     final boardPos = _screenToBoard(event.localPosition, view);
-    ref.read(liveStrokePointsProvider.notifier).state = [
-      ...current,
-      boardPos,
-    ];
+    ref.read(liveStrokePointsProvider.notifier).state = [...current, boardPos];
   }
 
   /// Deletes every stroke (freestanding or clip-attached) that passes near
@@ -1942,16 +2076,18 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       (local.dx - clip.x) / clip.width,
       (local.dy - clip.y) / clip.height,
     );
-    ref.read(localBlobStoreProvider).readBytes(clip.localFilePath!).then((
-      bytes,
-    ) {
-      if (bytes == null || !mounted) return null;
-      return sampleColorAt(bytes, fractional);
-    }).then((hex) {
-      if (hex == null || !mounted) return;
-      ref.read(strokeColorHexProvider.notifier).state = hex;
-      ref.read(drawToolProvider.notifier).state = DrawTool.pen;
-    });
+    ref
+        .read(localBlobStoreProvider)
+        .readBytes(clip.localFilePath!)
+        .then((bytes) {
+          if (bytes == null || !mounted) return null;
+          return sampleColorAt(bytes, fractional);
+        })
+        .then((hex) {
+          if (hex == null || !mounted) return;
+          ref.read(strokeColorHexProvider.notifier).state = hex;
+          ref.read(drawToolProvider.notifier).state = DrawTool.pen;
+        });
   }
 
   void _handleDrawPointerUp(PointerUpEvent event) {
@@ -2240,7 +2376,8 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       }
       if (bytes == null || bytes.isEmpty) continue;
 
-      final center = dropCenter + Offset(cascadeStep, cascadeStep) * placed.toDouble();
+      final center =
+          dropCenter + Offset(cascadeStep, cascadeStep) * placed.toDouble();
       await addImageClipFromBytes(
         ref,
         bytes: bytes,
@@ -2434,10 +2571,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
                       StrokeSpec(
                         points: stroke.points
                             .map(
-                              (p) => Offset(
-                                p.dx * boxWidth,
-                                p.dy * boxHeight,
-                              ),
+                              (p) => Offset(p.dx * boxWidth, p.dy * boxHeight),
                             )
                             .toList(),
                         color: hexToColor(stroke.colorHex),

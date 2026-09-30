@@ -130,6 +130,20 @@ class BoardScreen extends ConsumerWidget {
     final summary = await importPurFile(context, ref, pickedBytes);
     if (summary == null || !context.mounted) return;
 
+    if (summary.createdClipIds.isNotEmpty) {
+      final repo = ref.read(clipsRepositoryProvider);
+      final ids = summary.createdClipIds;
+      ref
+          .read(undoManagerProvider.notifier)
+          .push(
+            UndoableAction(
+              undo: () => Future.wait([for (final id in ids) repo.binClip(id)]),
+              redo: () =>
+                  Future.wait([for (final id in ids) repo.restoreClip(id)]),
+            ),
+          );
+    }
+
     final parts = <String>[
       '${summary.imagesImported} image${summary.imagesImported == 1 ? '' : 's'}',
       '${summary.textNotesImported} text note${summary.textNotesImported == 1 ? '' : 's'}',
@@ -510,28 +524,84 @@ class BoardScreen extends ConsumerWidget {
     }
   }
 
-  void _applyZOrder(
+  Future<void> _applyZOrder(
     WidgetRef ref,
     Future<void> Function(ClipsRepository repo, String id, String boardId)
     action,
-  ) {
+  ) async {
     final selection = ref.read(selectedClipIdsProvider);
     if (selection.isEmpty) return;
     final repo = ref.read(clipsRepositoryProvider);
     final boardId = ref.read(currentBoardIdProvider);
-    for (final id in selection) {
-      action(repo, id, boardId);
+    final ids = selection.toList();
+    final before = <String, int?>{
+      for (final id in ids) id: await repo.getZIndex(id),
+    };
+    for (final id in ids) {
+      await action(repo, id, boardId);
     }
+    final after = <String, int?>{
+      for (final id in ids) id: await repo.getZIndex(id),
+    };
+    ref
+        .read(undoManagerProvider.notifier)
+        .push(
+          UndoableAction(
+            undo: () => Future.wait([
+              for (final id in ids)
+                if (before[id] != null) repo.setZIndex(id, before[id]!),
+            ]),
+            redo: () => Future.wait([
+              for (final id in ids)
+                if (after[id] != null) repo.setZIndex(id, after[id]!),
+            ]),
+          ),
+        );
   }
 
   void _groupSelection(WidgetRef ref) {
     final selection = ref.read(selectedClipIdsProvider);
     if (selection.length < 2) return;
-    ref.read(clipsRepositoryProvider).groupClips(selection.toList());
+    final ids = selection.toList();
+    final clips = ref.read(activeClipsProvider).valueOrNull ?? [];
+    final before = <String, String?>{
+      for (final id in ids) id: ClipGeometry.findById(clips, id)?.groupId,
+    };
+    final groupId = _uuid.v4();
+    final repo = ref.read(clipsRepositoryProvider);
+    repo.groupClips(ids, groupId);
+    ref
+        .read(undoManagerProvider.notifier)
+        .push(
+          UndoableAction(
+            undo: () => Future.wait([
+              for (final id in ids) repo.setGroupId(id, before[id]),
+            ]),
+            redo: () => Future.wait([
+              for (final id in ids) repo.setGroupId(id, groupId),
+            ]),
+          ),
+        );
   }
 
   void _ungroupSelection(WidgetRef ref, String groupId) {
-    ref.read(clipsRepositoryProvider).ungroupClips(groupId);
+    final clips = ref.read(activeClipsProvider).valueOrNull ?? [];
+    final memberIds = [
+      for (final c in clips)
+        if (c.groupId == groupId) c.id,
+    ];
+    final repo = ref.read(clipsRepositoryProvider);
+    repo.ungroupClips(groupId);
+    ref
+        .read(undoManagerProvider.notifier)
+        .push(
+          UndoableAction(
+            undo: () => Future.wait([
+              for (final id in memberIds) repo.setGroupId(id, groupId),
+            ]),
+            redo: () => repo.ungroupClips(groupId),
+          ),
+        );
   }
 
   Future<void> _addFrame(BuildContext context, WidgetRef ref) async {
@@ -561,16 +631,38 @@ class BoardScreen extends ConsumerWidget {
     if (!context.mounted) return;
 
     final center = _viewportCenterBoardPoint(ref, MediaQuery.sizeOf(context));
-    await ref
-        .read(framesRepositoryProvider)
-        .createFrame(
-          id: _uuid.v4(),
-          boardId: ref.read(currentBoardIdProvider),
-          name: name.trim(),
-          x: center.dx - 160,
-          y: center.dy - 120,
-          width: 320,
-          height: 240,
+    final id = _uuid.v4();
+    final boardId = ref.read(currentBoardIdProvider);
+    final trimmedName = name.trim();
+    final x = center.dx - 160;
+    final y = center.dy - 120;
+    const width = 320.0;
+    const height = 240.0;
+    final framesRepo = ref.read(framesRepositoryProvider);
+    await framesRepo.createFrame(
+      id: id,
+      boardId: boardId,
+      name: trimmedName,
+      x: x,
+      y: y,
+      width: width,
+      height: height,
+    );
+    ref
+        .read(undoManagerProvider.notifier)
+        .push(
+          UndoableAction(
+            undo: () => framesRepo.deleteFrame(id),
+            redo: () => framesRepo.createFrame(
+              id: id,
+              boardId: boardId,
+              name: trimmedName,
+              x: x,
+              y: y,
+              width: width,
+              height: height,
+            ),
+          ),
         );
   }
 
@@ -599,12 +691,65 @@ class BoardScreen extends ConsumerWidget {
     );
     if (name == null || name.trim().isEmpty) return;
     if (!context.mounted) return;
-    await ref.read(framesRepositoryProvider).renameFrame(frame.id, name.trim());
+    final beforeName = frame.name;
+    final newName = name.trim();
+    final framesRepo = ref.read(framesRepositoryProvider);
+    await framesRepo.renameFrame(frame.id, newName);
+    ref
+        .read(undoManagerProvider.notifier)
+        .push(
+          UndoableAction(
+            undo: () => framesRepo.renameFrame(frame.id, beforeName),
+            redo: () => framesRepo.renameFrame(frame.id, newName),
+          ),
+        );
   }
 
   void _deleteFrame(WidgetRef ref, String frameId) {
-    ref.read(framesRepositoryProvider).deleteFrame(frameId);
+    final frames = ref.read(boardFramesProvider).valueOrNull ?? [];
+    FrameRow? frame;
+    for (final f in frames) {
+      if (f.id == frameId) {
+        frame = f;
+        break;
+      }
+    }
+    final clips = ref.read(activeClipsProvider).valueOrNull ?? [];
+    final childIds = [
+      for (final c in clips)
+        if (c.frameId == frameId) c.id,
+    ];
+    final framesRepo = ref.read(framesRepositoryProvider);
+    final clipsRepo = ref.read(clipsRepositoryProvider);
+    framesRepo.deleteFrame(frameId);
     ref.read(selectedFrameIdProvider.notifier).state = null;
+    if (frame != null) {
+      final f = frame;
+      ref
+          .read(undoManagerProvider.notifier)
+          .push(
+            UndoableAction(
+              undo: () async {
+                await framesRepo.createFrame(
+                  id: f.id,
+                  boardId: f.boardId,
+                  name: f.name,
+                  x: f.x,
+                  y: f.y,
+                  width: f.width,
+                  height: f.height,
+                );
+                await Future.wait([
+                  if (f.backgroundColorHex != null)
+                    framesRepo.updateColor(f.id, f.backgroundColorHex),
+                  for (final childId in childIds)
+                    clipsRepo.setFrameId(childId, f.id),
+                ]);
+              },
+              redo: () => framesRepo.deleteFrame(f.id),
+            ),
+          );
+    }
   }
 
   Future<void> _setFrameColor(
@@ -624,8 +769,17 @@ class BoardScreen extends ConsumerWidget {
               color: AppTheme.textSecondary,
               selected: frame.backgroundColorHex == null,
               onTap: () {
+                final before = frame.backgroundColorHex;
                 repo.updateColor(frame.id, null);
                 Navigator.of(context).pop();
+                ref
+                    .read(undoManagerProvider.notifier)
+                    .push(
+                      UndoableAction(
+                        undo: () => repo.updateColor(frame.id, before),
+                        redo: () => repo.updateColor(frame.id, null),
+                      ),
+                    );
               },
             ),
             for (final colorHex in kStrokeColorPalette)
@@ -633,8 +787,17 @@ class BoardScreen extends ConsumerWidget {
                 color: hexToColor(colorHex),
                 selected: frame.backgroundColorHex == colorHex,
                 onTap: () {
+                  final before = frame.backgroundColorHex;
                   repo.updateColor(frame.id, colorHex);
                   Navigator.of(context).pop();
+                  ref
+                      .read(undoManagerProvider.notifier)
+                      .push(
+                        UndoableAction(
+                          undo: () => repo.updateColor(frame.id, before),
+                          redo: () => repo.updateColor(frame.id, colorHex),
+                        ),
+                      );
                 },
               ),
           ],
@@ -672,20 +835,58 @@ class BoardScreen extends ConsumerWidget {
       newRect: newRect,
     );
 
-    await ref
-        .read(framesRepositoryProvider)
-        .updateTransform(frame.id, width: preset.width, height: preset.height);
+    final framesRepo = ref.read(framesRepositoryProvider);
+    final clipsRepo = ref.read(clipsRepositoryProvider);
+    await framesRepo.updateTransform(
+      frame.id,
+      width: preset.width,
+      height: preset.height,
+    );
     for (final entry in scaled.entries) {
-      await ref
-          .read(clipsRepositoryProvider)
-          .updateTransform(
-            entry.key,
-            x: entry.value.x,
-            y: entry.value.y,
-            width: entry.value.width,
-            height: entry.value.height,
-          );
+      await clipsRepo.updateTransform(
+        entry.key,
+        x: entry.value.x,
+        y: entry.value.y,
+        width: entry.value.width,
+        height: entry.value.height,
+      );
     }
+    ref
+        .read(undoManagerProvider.notifier)
+        .push(
+          UndoableAction(
+            undo: () => Future.wait([
+              framesRepo.updateTransform(
+                frame.id,
+                width: startRect.width,
+                height: startRect.height,
+              ),
+              for (final entry in children.entries)
+                clipsRepo.updateTransform(
+                  entry.key,
+                  x: entry.value.x,
+                  y: entry.value.y,
+                  width: entry.value.width,
+                  height: entry.value.height,
+                ),
+            ]),
+            redo: () => Future.wait([
+              framesRepo.updateTransform(
+                frame.id,
+                width: preset.width,
+                height: preset.height,
+              ),
+              for (final entry in scaled.entries)
+                clipsRepo.updateTransform(
+                  entry.key,
+                  x: entry.value.x,
+                  y: entry.value.y,
+                  width: entry.value.width,
+                  height: entry.value.height,
+                ),
+            ]),
+          ),
+        );
   }
 
   Future<void> _pickFramePreset(

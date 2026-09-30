@@ -1,11 +1,8 @@
 import 'package:drift/drift.dart';
-import 'package:uuid/uuid.dart';
 
 import '../../core/constants.dart';
 import '../local/database.dart';
 import '../models/clip.dart';
-
-const _uuid = Uuid();
 
 /// Local read/write API for clips - every mutation writes straight to Drift.
 class ClipsRepository {
@@ -190,6 +187,17 @@ class ClipsRepository {
     );
   }
 
+  /// A one-shot (non-streamed) read of a clip's current z-index - used by
+  /// undo/redo to snapshot the exact before/after value around a z-order
+  /// change, since `bringToFront`/`sendToBack` compute their new value
+  /// internally rather than returning it.
+  Future<int?> getZIndex(String id) async {
+    final row = await (_db.select(
+      _db.clips,
+    )..where((c) => c.id.equals(id))).getSingleOrNull();
+    return row?.zIndex;
+  }
+
   Future<void> bringToFront(String id, String boardId) async {
     final zIndex = await _nextZIndex(boardId);
     await (_db.update(_db.clips)..where((c) => c.id.equals(id))).write(
@@ -275,14 +283,19 @@ class ClipsRepository {
     )..where((c) => c.boardId.equals(boardId) & c.isBinned.equals(true))).go();
   }
 
-  /// Assigns a fresh group id to every clip in [ids], so clicking any one of
-  /// them selects (and then drags) the whole set.
-  Future<void> groupClips(List<String> ids) async {
-    final groupId = _uuid.v4();
+  /// Assigns [groupId] to every clip in [ids], so clicking any one of them
+  /// selects (and then drags) the whole set. The caller generates [groupId]
+  /// (same client-side-id convention as every other id in this app) rather
+  /// than this method picking one internally, so a redo of this exact
+  /// action can re-apply the same id instead of a new random one.
+  Future<void> groupClips(List<String> ids, String groupId) async {
     await _db.transaction(() async {
       for (final id in ids) {
         await (_db.update(_db.clips)..where((c) => c.id.equals(id))).write(
-          ClipsCompanion(groupId: Value(groupId), updatedAt: Value(DateTime.now())),
+          ClipsCompanion(
+            groupId: Value(groupId),
+            updatedAt: Value(DateTime.now()),
+          ),
         );
       }
     });
@@ -293,7 +306,29 @@ class ClipsRepository {
     return (_db.update(
       _db.clips,
     )..where((c) => c.groupId.equals(groupId))).write(
-      ClipsCompanion(groupId: const Value(null), updatedAt: Value(DateTime.now())),
+      ClipsCompanion(
+        groupId: const Value(null),
+        updatedAt: Value(DateTime.now()),
+      ),
+    );
+  }
+
+  /// Sets a single clip's group id directly - a low-level primitive for
+  /// undo/redo's own use (restoring/reapplying one clip's prior group
+  /// membership individually), not a normal user-facing entry point
+  /// (use [groupClips]/[ungroupClips] for that).
+  Future<void> setGroupId(String clipId, String? groupId) {
+    return (_db.update(_db.clips)..where((c) => c.id.equals(clipId))).write(
+      ClipsCompanion(groupId: Value(groupId), updatedAt: Value(DateTime.now())),
+    );
+  }
+
+  /// Sets a single clip's z-index directly - a low-level primitive for
+  /// undo/redo's own use, not a normal user-facing entry point (use
+  /// [bringToFront]/[sendToBack]/[bringForward]/[sendBackward] for that).
+  Future<void> setZIndex(String id, int zIndex) {
+    return (_db.update(_db.clips)..where((c) => c.id.equals(id))).write(
+      ClipsCompanion(zIndex: Value(zIndex), updatedAt: Value(DateTime.now())),
     );
   }
 }
