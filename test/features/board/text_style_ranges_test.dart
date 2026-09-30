@@ -119,6 +119,39 @@ void main() {
       expect(spans.single.style?.decoration, TextDecoration.lineThrough);
     });
 
+    test('underline applies TextDecoration.underline', () {
+      const formatting = TextFormatting(underline: [(start: 0, end: 3)]);
+      final spans = TextStyleRanges.buildSpans(
+        'abc',
+        formatting,
+        const TextStyle(fontSize: 14),
+      );
+
+      expect(spans, hasLength(1));
+      expect(spans.single.style?.decoration, TextDecoration.underline);
+    });
+
+    test('underline and strikethrough on the same run combine', () {
+      const formatting = TextFormatting(
+        underline: [(start: 0, end: 3)],
+        strikethrough: [(start: 0, end: 3)],
+      );
+      final spans = TextStyleRanges.buildSpans(
+        'abc',
+        formatting,
+        const TextStyle(fontSize: 14),
+      );
+
+      expect(spans, hasLength(1));
+      expect(
+        spans.single.style?.decoration,
+        TextDecoration.combine([
+          TextDecoration.underline,
+          TextDecoration.lineThrough,
+        ]),
+      );
+    });
+
     test('empty text returns a single empty span', () {
       final spans = TextStyleRanges.buildSpans(
         '',

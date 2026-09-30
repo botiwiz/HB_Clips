@@ -8,19 +8,21 @@ enum ClipType { image, text }
 /// `textContent`, used by [TextFormatting]'s 3 independent range lists.
 typedef IntRange = ({int start, int end});
 
-/// Bold/italic/strikethrough ranges over a text clip's `textContent` -
-/// each of the 3 lists is independently normalized (sorted, merged,
-/// non-overlapping) by `TextStyleRanges.toggle`. Whole-note font size
-/// lives on [BoardClip.fontSize] instead, since it's not a per-range
-/// attribute (confirmed scope: whole textbox, not per-selection).
+/// Bold/italic/underline/strikethrough ranges over a text clip's
+/// `textContent` - each of the 4 lists is independently normalized
+/// (sorted, merged, non-overlapping) by `TextStyleRanges.toggle`. Whole-note
+/// font size lives on [BoardClip.fontSize] instead, since it's not a
+/// per-range attribute (confirmed scope: whole textbox, not per-selection).
 class TextFormatting {
   final List<IntRange> bold;
   final List<IntRange> italic;
+  final List<IntRange> underline;
   final List<IntRange> strikethrough;
 
   const TextFormatting({
     this.bold = const [],
     this.italic = const [],
+    this.underline = const [],
     this.strikethrough = const [],
   });
 
@@ -40,6 +42,7 @@ class TextFormatting {
     return TextFormatting(
       bold: ranges('bold'),
       italic: ranges('italic'),
+      underline: ranges('underline'),
       strikethrough: ranges('strikethrough'),
     );
   }
@@ -50,6 +53,7 @@ class TextFormatting {
     return jsonEncode({
       'bold': encode(bold),
       'italic': encode(italic),
+      'underline': encode(underline),
       'strikethrough': encode(strikethrough),
     });
   }

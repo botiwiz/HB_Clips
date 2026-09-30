@@ -10,7 +10,6 @@ import '../../annotation/stroke_painter.dart' show hexToColor;
 import '../controllers/board_controller.dart';
 import '../geometry/selection_geometry.dart';
 import '../geometry/text_style_ranges.dart';
-import 'clip_style_popover.dart';
 
 /// A minimum/maximum for the whole-note font-size stepper in the edit
 /// toolbar - keeps a note readable without letting it grow/shrink to
@@ -19,13 +18,13 @@ const double _minFontSize = 8;
 const double _maxFontSize = 72;
 const double _fontSizeStep = 2;
 
-/// A [TextEditingController] that paints bold/italic/strikethrough ranges
-/// live (via [buildTextSpan]) while keeping the underlying value a single
-/// plain string - so typing/cursor/selection behave exactly like a normal
-/// `TextField`, and only the *painting* reflects rich formatting. This is
-/// the standard, officially-supported extension point for exactly this: no
-/// invisible marker characters embedded in the text, no custom
-/// cursor-offset math.
+/// A [TextEditingController] that paints bold/italic/underline/
+/// strikethrough ranges live (via [buildTextSpan]) while keeping the
+/// underlying value a single plain string - so typing/cursor/selection
+/// behave exactly like a normal `TextField`, and only the *painting*
+/// reflects rich formatting. This is the standard, officially-supported
+/// extension point for exactly this: no invisible marker characters
+/// embedded in the text, no custom cursor-offset math.
 class _RichTextEditingController extends TextEditingController {
   TextFormatting formatting;
 
@@ -64,10 +63,10 @@ class _RichTextEditingController extends TextEditingController {
 /// Commits text live via `updateTextContent` on every keystroke - simpler
 /// than tracking dirty state for a blur-only commit, and means losing
 /// focus (click away) or Escape never loses typed text. Bold/italic/
-/// strikethrough toggles (Ctrl+B/I/S, or the toolbar buttons) and the
-/// font-size stepper write through the same "just write it" convention.
-/// Renders nothing unless the named clip still exists and is a text clip,
-/// so a stale id (clip binned mid-edit) can't crash this.
+/// underline/strikethrough toggles (Ctrl+B/I/U/S, or the toolbar buttons)
+/// and the font-size stepper write through the same "just write it"
+/// convention. Renders nothing unless the named clip still exists and is
+/// a text clip, so a stale id (clip binned mid-edit) can't crash this.
 class TextClipEditOverlay extends ConsumerStatefulWidget {
   const TextClipEditOverlay({super.key});
 
@@ -145,20 +144,42 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
 
   void _toggleBold() => _toggleAttribute(
     select: (f) => f.bold,
-    update: (f, r) =>
-        TextFormatting(bold: r, italic: f.italic, strikethrough: f.strikethrough),
+    update: (f, r) => TextFormatting(
+      bold: r,
+      italic: f.italic,
+      underline: f.underline,
+      strikethrough: f.strikethrough,
+    ),
   );
 
   void _toggleItalic() => _toggleAttribute(
     select: (f) => f.italic,
-    update: (f, r) =>
-        TextFormatting(bold: f.bold, italic: r, strikethrough: f.strikethrough),
+    update: (f, r) => TextFormatting(
+      bold: f.bold,
+      italic: r,
+      underline: f.underline,
+      strikethrough: f.strikethrough,
+    ),
+  );
+
+  void _toggleUnderline() => _toggleAttribute(
+    select: (f) => f.underline,
+    update: (f, r) => TextFormatting(
+      bold: f.bold,
+      italic: f.italic,
+      underline: r,
+      strikethrough: f.strikethrough,
+    ),
   );
 
   void _toggleStrikethrough() => _toggleAttribute(
     select: (f) => f.strikethrough,
-    update: (f, r) =>
-        TextFormatting(bold: f.bold, italic: f.italic, strikethrough: r),
+    update: (f, r) => TextFormatting(
+      bold: f.bold,
+      italic: f.italic,
+      underline: f.underline,
+      strikethrough: r,
+    ),
   );
 
   void _adjustFontSize(BoardClip clip, double delta) {
@@ -211,13 +232,14 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
     final topLeft = Offset(clip.x, clip.y) * view.scale + view.panOffset;
     final boxWidth = clip.width * effectiveScale;
     final boxHeight = clip.height * effectiveScale;
-
-    // Float the format toolbar above ClipStylePopover's own pill (which
-    // keeps showing for the selected text clip regardless of edit mode),
-    // rather than the two floating panels overlapping.
-    final popoverRect = ClipStylePopover.screenRectFor(clip, view);
-    const toolbarHeight = 40.0;
     final locked = clip.sizeLockScale != null;
+
+    // Anchored by `bottom` (distance up from the note's own top edge)
+    // rather than a guessed `top` + assumed toolbar height - the toolbar
+    // then simply grows upward from a fixed point regardless of exactly
+    // how tall its Row renders, so it can never end up overlapping the
+    // note itself.
+    final screenHeight = MediaQuery.sizeOf(context).height;
 
     return Positioned.fill(
       child: Stack(
@@ -231,10 +253,20 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
               bindings: {
                 const SingleActivator(LogicalKeyboardKey.escape):
                     _commitAndExit,
+                // Swallows the bare Space key so it doesn't bubble up to
+                // board_canvas.dart's ancestor Focus (which binds a
+                // tap-Space-to-fit-viewport-to-selection shortcut) -
+                // without this, every space typed re-triggered that
+                // shortcut, since EditableText doesn't claim plain
+                // printable characters at the raw-key level (it inserts
+                // them via the platform text-input/IME channel instead).
+                const SingleActivator(LogicalKeyboardKey.space): () {},
                 const SingleActivator(LogicalKeyboardKey.keyB, control: true):
                     _toggleBold,
                 const SingleActivator(LogicalKeyboardKey.keyI, control: true):
                     _toggleItalic,
+                const SingleActivator(LogicalKeyboardKey.keyU, control: true):
+                    _toggleUnderline,
                 const SingleActivator(LogicalKeyboardKey.keyS, control: true):
                     _toggleStrikethrough,
               },
@@ -256,8 +288,8 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
                     expands: true,
                     style: TextStyle(
                       color: AppTheme.textNoteText,
-                      fontSize: (clip.fontSize ?? kTextNoteFontSize) *
-                          effectiveScale,
+                      fontSize:
+                          (clip.fontSize ?? kTextNoteFontSize) * effectiveScale,
                       height: 1.3,
                     ),
                     decoration: const InputDecoration(
@@ -273,27 +305,62 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
             ),
           ),
           Positioned(
-            left: popoverRect.left,
-            top: popoverRect.top - toolbarHeight - 8,
+            left: topLeft.dx,
+            bottom: screenHeight - topLeft.dy + 8,
             child: Material(
               color: AppTheme.surfaceElevated,
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(8),
               elevation: 6,
               shadowColor: Colors.black54,
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      child: Text(
+                        '${(clip.fontSize ?? kTextNoteFontSize).round()}',
+                        style: const TextStyle(
+                          color: AppTheme.textSecondary,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                    Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _chevron(
+                          Icons.keyboard_arrow_up,
+                          () => _adjustFontSize(clip, _fontSizeStep),
+                        ),
+                        _chevron(
+                          Icons.keyboard_arrow_down,
+                          () => _adjustFontSize(clip, -_fontSizeStep),
+                        ),
+                      ],
+                    ),
+                    _divider(),
                     _formatButton(
                       icon: Icons.format_bold,
-                      active: _selectionHasStyle(_controller?.formatting.bold ?? const []),
+                      active: _selectionHasStyle(
+                        _controller?.formatting.bold ?? const [],
+                      ),
                       onPressed: _toggleBold,
                     ),
                     _formatButton(
                       icon: Icons.format_italic,
-                      active: _selectionHasStyle(_controller?.formatting.italic ?? const []),
+                      active: _selectionHasStyle(
+                        _controller?.formatting.italic ?? const [],
+                      ),
                       onPressed: _toggleItalic,
+                    ),
+                    _formatButton(
+                      icon: Icons.format_underlined,
+                      active: _selectionHasStyle(
+                        _controller?.formatting.underline ?? const [],
+                      ),
+                      onPressed: _toggleUnderline,
                     ),
                     _formatButton(
                       icon: Icons.format_strikethrough,
@@ -302,33 +369,7 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
                       ),
                       onPressed: _toggleStrikethrough,
                     ),
-                    const SizedBox(
-                      height: 24,
-                      child: VerticalDivider(width: 1, color: AppTheme.border),
-                    ),
-                    _iconButton(
-                      icon: Icons.remove,
-                      onPressed: () => _adjustFontSize(clip, -_fontSizeStep),
-                    ),
-                    SizedBox(
-                      width: 28,
-                      child: Text(
-                        '${(clip.fontSize ?? kTextNoteFontSize).round()}',
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          color: AppTheme.textSecondary,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ),
-                    _iconButton(
-                      icon: Icons.add,
-                      onPressed: () => _adjustFontSize(clip, _fontSizeStep),
-                    ),
-                    const SizedBox(
-                      height: 24,
-                      child: VerticalDivider(width: 1, color: AppTheme.border),
-                    ),
+                    _divider(),
                     _formatButton(
                       icon: Icons.push_pin_outlined,
                       active: locked,
@@ -344,12 +385,19 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
     );
   }
 
-  Widget _iconButton({required IconData icon, required VoidCallback onPressed}) {
-    return IconButton(
-      icon: Icon(icon, size: 16),
-      color: AppTheme.textPrimary,
-      visualDensity: VisualDensity.compact,
-      onPressed: onPressed,
+  Widget _divider() {
+    return Container(
+      width: 1,
+      height: 20,
+      margin: const EdgeInsets.symmetric(horizontal: 4),
+      color: AppTheme.border,
+    );
+  }
+
+  Widget _chevron(IconData icon, VoidCallback onPressed) {
+    return InkWell(
+      onTap: onPressed,
+      child: Icon(icon, size: 14, color: AppTheme.textPrimary),
     );
   }
 
@@ -361,7 +409,8 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
     return IconButton(
       icon: Icon(icon, size: 16),
       color: active ? AppTheme.red : AppTheme.textPrimary,
-      visualDensity: VisualDensity.compact,
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
       onPressed: onPressed,
     );
   }

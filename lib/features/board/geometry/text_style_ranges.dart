@@ -68,9 +68,11 @@ class TextStyleRanges {
     return _normalize([...ranges, (start: start, end: end)]);
   }
 
-  /// Flattens [formatting]'s 3 independent range lists into a sequence of
+  /// Flattens [formatting]'s 4 independent range lists into a sequence of
   /// non-overlapping [TextSpan]s over [text], each combining [base] with
-  /// whichever of bold/italic/strikethrough cover that run.
+  /// whichever of bold/italic/underline/strikethrough cover that run -
+  /// underline and strikethrough combine via `TextDecoration.combine` when
+  /// both apply to the same run.
   static List<TextSpan> buildSpans(
     String text,
     TextFormatting formatting,
@@ -82,6 +84,7 @@ class TextStyleRanges {
     for (final r in [
       ...formatting.bold,
       ...formatting.italic,
+      ...formatting.underline,
       ...formatting.strikethrough,
     ]) {
       boundaries.add(r.start.clamp(0, text.length));
@@ -96,6 +99,7 @@ class TextStyleRanges {
       if (a >= b) continue;
       final bold = isFullyCovered(formatting.bold, a, a + 1);
       final italic = isFullyCovered(formatting.italic, a, a + 1);
+      final underline = isFullyCovered(formatting.underline, a, a + 1);
       final strike = isFullyCovered(formatting.strikethrough, a, a + 1);
       spans.add(
         TextSpan(
@@ -103,7 +107,12 @@ class TextStyleRanges {
           style: base.copyWith(
             fontWeight: bold ? FontWeight.bold : null,
             fontStyle: italic ? FontStyle.italic : null,
-            decoration: strike ? TextDecoration.lineThrough : null,
+            decoration: (underline || strike)
+                ? TextDecoration.combine([
+                    if (underline) TextDecoration.underline,
+                    if (strike) TextDecoration.lineThrough,
+                  ])
+                : null,
           ),
         ),
       );

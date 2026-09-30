@@ -506,6 +506,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     if (selection.length == 1) {
       final selectedClip = ClipGeometry.findById(clips, selection.first);
       if (selectedClip != null &&
+          selectedClip.type == ClipType.image &&
           ClipStylePopover.screenRectFor(
             selectedClip,
             view,
