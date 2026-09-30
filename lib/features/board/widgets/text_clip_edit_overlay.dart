@@ -412,45 +412,46 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
               shadowColor: Colors.black54,
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 4),
-                      child: Text(
-                        '${(clip.fontSize ?? kTextNoteFontSize).round()}',
-                        style: const TextStyle(
-                          color: AppTheme.textSecondary,
-                          fontSize: 12,
+                // A Positioned child that only specifies left/top (no
+                // right/width, as this toolbar does) isn't given
+                // unbounded width by RenderStack - it's bounded by the
+                // Stack's own size minus the left offset, so this Row's
+                // content can run out of room and silently clip past a
+                // point. SingleChildScrollView absorbs that overflow by
+                // scrolling instead - the same fix PillGroup already
+                // uses for every other toolbar in this app (see
+                // board_toolbar.dart's own doc comment on this exact
+                // problem).
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                        child: Text(
+                          '${(clip.fontSize ?? kTextNoteFontSize).round()}',
+                          style: const TextStyle(
+                            color: AppTheme.textSecondary,
+                            fontSize: 12,
+                          ),
                         ),
                       ),
-                    ),
-                    // TEMPORARY diagnostic (Part 17B) - loud backgrounds
-                    // behind the reportedly-invisible toolbar buttons, to
-                    // tell apart "the icon/color isn't rendering" (a
-                    // colored box shows, empty) from "nothing here is
-                    // rendering at all" (no box either). Revert once we
-                    // have an answer.
-                    ColoredBox(
-                      color: Colors.yellow,
-                      child: Column(
+                      Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           _chevron(
-                            Icons.keyboard_arrow_up,
+                            Icons.expand_less,
                             () => _adjustFontSize(clip, _fontSizeStep),
                           ),
                           _chevron(
-                            Icons.keyboard_arrow_down,
+                            Icons.expand_more,
                             () => _adjustFontSize(clip, -_fontSizeStep),
                           ),
                         ],
                       ),
-                    ),
-                    _divider(),
-                    ColoredBox(
-                      color: Colors.yellow,
-                      child: PillIconButton(
+                      _divider(),
+                      PillIconButton(
                         tooltip: 'Bold',
                         icon: Icons.format_bold,
                         color:
@@ -461,10 +462,7 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
                             : null,
                         onPressed: _toggleBold,
                       ),
-                    ),
-                    ColoredBox(
-                      color: Colors.yellow,
-                      child: PillIconButton(
+                      PillIconButton(
                         tooltip: 'Italic',
                         icon: Icons.format_italic,
                         color:
@@ -475,10 +473,7 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
                             : null,
                         onPressed: _toggleItalic,
                       ),
-                    ),
-                    ColoredBox(
-                      color: Colors.yellow,
-                      child: PillIconButton(
+                      PillIconButton(
                         tooltip: 'Underline',
                         icon: Icons.format_underlined,
                         color:
@@ -489,10 +484,7 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
                             : null,
                         onPressed: _toggleUnderline,
                       ),
-                    ),
-                    ColoredBox(
-                      color: Colors.yellow,
-                      child: PillIconButton(
+                      PillIconButton(
                         tooltip: 'Strikethrough',
                         icon: Icons.format_strikethrough,
                         color:
@@ -503,18 +495,15 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
                             : null,
                         onPressed: _toggleStrikethrough,
                       ),
-                    ),
-                    _divider(),
-                    ColoredBox(
-                      color: Colors.yellow,
-                      child: PillIconButton(
+                      _divider(),
+                      PillIconButton(
                         tooltip: locked ? 'Unlock size' : 'Lock size',
                         icon: Icons.push_pin_outlined,
                         color: locked ? AppTheme.red : null,
                         onPressed: () => _toggleSizeLock(clip, view.scale),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),

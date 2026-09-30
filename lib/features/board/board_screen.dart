@@ -823,31 +823,21 @@ class BoardScreen extends ConsumerWidget {
                         children: [
                           PillIconButton(
                             tooltip: 'Undo',
-                            icon: Icons.arrow_back,
+                            icon: Icons.undo,
                             onPressed: undoState.canUndo
                                 ? () => ref
                                       .read(undoManagerProvider.notifier)
                                       .undo()
                                 : null,
                           ),
-                          // TEMPORARY diagnostic (Part 17B) - a loud
-                          // background behind the reportedly-invisible
-                          // redo icon, to tell apart "the icon/color
-                          // isn't rendering" (this box shows, empty)
-                          // from "nothing here is rendering at all"
-                          // (this box doesn't show either). Revert once
-                          // we have an answer.
-                          ColoredBox(
-                            color: Colors.yellow,
-                            child: PillIconButton(
-                              tooltip: 'Redo',
-                              icon: Icons.arrow_forward,
-                              onPressed: undoState.canRedo
-                                  ? () => ref
-                                        .read(undoManagerProvider.notifier)
-                                        .redo()
-                                  : null,
-                            ),
+                          PillIconButton(
+                            tooltip: 'Redo',
+                            icon: Icons.redo,
+                            onPressed: undoState.canRedo
+                                ? () => ref
+                                      .read(undoManagerProvider.notifier)
+                                      .redo()
+                                : null,
                           ),
                           PillIconButton(
                             tooltip: isDrawMode
