@@ -36,11 +36,9 @@ const double kTextNoteFontSize = 14;
 
 /// Board-space (world) padding around a text note's content, converted to
 /// screen pixels via `* viewScale` at render time, same pattern as
-/// [kTextNoteFontSize] - a fixed screen-pixel padding would eat an
-/// increasing fraction of the box's on-screen size as the view zooms out,
-/// eventually leaving zero/negative width for text to wrap into and
-/// forcing it to wrap after nearly every character.
-const double kTextNoteContentPadding = 10;
+/// [kTextNoteFontSize]. Zero - the user wants the font to render flush
+/// to the box's edge, not inset.
+const double kTextNoteContentPadding = 0;
 
 /// Board-space (world) radius for rounding a connector's 90-degree turns,
 /// converted to screen pixels via `* view.scale` at paint time - same
