@@ -89,6 +89,37 @@ class ClipsRepository {
     );
   }
 
+  Future<BoardClip> addShapeClip({
+    required String id,
+    required String boardId,
+    required ShapeKind shapeKind,
+    required double x,
+    required double y,
+    double width = kDefaultShapeWidth,
+    double height = kDefaultShapeHeight,
+    String? fillColorHex,
+    String? strokeColorHex,
+    double? strokeWidth,
+  }) async {
+    final zIndex = await _nextZIndex(boardId);
+    return _insertClip(
+      ClipsCompanion.insert(
+        id: id,
+        boardId: boardId,
+        type: 'shape',
+        x: Value(x),
+        y: Value(y),
+        width: Value(width),
+        height: Value(height),
+        zIndex: Value(zIndex),
+        shapeKind: Value(shapeKind.storageValue),
+        shapeFillColorHex: Value(fillColorHex),
+        shapeStrokeColorHex: Value(strokeColorHex),
+        shapeStrokeWidth: Value(strokeWidth),
+      ),
+    );
+  }
+
   Future<BoardClip> _insertClip(ClipsCompanion companion) async {
     await _db.into(_db.clips).insert(companion);
     final row = await (_db.select(
@@ -173,6 +204,41 @@ class ClipsRepository {
     return (_db.update(_db.clips)..where((c) => c.id.equals(id))).write(
       ClipsCompanion(
         sizeLockScale: Value(scale),
+        updatedAt: Value(DateTime.now()),
+      ),
+    );
+  }
+
+  /// Sets a shape clip's fill color, or clears it back to no fill
+  /// (outline-only) when [colorHex] is null. Ignored for non-shape clips.
+  Future<void> updateShapeFillColor(String id, String? colorHex) {
+    return (_db.update(_db.clips)..where((c) => c.id.equals(id))).write(
+      ClipsCompanion(
+        shapeFillColorHex: Value(colorHex),
+        updatedAt: Value(DateTime.now()),
+      ),
+    );
+  }
+
+  /// Sets a shape clip's stroke/outline color, or clears it back to the
+  /// render-time default when [colorHex] is null. Ignored for non-shape
+  /// clips.
+  Future<void> updateShapeStrokeColor(String id, String? colorHex) {
+    return (_db.update(_db.clips)..where((c) => c.id.equals(id))).write(
+      ClipsCompanion(
+        shapeStrokeColorHex: Value(colorHex),
+        updatedAt: Value(DateTime.now()),
+      ),
+    );
+  }
+
+  /// Sets a shape clip's stroke width, or clears it back to the
+  /// render-time default (`kDefaultStrokeWidth`) when [width] is null.
+  /// Ignored for non-shape clips.
+  Future<void> updateShapeStrokeWidth(String id, double? width) {
+    return (_db.update(_db.clips)..where((c) => c.id.equals(id))).write(
+      ClipsCompanion(
+        shapeStrokeWidth: Value(width),
         updatedAt: Value(DateTime.now()),
       ),
     );

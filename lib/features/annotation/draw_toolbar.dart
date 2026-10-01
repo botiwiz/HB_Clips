@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme/app_theme.dart';
-import '../../core/widgets/color_swatch_button.dart';
+import '../../core/widgets/hsv_color_picker.dart';
 import '../../data/providers.dart';
 import '../board/widgets/board_toolbar.dart';
 import 'controllers/annotation_controller.dart';
@@ -58,14 +58,13 @@ class DrawToolbar extends ConsumerWidget {
             const SizedBox(width: 8),
             const VerticalDivider(color: AppTheme.border, width: 1),
             const SizedBox(width: 8),
-            for (final colorHex in kStrokeColorPalette)
-              ColorSwatchButton(
-                color: hexToColor(colorHex),
-                selected: selectedColor == colorHex,
-                onTap: () =>
-                    ref.read(strokeColorHexProvider.notifier).state =
-                        colorHex,
-              ),
+            ColorPickerSwatch(
+              color: hexToColor(selectedColor),
+              onColorSelected: (color) =>
+                  ref.read(strokeColorHexProvider.notifier).state = colorToHex(
+                    color,
+                  ),
+            ),
             const SizedBox(width: 8),
             const VerticalDivider(color: AppTheme.border, width: 1),
             const SizedBox(width: 8),

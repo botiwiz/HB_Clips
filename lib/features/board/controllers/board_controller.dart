@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../data/models/clip.dart' show ShapeKind;
 import '../../../data/models/connector.dart';
 
 /// Camera transform for the infinite board: screenPoint = boardPoint *
@@ -43,8 +44,7 @@ class BoardViewNotifier extends StateNotifier<BoardViewState> {
   /// cursor - the usual "zoom towards the mouse" desktop behaviour.
   void zoomAt(Offset focalScreenPoint, double scaleFactor) {
     final newScale = (state.scale * scaleFactor).clamp(minScale, maxScale);
-    final boardPoint =
-        (focalScreenPoint - state.panOffset) / state.scale;
+    final boardPoint = (focalScreenPoint - state.panOffset) / state.scale;
     final newPanOffset = focalScreenPoint - boardPoint * newScale;
     state = BoardViewState(panOffset: newPanOffset, scale: newScale);
   }
@@ -214,6 +214,21 @@ final isTextToolActiveProvider = StateProvider<bool>((ref) => false);
 /// Live board-space rect of an in-progress text-tool click-drag - same
 /// ephemeral-preview role as [defineFrameRectProvider]/[marqueeRectProvider].
 final textToolDragRectProvider = StateProvider<Rect?>((ref) => null);
+
+/// Whether the one-shot shape tool is armed - same "arm, use once,
+/// auto-revert" contract as [isTextToolActiveProvider], for placing a new
+/// vector shape clip instead of a text note.
+final isShapeToolActiveProvider = StateProvider<bool>((ref) => false);
+
+/// Which [ShapeKind] the shape tool places next - set by the shape picker
+/// before arming [isShapeToolActiveProvider].
+final selectedShapeKindProvider = StateProvider<ShapeKind>(
+  (ref) => ShapeKind.rectangle,
+);
+
+/// Live board-space rect of an in-progress shape-tool click-drag - same
+/// ephemeral-preview role as [textToolDragRectProvider].
+final shapeToolDragRectProvider = StateProvider<Rect?>((ref) => null);
 
 /// Id of the text-note clip that should render as an actively-focused,
 /// editable TextField instead of static Text - set the instant a new

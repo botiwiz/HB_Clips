@@ -1,6 +1,7 @@
 import 'package:drift/drift.dart';
 
-/// A clip on the board: either an image/screenshot or a text note.
+/// A clip on the board: an image/screenshot, a text note, or a vector
+/// shape primitive.
 ///
 /// Named `ClipRow` (via [DataClassName]) so it doesn't collide with the
 /// domain-level `Clip` model in `data/models/clip.dart`.
@@ -10,7 +11,7 @@ class Clips extends Table {
   TextColumn get id => text()();
   TextColumn get boardId => text()();
 
-  /// 'image' or 'text'.
+  /// 'image', 'text', or 'shape'.
   TextColumn get type => text()();
 
   RealColumn get x => real().withDefault(const Constant(0))();
@@ -73,6 +74,24 @@ class Clips extends Table {
   /// current live zoom, instead of the usual `* view.scale`. Null means
   /// normal world-space scaling. Ignored for image clips.
   RealColumn get sizeLockScale => real().nullable()();
+
+  /// Which flowchart-style vector primitive a shape clip renders as, as
+  /// `ShapeKindStorage.storageValue` ('rectangle'/'ellipse'/'triangle'/
+  /// 'trapezoid'/'parallelogram'). Null for every non-shape clip.
+  TextColumn get shapeKind => text().nullable()();
+
+  /// Fill color as `#RRGGBB`, or null for no fill (outline-only shape).
+  /// Ignored for non-shape clips.
+  TextColumn get shapeFillColorHex => text().nullable()();
+
+  /// Stroke/outline color as `#RRGGBB`. Null falls back to a neutral
+  /// default at render time rather than at write time, so the default can
+  /// change later without a migration. Ignored for non-shape clips.
+  TextColumn get shapeStrokeColorHex => text().nullable()();
+
+  /// Stroke width in board-space pixels. Null falls back to
+  /// `kDefaultStrokeWidth`. Ignored for non-shape clips.
+  RealColumn get shapeStrokeWidth => real().nullable()();
 
   BoolColumn get isBinned => boolean().withDefault(const Constant(false))();
   DateTimeColumn get binnedAt => dateTime().nullable()();

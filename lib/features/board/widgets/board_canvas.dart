@@ -44,6 +44,8 @@ import 'marquee_overlay.dart';
 import 'selection_handles.dart';
 import 'snap_guides_overlay.dart';
 import 'text_clip_edit_overlay.dart';
+import 'shape_style_popover.dart';
+import 'shape_tool_drag_overlay.dart';
 import 'text_tool_drag_overlay.dart';
 
 const _uuid = Uuid();
@@ -145,6 +147,11 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
   // _groupDragMoved/_marqueeMoved use elsewhere in this file).
   Offset? _textToolStartBoard;
   bool _textToolMoved = false;
+
+  // Shape tool: identical click-or-drag placement contract as the text
+  // tool above, for placing a new vector shape clip instead.
+  Offset? _shapeToolStartBoard;
+  bool _shapeToolMoved = false;
 
   // Frame move/resize - only checked once a pointer-down misses every
   // clip (frames sit behind clips, see FrameGeometry's doc comment).
@@ -390,6 +397,8 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     _defineFrameStartBoard = null;
     _textToolStartBoard = null;
     _textToolMoved = false;
+    _shapeToolStartBoard = null;
+    _shapeToolMoved = false;
     _undoTransformBefore = null;
     ref.read(groupDragProvider.notifier).state = null;
     ref.read(marqueeRectProvider.notifier).state = null;
@@ -399,6 +408,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     ref.read(defineFrameRectProvider.notifier).state = null;
     ref.read(snapGuidesProvider.notifier).state = (x: null, y: null);
     ref.read(textToolDragRectProvider.notifier).state = null;
+    ref.read(shapeToolDragRectProvider.notifier).state = null;
     ref.read(connectorDraftProvider.notifier).state = null;
   }
 
@@ -630,9 +640,31 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       return;
     }
 
+    // A click landing on the shape style popover must not fall through to
+    // the canvas (which would deselect/drag) - same click-through-guard
+    // role every other per-selection floating overlay in this app needs.
+    final preSelection = ref.read(selectedClipIdsProvider);
+    if (preSelection.length == 1) {
+      final preClips = ref.read(activeClipsProvider).valueOrNull ?? [];
+      final selectedClip = ClipGeometry.findById(preClips, preSelection.first);
+      if (selectedClip != null && selectedClip.type == ClipType.shape) {
+        final view = ref.read(boardViewProvider);
+        if (ShapeStylePopover.screenRectFor(
+          selectedClip,
+          view,
+        ).contains(event.localPosition)) {
+          return;
+        }
+      }
+    }
+
     _focusNode.requestFocus();
     if (ref.read(isTextToolActiveProvider)) {
       _handleTextToolPointerDown(event);
+      return;
+    }
+    if (ref.read(isShapeToolActiveProvider)) {
+      _handleShapeToolPointerDown(event);
       return;
     }
     if (ref.read(isDrawModeProvider)) {
@@ -1082,6 +1114,10 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       _handleTextToolPointerMove(event);
       return;
     }
+    if (_shapeToolStartBoard != null) {
+      _handleShapeToolPointerMove(event);
+      return;
+    }
     if (ref.read(isDrawModeProvider)) {
       _handleDrawPointerMove(event);
       return;
@@ -1420,6 +1456,10 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       await _handleTextToolPointerUp(event);
       return;
     }
+    if (_shapeToolStartBoard != null) {
+      await _handleShapeToolPointerUp(event);
+      return;
+    }
     if (ref.read(isDrawModeProvider)) {
       _handleDrawPointerUp(event);
       return;
@@ -1469,7 +1509,8 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       final boardPos = _screenToBoard(event.localPosition, view);
       final clipsNow = ref.read(activeClipsProvider).valueOrNull ?? [];
       final target = _hitTestClip(clipsNow, boardPos);
-      if (target != null && target.type == ClipType.image) {
+      if (target != null &&
+          (target.type == ClipType.image || target.type == ClipType.shape)) {
         final rel = ConnectorGeometry.relativePointInClip(target, boardPos);
         final connId = _retargetingConnectorId!;
         final before = _retargetBefore;
@@ -1518,7 +1559,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       final clipsNow = ref.read(activeClipsProvider).valueOrNull ?? [];
       final target = _hitTestClip(clipsNow, boardPos);
       if (target != null &&
-          target.type == ClipType.image &&
+          (target.type == ClipType.image || target.type == ClipType.shape) &&
           target.id != _connectorFromClipId) {
         final rel = ConnectorGeometry.relativePointInClip(target, boardPos);
         final newId = _uuid.v4();
@@ -2226,6 +2267,71 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     ref.read(editingTextClipIdProvider.notifier).state = id;
   }
 
+  /// Entry point while [isShapeToolActiveProvider] is armed - identical
+  /// click-or-drag placement contract as [_handleTextToolPointerDown].
+  void _handleShapeToolPointerDown(PointerDownEvent event) {
+    if (event.buttons & kPrimaryMouseButton == 0) return;
+    final view = ref.read(boardViewProvider);
+    final boardPos = _screenToBoard(event.localPosition, view);
+    _shapeToolStartBoard = boardPos;
+    _shapeToolMoved = false;
+    ref.read(shapeToolDragRectProvider.notifier).state = Rect.fromPoints(
+      boardPos,
+      boardPos,
+    );
+  }
+
+  void _handleShapeToolPointerMove(PointerMoveEvent event) {
+    final view = ref.read(boardViewProvider);
+    final boardPos = _screenToBoard(event.localPosition, view);
+    final delta = boardPos - _shapeToolStartBoard!;
+    if (delta.distance > 2) _shapeToolMoved = true;
+    ref.read(shapeToolDragRectProvider.notifier).state = Rect.fromPoints(
+      _shapeToolStartBoard!,
+      boardPos,
+    );
+  }
+
+  /// Commits the placement: a plain click places a shape at the default
+  /// size centered on the click point; a drag sizes it to the dragged
+  /// rect - same contract as [_handleTextToolPointerUp], reusing the same
+  /// generic rect-from-two-points helper.
+  Future<void> _handleShapeToolPointerUp(PointerUpEvent event) async {
+    final startBoard = _shapeToolStartBoard!;
+    final moved = _shapeToolMoved;
+    _shapeToolStartBoard = null;
+    _shapeToolMoved = false;
+    ref.read(shapeToolDragRectProvider.notifier).state = null;
+
+    final view = ref.read(boardViewProvider);
+    final endBoard = _screenToBoard(event.localPosition, view);
+    final rect = ClipGeometry.textToolPlacementRect(
+      start: startBoard,
+      end: endBoard,
+      moved: moved,
+      defaultWidth: kDefaultShapeWidth,
+      defaultHeight: kDefaultShapeHeight,
+    );
+
+    final id = _uuid.v4();
+    await ref
+        .read(clipsRepositoryProvider)
+        .addShapeClip(
+          id: id,
+          boardId: ref.read(currentBoardIdProvider),
+          shapeKind: ref.read(selectedShapeKindProvider),
+          x: rect.left,
+          y: rect.top,
+          width: rect.width,
+          height: rect.height,
+        );
+    if (!mounted) return;
+    pushAddClipUndo(ref, id);
+
+    ref.read(isShapeToolActiveProvider.notifier).state = false;
+    ref.read(selectedClipIdsProvider.notifier).state = {id};
+  }
+
   /// Entry point while [panZoomClipIdProvider] names an active clip:
   /// a hit on that same clip starts a pan/zoom drag; a double-click on it
   /// or a click anywhere else exits the mode (a click on the floating
@@ -2341,7 +2447,8 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
   Future<void> _handlePerformDrop(PerformDropEvent event) async {
     if (ref.read(isDrawModeProvider) ||
         ref.read(panZoomClipIdProvider) != null ||
-        ref.read(isTextToolActiveProvider)) {
+        ref.read(isTextToolActiveProvider) ||
+        ref.read(isShapeToolActiveProvider)) {
       return;
     }
     final view = ref.read(boardViewProvider);
@@ -2401,6 +2508,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     final panZoomLive = ref.watch(panZoomLiveProvider);
     final defineFrameRect = ref.watch(defineFrameRectProvider);
     final textToolDragRect = ref.watch(textToolDragRectProvider);
+    final shapeToolDragRect = ref.watch(shapeToolDragRectProvider);
     final connectorDraft = ref.watch(connectorDraftProvider);
     final frames = ref.watch(boardFramesProvider).valueOrNull ?? [];
     final selectedFrameId = ref.watch(selectedFrameIdProvider);
@@ -2473,6 +2581,8 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
                       const Positioned.fill(child: DrawingOverlay()),
                       if (defineFrameRect != null) const DefineFrameOverlay(),
                       if (textToolDragRect != null) const TextToolDragOverlay(),
+                      if (shapeToolDragRect != null)
+                        const ShapeToolDragOverlay(),
                       if (connectorDraft != null) const ConnectorDraftOverlay(),
                       const SnapGuidesOverlay(),
                       const TextClipEditOverlay(),
@@ -2484,6 +2594,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
                         const ConnectorHandles(),
                         const GroupScaleHandles(),
                         const ArrangeSelectionButton(),
+                        const ShapeStylePopover(),
                       ],
                       const Positioned(
                         left: 24,

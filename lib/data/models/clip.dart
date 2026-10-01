@@ -2,7 +2,12 @@ import 'dart:convert';
 
 import '../local/database.dart';
 
-enum ClipType { image, text }
+enum ClipType { image, text, shape }
+
+/// A flowchart-style vector primitive a shape clip renders as. Fixed at
+/// creation, like [ClipType] itself - never changes after a shape clip is
+/// placed.
+enum ShapeKind { rectangle, ellipse, triangle, trapezoid, parallelogram }
 
 /// A half-open `[start, end)` character range into a text clip's
 /// `textContent`, used by [TextFormatting]'s 3 independent range lists.
@@ -63,12 +68,33 @@ extension ClipTypeStorage on ClipType {
   String get storageValue => switch (this) {
     ClipType.image => 'image',
     ClipType.text => 'text',
+    ClipType.shape => 'shape',
   };
 
   static ClipType fromStorage(String value) => switch (value) {
     'image' => ClipType.image,
     'text' => ClipType.text,
+    'shape' => ClipType.shape,
     _ => throw ArgumentError('Unknown clip type: $value'),
+  };
+}
+
+extension ShapeKindStorage on ShapeKind {
+  String get storageValue => switch (this) {
+    ShapeKind.rectangle => 'rectangle',
+    ShapeKind.ellipse => 'ellipse',
+    ShapeKind.triangle => 'triangle',
+    ShapeKind.trapezoid => 'trapezoid',
+    ShapeKind.parallelogram => 'parallelogram',
+  };
+
+  static ShapeKind fromStorage(String value) => switch (value) {
+    'rectangle' => ShapeKind.rectangle,
+    'ellipse' => ShapeKind.ellipse,
+    'triangle' => ShapeKind.triangle,
+    'trapezoid' => ShapeKind.trapezoid,
+    'parallelogram' => ShapeKind.parallelogram,
+    _ => throw ArgumentError('Unknown shape kind: $value'),
   };
 }
 
@@ -98,6 +124,23 @@ class BoardClip {
   final TextFormatting textFormatting;
   final double? fontSize;
   final double? sizeLockScale;
+
+  /// Which flowchart-style vector primitive this clip renders as - set
+  /// once at creation, like [type] itself. Null for every non-shape clip.
+  final ShapeKind? shapeKind;
+
+  /// Fill color as `#RRGGBB`, or null for no fill (outline-only shape).
+  /// Ignored for non-shape clips.
+  final String? shapeFillColorHex;
+
+  /// Stroke/outline color as `#RRGGBB`. Null falls back to a neutral
+  /// default at render time. Ignored for non-shape clips.
+  final String? shapeStrokeColorHex;
+
+  /// Stroke width in board-space pixels. Null falls back to
+  /// `kDefaultStrokeWidth`. Ignored for non-shape clips.
+  final double? shapeStrokeWidth;
+
   final bool isBinned;
   final DateTime? binnedAt;
   final DateTime createdAt;
@@ -126,6 +169,10 @@ class BoardClip {
     this.textFormatting = TextFormatting.empty,
     this.fontSize,
     this.sizeLockScale,
+    this.shapeKind,
+    this.shapeFillColorHex,
+    this.shapeStrokeColorHex,
+    this.shapeStrokeWidth,
     this.isBinned = false,
     this.binnedAt,
     required this.createdAt,
@@ -155,6 +202,12 @@ class BoardClip {
     textFormatting: TextFormatting.fromJson(row.textFormattingJson),
     fontSize: row.fontSize,
     sizeLockScale: row.sizeLockScale,
+    shapeKind: row.shapeKind == null
+        ? null
+        : ShapeKindStorage.fromStorage(row.shapeKind!),
+    shapeFillColorHex: row.shapeFillColorHex,
+    shapeStrokeColorHex: row.shapeStrokeColorHex,
+    shapeStrokeWidth: row.shapeStrokeWidth,
     isBinned: row.isBinned,
     binnedAt: row.binnedAt,
     createdAt: row.createdAt,
@@ -205,6 +258,10 @@ class BoardClip {
       textFormatting: textFormatting ?? this.textFormatting,
       fontSize: fontSize ?? this.fontSize,
       sizeLockScale: sizeLockScale ?? this.sizeLockScale,
+      shapeKind: shapeKind,
+      shapeFillColorHex: shapeFillColorHex,
+      shapeStrokeColorHex: shapeStrokeColorHex,
+      shapeStrokeWidth: shapeStrokeWidth,
       isBinned: isBinned ?? this.isBinned,
       binnedAt: binnedAt ?? this.binnedAt,
       createdAt: createdAt,

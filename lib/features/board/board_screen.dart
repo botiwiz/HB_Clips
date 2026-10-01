@@ -8,6 +8,7 @@ import 'package:uuid/uuid.dart';
 import '../../core/constants.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/color_swatch_button.dart';
+import '../../core/widgets/hsv_color_picker.dart';
 import '../../data/local/database.dart' show FrameRow;
 import '../../data/models/clip.dart';
 import '../../data/models/connector.dart';
@@ -18,7 +19,7 @@ import '../../data/repositories/clips_repository.dart';
 import '../about/about_screen.dart';
 import '../annotation/controllers/annotation_controller.dart';
 import '../annotation/draw_toolbar.dart';
-import '../annotation/stroke_painter.dart' show hexToColor;
+import '../annotation/stroke_painter.dart' show colorToHex, hexToColor;
 import '../bin/bin_screen.dart';
 import 'controllers/board_controller.dart';
 import 'controllers/undo_controller.dart';
@@ -34,6 +35,7 @@ import 'widgets/board_canvas.dart';
 import 'widgets/board_switcher.dart';
 import 'widgets/board_toolbar.dart';
 import 'widgets/gif_playback_toolbar.dart';
+import 'widgets/shape_tool_button.dart';
 
 const _uuid = Uuid();
 
@@ -782,24 +784,25 @@ class BoardScreen extends ConsumerWidget {
                     );
               },
             ),
-            for (final colorHex in kStrokeColorPalette)
-              ColorSwatchButton(
-                color: hexToColor(colorHex),
-                selected: frame.backgroundColorHex == colorHex,
-                onTap: () {
-                  final before = frame.backgroundColorHex;
-                  repo.updateColor(frame.id, colorHex);
-                  Navigator.of(context).pop();
-                  ref
-                      .read(undoManagerProvider.notifier)
-                      .push(
-                        UndoableAction(
-                          undo: () => repo.updateColor(frame.id, before),
-                          redo: () => repo.updateColor(frame.id, colorHex),
-                        ),
-                      );
-                },
-              ),
+            ColorPickerSwatch(
+              color: frame.backgroundColorHex != null
+                  ? hexToColor(frame.backgroundColorHex!)
+                  : AppTheme.surfaceCard,
+              onColorSelected: (color) {
+                final before = frame.backgroundColorHex;
+                final after = colorToHex(color);
+                repo.updateColor(frame.id, after);
+                Navigator.of(context).pop();
+                ref
+                    .read(undoManagerProvider.notifier)
+                    .push(
+                      UndoableAction(
+                        undo: () => repo.updateColor(frame.id, before),
+                        redo: () => repo.updateColor(frame.id, after),
+                      ),
+                    );
+              },
+            ),
           ],
         ),
         actions: [
@@ -1056,6 +1059,7 @@ class BoardScreen extends ConsumerWidget {
                             color: isTextToolActive ? AppTheme.red : null,
                             onPressed: () => _toggleTextTool(ref),
                           ),
+                          const ShapeToolButton(),
                           PillIconButton(
                             tooltip: snapToGrid
                                 ? 'Disable snap to grid'

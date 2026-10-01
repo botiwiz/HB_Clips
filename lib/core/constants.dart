@@ -3,6 +3,8 @@ const double kDefaultClipWidth = 240;
 const double kDefaultClipHeight = 240;
 const double kDefaultTextNoteWidth = 220;
 const double kDefaultTextNoteHeight = 140;
+const double kDefaultShapeWidth = 160;
+const double kDefaultShapeHeight = 120;
 
 /// Placeholder board id used before auth/multi-board support (Phase 5+)
 /// exists. Every local clip belongs to this single implicit board.

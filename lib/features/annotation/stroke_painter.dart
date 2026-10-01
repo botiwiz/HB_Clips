@@ -27,6 +27,11 @@ Color hexToColor(String hex) {
   return Color(int.parse('FF$digits', radix: 16));
 }
 
+String colorToHex(Color color) {
+  final argb = color.toARGB32();
+  return '#${(argb & 0xFFFFFF).toRadixString(16).padLeft(6, '0').toUpperCase()}';
+}
+
 class StrokePainter extends CustomPainter {
   final List<StrokeSpec> strokes;
 

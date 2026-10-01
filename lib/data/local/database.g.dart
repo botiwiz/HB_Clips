@@ -246,6 +246,51 @@ class $ClipsTable extends Clips with TableInfo<$ClipsTable, ClipRow> {
     type: DriftSqlType.double,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _shapeKindMeta = const VerificationMeta(
+    'shapeKind',
+  );
+  @override
+  late final GeneratedColumn<String> shapeKind = GeneratedColumn<String>(
+    'shape_kind',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _shapeFillColorHexMeta = const VerificationMeta(
+    'shapeFillColorHex',
+  );
+  @override
+  late final GeneratedColumn<String> shapeFillColorHex =
+      GeneratedColumn<String>(
+        'shape_fill_color_hex',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _shapeStrokeColorHexMeta =
+      const VerificationMeta('shapeStrokeColorHex');
+  @override
+  late final GeneratedColumn<String> shapeStrokeColorHex =
+      GeneratedColumn<String>(
+        'shape_stroke_color_hex',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _shapeStrokeWidthMeta = const VerificationMeta(
+    'shapeStrokeWidth',
+  );
+  @override
+  late final GeneratedColumn<double> shapeStrokeWidth = GeneratedColumn<double>(
+    'shape_stroke_width',
+    aliasedName,
+    true,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _isBinnedMeta = const VerificationMeta(
     'isBinned',
   );
@@ -320,6 +365,10 @@ class $ClipsTable extends Clips with TableInfo<$ClipsTable, ClipRow> {
     textFormattingJson,
     fontSize,
     sizeLockScale,
+    shapeKind,
+    shapeFillColorHex,
+    shapeStrokeColorHex,
+    shapeStrokeWidth,
     isBinned,
     binnedAt,
     createdAt,
@@ -484,6 +533,39 @@ class $ClipsTable extends Clips with TableInfo<$ClipsTable, ClipRow> {
         ),
       );
     }
+    if (data.containsKey('shape_kind')) {
+      context.handle(
+        _shapeKindMeta,
+        shapeKind.isAcceptableOrUnknown(data['shape_kind']!, _shapeKindMeta),
+      );
+    }
+    if (data.containsKey('shape_fill_color_hex')) {
+      context.handle(
+        _shapeFillColorHexMeta,
+        shapeFillColorHex.isAcceptableOrUnknown(
+          data['shape_fill_color_hex']!,
+          _shapeFillColorHexMeta,
+        ),
+      );
+    }
+    if (data.containsKey('shape_stroke_color_hex')) {
+      context.handle(
+        _shapeStrokeColorHexMeta,
+        shapeStrokeColorHex.isAcceptableOrUnknown(
+          data['shape_stroke_color_hex']!,
+          _shapeStrokeColorHexMeta,
+        ),
+      );
+    }
+    if (data.containsKey('shape_stroke_width')) {
+      context.handle(
+        _shapeStrokeWidthMeta,
+        shapeStrokeWidth.isAcceptableOrUnknown(
+          data['shape_stroke_width']!,
+          _shapeStrokeWidthMeta,
+        ),
+      );
+    }
     if (data.containsKey('is_binned')) {
       context.handle(
         _isBinnedMeta,
@@ -605,6 +687,22 @@ class $ClipsTable extends Clips with TableInfo<$ClipsTable, ClipRow> {
         DriftSqlType.double,
         data['${effectivePrefix}size_lock_scale'],
       ),
+      shapeKind: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}shape_kind'],
+      ),
+      shapeFillColorHex: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}shape_fill_color_hex'],
+      ),
+      shapeStrokeColorHex: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}shape_stroke_color_hex'],
+      ),
+      shapeStrokeWidth: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}shape_stroke_width'],
+      ),
       isBinned: attachedDatabase.typeMapping.read(
         DriftSqlType.bool,
         data['${effectivePrefix}is_binned'],
@@ -635,7 +733,7 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
   final String id;
   final String boardId;
 
-  /// 'image' or 'text'.
+  /// 'image', 'text', or 'shape'.
   final String type;
   final double x;
   final double y;
@@ -696,6 +794,24 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
   /// current live zoom, instead of the usual `* view.scale`. Null means
   /// normal world-space scaling. Ignored for image clips.
   final double? sizeLockScale;
+
+  /// Which flowchart-style vector primitive a shape clip renders as, as
+  /// `ShapeKindStorage.storageValue` ('rectangle'/'ellipse'/'triangle'/
+  /// 'trapezoid'/'parallelogram'). Null for every non-shape clip.
+  final String? shapeKind;
+
+  /// Fill color as `#RRGGBB`, or null for no fill (outline-only shape).
+  /// Ignored for non-shape clips.
+  final String? shapeFillColorHex;
+
+  /// Stroke/outline color as `#RRGGBB`. Null falls back to a neutral
+  /// default at render time rather than at write time, so the default can
+  /// change later without a migration. Ignored for non-shape clips.
+  final String? shapeStrokeColorHex;
+
+  /// Stroke width in board-space pixels. Null falls back to
+  /// `kDefaultStrokeWidth`. Ignored for non-shape clips.
+  final double? shapeStrokeWidth;
   final bool isBinned;
   final DateTime? binnedAt;
   final DateTime createdAt;
@@ -723,6 +839,10 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
     this.textFormattingJson,
     this.fontSize,
     this.sizeLockScale,
+    this.shapeKind,
+    this.shapeFillColorHex,
+    this.shapeStrokeColorHex,
+    this.shapeStrokeWidth,
     required this.isBinned,
     this.binnedAt,
     required this.createdAt,
@@ -770,6 +890,18 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
     }
     if (!nullToAbsent || sizeLockScale != null) {
       map['size_lock_scale'] = Variable<double>(sizeLockScale);
+    }
+    if (!nullToAbsent || shapeKind != null) {
+      map['shape_kind'] = Variable<String>(shapeKind);
+    }
+    if (!nullToAbsent || shapeFillColorHex != null) {
+      map['shape_fill_color_hex'] = Variable<String>(shapeFillColorHex);
+    }
+    if (!nullToAbsent || shapeStrokeColorHex != null) {
+      map['shape_stroke_color_hex'] = Variable<String>(shapeStrokeColorHex);
+    }
+    if (!nullToAbsent || shapeStrokeWidth != null) {
+      map['shape_stroke_width'] = Variable<double>(shapeStrokeWidth);
     }
     map['is_binned'] = Variable<bool>(isBinned);
     if (!nullToAbsent || binnedAt != null) {
@@ -822,6 +954,18 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
       sizeLockScale: sizeLockScale == null && nullToAbsent
           ? const Value.absent()
           : Value(sizeLockScale),
+      shapeKind: shapeKind == null && nullToAbsent
+          ? const Value.absent()
+          : Value(shapeKind),
+      shapeFillColorHex: shapeFillColorHex == null && nullToAbsent
+          ? const Value.absent()
+          : Value(shapeFillColorHex),
+      shapeStrokeColorHex: shapeStrokeColorHex == null && nullToAbsent
+          ? const Value.absent()
+          : Value(shapeStrokeColorHex),
+      shapeStrokeWidth: shapeStrokeWidth == null && nullToAbsent
+          ? const Value.absent()
+          : Value(shapeStrokeWidth),
       isBinned: Value(isBinned),
       binnedAt: binnedAt == null && nullToAbsent
           ? const Value.absent()
@@ -863,6 +1007,14 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
       ),
       fontSize: serializer.fromJson<double?>(json['fontSize']),
       sizeLockScale: serializer.fromJson<double?>(json['sizeLockScale']),
+      shapeKind: serializer.fromJson<String?>(json['shapeKind']),
+      shapeFillColorHex: serializer.fromJson<String?>(
+        json['shapeFillColorHex'],
+      ),
+      shapeStrokeColorHex: serializer.fromJson<String?>(
+        json['shapeStrokeColorHex'],
+      ),
+      shapeStrokeWidth: serializer.fromJson<double?>(json['shapeStrokeWidth']),
       isBinned: serializer.fromJson<bool>(json['isBinned']),
       binnedAt: serializer.fromJson<DateTime?>(json['binnedAt']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
@@ -895,6 +1047,10 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
       'textFormattingJson': serializer.toJson<String?>(textFormattingJson),
       'fontSize': serializer.toJson<double?>(fontSize),
       'sizeLockScale': serializer.toJson<double?>(sizeLockScale),
+      'shapeKind': serializer.toJson<String?>(shapeKind),
+      'shapeFillColorHex': serializer.toJson<String?>(shapeFillColorHex),
+      'shapeStrokeColorHex': serializer.toJson<String?>(shapeStrokeColorHex),
+      'shapeStrokeWidth': serializer.toJson<double?>(shapeStrokeWidth),
       'isBinned': serializer.toJson<bool>(isBinned),
       'binnedAt': serializer.toJson<DateTime?>(binnedAt),
       'createdAt': serializer.toJson<DateTime>(createdAt),
@@ -925,6 +1081,10 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
     Value<String?> textFormattingJson = const Value.absent(),
     Value<double?> fontSize = const Value.absent(),
     Value<double?> sizeLockScale = const Value.absent(),
+    Value<String?> shapeKind = const Value.absent(),
+    Value<String?> shapeFillColorHex = const Value.absent(),
+    Value<String?> shapeStrokeColorHex = const Value.absent(),
+    Value<double?> shapeStrokeWidth = const Value.absent(),
     bool? isBinned,
     Value<DateTime?> binnedAt = const Value.absent(),
     DateTime? createdAt,
@@ -962,6 +1122,16 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
     sizeLockScale: sizeLockScale.present
         ? sizeLockScale.value
         : this.sizeLockScale,
+    shapeKind: shapeKind.present ? shapeKind.value : this.shapeKind,
+    shapeFillColorHex: shapeFillColorHex.present
+        ? shapeFillColorHex.value
+        : this.shapeFillColorHex,
+    shapeStrokeColorHex: shapeStrokeColorHex.present
+        ? shapeStrokeColorHex.value
+        : this.shapeStrokeColorHex,
+    shapeStrokeWidth: shapeStrokeWidth.present
+        ? shapeStrokeWidth.value
+        : this.shapeStrokeWidth,
     isBinned: isBinned ?? this.isBinned,
     binnedAt: binnedAt.present ? binnedAt.value : this.binnedAt,
     createdAt: createdAt ?? this.createdAt,
@@ -1003,6 +1173,16 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
       sizeLockScale: data.sizeLockScale.present
           ? data.sizeLockScale.value
           : this.sizeLockScale,
+      shapeKind: data.shapeKind.present ? data.shapeKind.value : this.shapeKind,
+      shapeFillColorHex: data.shapeFillColorHex.present
+          ? data.shapeFillColorHex.value
+          : this.shapeFillColorHex,
+      shapeStrokeColorHex: data.shapeStrokeColorHex.present
+          ? data.shapeStrokeColorHex.value
+          : this.shapeStrokeColorHex,
+      shapeStrokeWidth: data.shapeStrokeWidth.present
+          ? data.shapeStrokeWidth.value
+          : this.shapeStrokeWidth,
       isBinned: data.isBinned.present ? data.isBinned.value : this.isBinned,
       binnedAt: data.binnedAt.present ? data.binnedAt.value : this.binnedAt,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
@@ -1035,6 +1215,10 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
           ..write('textFormattingJson: $textFormattingJson, ')
           ..write('fontSize: $fontSize, ')
           ..write('sizeLockScale: $sizeLockScale, ')
+          ..write('shapeKind: $shapeKind, ')
+          ..write('shapeFillColorHex: $shapeFillColorHex, ')
+          ..write('shapeStrokeColorHex: $shapeStrokeColorHex, ')
+          ..write('shapeStrokeWidth: $shapeStrokeWidth, ')
           ..write('isBinned: $isBinned, ')
           ..write('binnedAt: $binnedAt, ')
           ..write('createdAt: $createdAt, ')
@@ -1067,6 +1251,10 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
     textFormattingJson,
     fontSize,
     sizeLockScale,
+    shapeKind,
+    shapeFillColorHex,
+    shapeStrokeColorHex,
+    shapeStrokeWidth,
     isBinned,
     binnedAt,
     createdAt,
@@ -1098,6 +1286,10 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
           other.textFormattingJson == this.textFormattingJson &&
           other.fontSize == this.fontSize &&
           other.sizeLockScale == this.sizeLockScale &&
+          other.shapeKind == this.shapeKind &&
+          other.shapeFillColorHex == this.shapeFillColorHex &&
+          other.shapeStrokeColorHex == this.shapeStrokeColorHex &&
+          other.shapeStrokeWidth == this.shapeStrokeWidth &&
           other.isBinned == this.isBinned &&
           other.binnedAt == this.binnedAt &&
           other.createdAt == this.createdAt &&
@@ -1127,6 +1319,10 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
   final Value<String?> textFormattingJson;
   final Value<double?> fontSize;
   final Value<double?> sizeLockScale;
+  final Value<String?> shapeKind;
+  final Value<String?> shapeFillColorHex;
+  final Value<String?> shapeStrokeColorHex;
+  final Value<double?> shapeStrokeWidth;
   final Value<bool> isBinned;
   final Value<DateTime?> binnedAt;
   final Value<DateTime> createdAt;
@@ -1155,6 +1351,10 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
     this.textFormattingJson = const Value.absent(),
     this.fontSize = const Value.absent(),
     this.sizeLockScale = const Value.absent(),
+    this.shapeKind = const Value.absent(),
+    this.shapeFillColorHex = const Value.absent(),
+    this.shapeStrokeColorHex = const Value.absent(),
+    this.shapeStrokeWidth = const Value.absent(),
     this.isBinned = const Value.absent(),
     this.binnedAt = const Value.absent(),
     this.createdAt = const Value.absent(),
@@ -1184,6 +1384,10 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
     this.textFormattingJson = const Value.absent(),
     this.fontSize = const Value.absent(),
     this.sizeLockScale = const Value.absent(),
+    this.shapeKind = const Value.absent(),
+    this.shapeFillColorHex = const Value.absent(),
+    this.shapeStrokeColorHex = const Value.absent(),
+    this.shapeStrokeWidth = const Value.absent(),
     this.isBinned = const Value.absent(),
     this.binnedAt = const Value.absent(),
     this.createdAt = const Value.absent(),
@@ -1215,6 +1419,10 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
     Expression<String>? textFormattingJson,
     Expression<double>? fontSize,
     Expression<double>? sizeLockScale,
+    Expression<String>? shapeKind,
+    Expression<String>? shapeFillColorHex,
+    Expression<String>? shapeStrokeColorHex,
+    Expression<double>? shapeStrokeWidth,
     Expression<bool>? isBinned,
     Expression<DateTime>? binnedAt,
     Expression<DateTime>? createdAt,
@@ -1246,6 +1454,11 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
         'text_formatting_json': textFormattingJson,
       if (fontSize != null) 'font_size': fontSize,
       if (sizeLockScale != null) 'size_lock_scale': sizeLockScale,
+      if (shapeKind != null) 'shape_kind': shapeKind,
+      if (shapeFillColorHex != null) 'shape_fill_color_hex': shapeFillColorHex,
+      if (shapeStrokeColorHex != null)
+        'shape_stroke_color_hex': shapeStrokeColorHex,
+      if (shapeStrokeWidth != null) 'shape_stroke_width': shapeStrokeWidth,
       if (isBinned != null) 'is_binned': isBinned,
       if (binnedAt != null) 'binned_at': binnedAt,
       if (createdAt != null) 'created_at': createdAt,
@@ -1277,6 +1490,10 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
     Value<String?>? textFormattingJson,
     Value<double?>? fontSize,
     Value<double?>? sizeLockScale,
+    Value<String?>? shapeKind,
+    Value<String?>? shapeFillColorHex,
+    Value<String?>? shapeStrokeColorHex,
+    Value<double?>? shapeStrokeWidth,
     Value<bool>? isBinned,
     Value<DateTime?>? binnedAt,
     Value<DateTime>? createdAt,
@@ -1306,6 +1523,10 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
       textFormattingJson: textFormattingJson ?? this.textFormattingJson,
       fontSize: fontSize ?? this.fontSize,
       sizeLockScale: sizeLockScale ?? this.sizeLockScale,
+      shapeKind: shapeKind ?? this.shapeKind,
+      shapeFillColorHex: shapeFillColorHex ?? this.shapeFillColorHex,
+      shapeStrokeColorHex: shapeStrokeColorHex ?? this.shapeStrokeColorHex,
+      shapeStrokeWidth: shapeStrokeWidth ?? this.shapeStrokeWidth,
       isBinned: isBinned ?? this.isBinned,
       binnedAt: binnedAt ?? this.binnedAt,
       createdAt: createdAt ?? this.createdAt,
@@ -1383,6 +1604,20 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
     if (sizeLockScale.present) {
       map['size_lock_scale'] = Variable<double>(sizeLockScale.value);
     }
+    if (shapeKind.present) {
+      map['shape_kind'] = Variable<String>(shapeKind.value);
+    }
+    if (shapeFillColorHex.present) {
+      map['shape_fill_color_hex'] = Variable<String>(shapeFillColorHex.value);
+    }
+    if (shapeStrokeColorHex.present) {
+      map['shape_stroke_color_hex'] = Variable<String>(
+        shapeStrokeColorHex.value,
+      );
+    }
+    if (shapeStrokeWidth.present) {
+      map['shape_stroke_width'] = Variable<double>(shapeStrokeWidth.value);
+    }
     if (isBinned.present) {
       map['is_binned'] = Variable<bool>(isBinned.value);
     }
@@ -1426,6 +1661,10 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
           ..write('textFormattingJson: $textFormattingJson, ')
           ..write('fontSize: $fontSize, ')
           ..write('sizeLockScale: $sizeLockScale, ')
+          ..write('shapeKind: $shapeKind, ')
+          ..write('shapeFillColorHex: $shapeFillColorHex, ')
+          ..write('shapeStrokeColorHex: $shapeStrokeColorHex, ')
+          ..write('shapeStrokeWidth: $shapeStrokeWidth, ')
           ..write('isBinned: $isBinned, ')
           ..write('binnedAt: $binnedAt, ')
           ..write('createdAt: $createdAt, ')
@@ -3849,6 +4088,10 @@ typedef $$ClipsTableCreateCompanionBuilder =
       Value<String?> textFormattingJson,
       Value<double?> fontSize,
       Value<double?> sizeLockScale,
+      Value<String?> shapeKind,
+      Value<String?> shapeFillColorHex,
+      Value<String?> shapeStrokeColorHex,
+      Value<double?> shapeStrokeWidth,
       Value<bool> isBinned,
       Value<DateTime?> binnedAt,
       Value<DateTime> createdAt,
@@ -3879,6 +4122,10 @@ typedef $$ClipsTableUpdateCompanionBuilder =
       Value<String?> textFormattingJson,
       Value<double?> fontSize,
       Value<double?> sizeLockScale,
+      Value<String?> shapeKind,
+      Value<String?> shapeFillColorHex,
+      Value<String?> shapeStrokeColorHex,
+      Value<double?> shapeStrokeWidth,
       Value<bool> isBinned,
       Value<DateTime?> binnedAt,
       Value<DateTime> createdAt,
@@ -4001,6 +4248,26 @@ class $$ClipsTableFilterComposer extends Composer<_$AppDatabase, $ClipsTable> {
 
   ColumnFilters<double> get sizeLockScale => $composableBuilder(
     column: $table.sizeLockScale,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get shapeKind => $composableBuilder(
+    column: $table.shapeKind,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get shapeFillColorHex => $composableBuilder(
+    column: $table.shapeFillColorHex,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get shapeStrokeColorHex => $composableBuilder(
+    column: $table.shapeStrokeColorHex,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get shapeStrokeWidth => $composableBuilder(
+    column: $table.shapeStrokeWidth,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -4144,6 +4411,26 @@ class $$ClipsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get shapeKind => $composableBuilder(
+    column: $table.shapeKind,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get shapeFillColorHex => $composableBuilder(
+    column: $table.shapeFillColorHex,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get shapeStrokeColorHex => $composableBuilder(
+    column: $table.shapeStrokeColorHex,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get shapeStrokeWidth => $composableBuilder(
+    column: $table.shapeStrokeWidth,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<bool> get isBinned => $composableBuilder(
     column: $table.isBinned,
     builder: (column) => ColumnOrderings(column),
@@ -4252,6 +4539,24 @@ class $$ClipsTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<String> get shapeKind =>
+      $composableBuilder(column: $table.shapeKind, builder: (column) => column);
+
+  GeneratedColumn<String> get shapeFillColorHex => $composableBuilder(
+    column: $table.shapeFillColorHex,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get shapeStrokeColorHex => $composableBuilder(
+    column: $table.shapeStrokeColorHex,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<double> get shapeStrokeWidth => $composableBuilder(
+    column: $table.shapeStrokeWidth,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<bool> get isBinned =>
       $composableBuilder(column: $table.isBinned, builder: (column) => column);
 
@@ -4315,6 +4620,10 @@ class $$ClipsTableTableManager
                 Value<String?> textFormattingJson = const Value.absent(),
                 Value<double?> fontSize = const Value.absent(),
                 Value<double?> sizeLockScale = const Value.absent(),
+                Value<String?> shapeKind = const Value.absent(),
+                Value<String?> shapeFillColorHex = const Value.absent(),
+                Value<String?> shapeStrokeColorHex = const Value.absent(),
+                Value<double?> shapeStrokeWidth = const Value.absent(),
                 Value<bool> isBinned = const Value.absent(),
                 Value<DateTime?> binnedAt = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
@@ -4343,6 +4652,10 @@ class $$ClipsTableTableManager
                 textFormattingJson: textFormattingJson,
                 fontSize: fontSize,
                 sizeLockScale: sizeLockScale,
+                shapeKind: shapeKind,
+                shapeFillColorHex: shapeFillColorHex,
+                shapeStrokeColorHex: shapeStrokeColorHex,
+                shapeStrokeWidth: shapeStrokeWidth,
                 isBinned: isBinned,
                 binnedAt: binnedAt,
                 createdAt: createdAt,
@@ -4373,6 +4686,10 @@ class $$ClipsTableTableManager
                 Value<String?> textFormattingJson = const Value.absent(),
                 Value<double?> fontSize = const Value.absent(),
                 Value<double?> sizeLockScale = const Value.absent(),
+                Value<String?> shapeKind = const Value.absent(),
+                Value<String?> shapeFillColorHex = const Value.absent(),
+                Value<String?> shapeStrokeColorHex = const Value.absent(),
+                Value<double?> shapeStrokeWidth = const Value.absent(),
                 Value<bool> isBinned = const Value.absent(),
                 Value<DateTime?> binnedAt = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
@@ -4401,6 +4718,10 @@ class $$ClipsTableTableManager
                 textFormattingJson: textFormattingJson,
                 fontSize: fontSize,
                 sizeLockScale: sizeLockScale,
+                shapeKind: shapeKind,
+                shapeFillColorHex: shapeFillColorHex,
+                shapeStrokeColorHex: shapeStrokeColorHex,
+                shapeStrokeWidth: shapeStrokeWidth,
                 isBinned: isBinned,
                 binnedAt: binnedAt,
                 createdAt: createdAt,
