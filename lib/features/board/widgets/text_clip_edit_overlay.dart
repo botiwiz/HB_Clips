@@ -451,7 +451,9 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
                 ),
                 clipBehavior: Clip.antiAlias,
                 child: Padding(
-                  padding: const EdgeInsets.all(10),
+                  padding: EdgeInsets.all(
+                    kTextNoteContentPadding * effectiveScale,
+                  ),
                   child: TextField(
                     controller: _controller,
                     focusNode: _focusNode,

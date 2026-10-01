@@ -33,3 +33,11 @@ const double kEdgeSnapThresholdPx = 8;
 /// grows/shrinks with zoom like every other clip's content, instead of
 /// staying a constant screen size.
 const double kTextNoteFontSize = 14;
+
+/// Board-space (world) padding around a text note's content, converted to
+/// screen pixels via `* viewScale` at render time, same pattern as
+/// [kTextNoteFontSize] - a fixed screen-pixel padding would eat an
+/// increasing fraction of the box's on-screen size as the view zooms out,
+/// eventually leaving zero/negative width for text to wrap into and
+/// forcing it to wrap after nearly every character.
+const double kTextNoteContentPadding = 10;
