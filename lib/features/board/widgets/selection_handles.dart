@@ -19,6 +19,16 @@ class SelectionHandles extends ConsumerWidget {
     final selection = ref.watch(selectedClipIdsProvider);
     if (selection.length != 1) return const SizedBox.shrink();
     final id = selection.first;
+    // While this clip is being text-edited, its rotate handle sits
+    // directly inside TextClipEditOverlay's toolbar band (28px above the
+    // box vs. the toolbar's ~52px-to-8px band) and paints over it, since
+    // this widget renders later in board_canvas.dart's Stack. Resizing/
+    // rotating isn't a meaningful action while actively typing anyway -
+    // same reasoning ConnectorHandles already hides its edge-creation
+    // dots for the clip being edited.
+    if (id == ref.watch(editingTextClipIdProvider)) {
+      return const SizedBox.shrink();
+    }
 
     final clips = ref.watch(activeClipsProvider).valueOrNull ?? [];
     var clip = ClipGeometry.findById(clips, id);
