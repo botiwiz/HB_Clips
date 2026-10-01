@@ -404,6 +404,27 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
     return TextStyleRanges.isFullyCovered(ranges, sel.start, sel.end);
   }
 
+  /// The box height needed for the controller's *current* text, computed
+  /// synchronously from local state rather than read from `clip.height`
+  /// (which lags behind by at least one async round-trip through
+  /// `ClipsRepository.updateTransform` and `activeClipsProvider`'s
+  /// stream). Used for the live edit box's own size so it's always
+  /// correct by the time `TextField` lays out for this frame - without
+  /// this, a keystroke that wraps to a new line briefly overflows a box
+  /// still sized for the old height, and `TextField`'s internal
+  /// scrollable viewport kicks in (a scrollbar, and an inconsistent
+  /// scroll-to-caret position) until the round-trip catches up.
+  double _liveHeight(BoardClip clip) {
+    final controller = _controller;
+    if (controller == null) return clip.height;
+    return TextNoteGeometry.requiredHeight(
+      text: controller.text,
+      formatting: controller.formatting,
+      fontSize: clip.fontSize ?? kTextNoteFontSize,
+      width: clip.width,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final editingId = ref.watch(editingTextClipIdProvider);
@@ -432,7 +453,7 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
     final effectiveScale = clip.sizeLockScale ?? view.scale;
     final topLeft = Offset(clip.x, clip.y) * view.scale + view.panOffset;
     final boxWidth = clip.width * effectiveScale;
-    final boxHeight = clip.height * effectiveScale;
+    final boxHeight = _liveHeight(clip) * effectiveScale;
     final locked = clip.sizeLockScale != null;
 
     return Positioned.fill(
@@ -564,6 +585,15 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
                       if ((newHeight - clip.height).abs() > 0.5) {
                         repo.updateTransform(editingId, height: newHeight);
                       }
+                      // Rebuild immediately so boxHeight (driven by
+                      // _liveHeight, reading the controller's text we
+                      // just updated) is correct before TextField lays
+                      // out this frame - without this, the box stays
+                      // sized for the stale clip.height until the write
+                      // above round-trips back through activeClipsProvider,
+                      // and TextField's expanding field briefly overflows
+                      // its own bounds, becoming internally scrollable.
+                      setState(() {});
                     },
                   ),
                 ),
