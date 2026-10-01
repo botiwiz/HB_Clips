@@ -37,6 +37,30 @@ class _RichTextEditingController extends TextEditingController {
     notifyListeners();
   }
 
+  /// Intercepts every text change (typed, backspaced, pasted, cut, or a
+  /// select-and-replace) - the single choke point every one of those goes
+  /// through - and re-maps [formatting]'s ranges through whatever edit
+  /// just happened, via `TextStyleRanges.diffText`/`shiftFormatting`.
+  /// Without this, a range's stored character indices stay fixed while
+  /// the text around them moves: deleting a word before a bold range
+  /// left it pointing at the wrong characters from then on (half a
+  /// different word, part of whatever reflowed into that position) -
+  /// this keeps formatting attached to the actual characters it was
+  /// applied to, not to a position that drifts out from under it.
+  @override
+  set value(TextEditingValue newValue) {
+    if (newValue.text != text) {
+      final diff = TextStyleRanges.diffText(text, newValue.text);
+      formatting = TextStyleRanges.shiftFormatting(
+        formatting,
+        diff.start,
+        diff.deletedLength,
+        diff.insertedLength,
+      );
+    }
+    super.value = newValue;
+  }
+
   @override
   TextSpan buildTextSpan({
     required BuildContext context,
@@ -141,12 +165,19 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
   _RichTextEditingController? _controller;
   FocusNode? _focusNode;
   String? _boundClipId;
-  // The note's text as of the moment this edit session started - lets
-  // _commitAndExit push a single undo step for the whole session (undo
-  // restores the pre-edit text) instead of one per keystroke, since
-  // updateTextContent already writes live on every keystroke for
-  // responsiveness.
+  // The note's text (and formatting - see below) as of the moment this
+  // edit session started - lets _commitAndExit push a single undo step
+  // for the whole session (undo restores the pre-edit text) instead of
+  // one per keystroke, since updateTextContent already writes live on
+  // every keystroke for responsiveness.
   String? _textBeforeEdit;
+  // Formatting ranges shift during the session as a side effect of
+  // typing/deleting (see _RichTextEditingController.value - they stay
+  // attached to the same characters as the text around them moves).
+  // Captured here so undoing the whole session can restore the ranges
+  // that actually matched the pre-edit text, not the post-edit ranges
+  // misapplied to reverted text.
+  TextFormatting? _formattingBeforeEdit;
 
   void _bind(BoardClip clip) {
     _controller = _RichTextEditingController(
@@ -154,6 +185,7 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
       formatting: clip.textFormatting,
     );
     _textBeforeEdit = clip.textContent ?? '';
+    _formattingBeforeEdit = clip.textFormatting;
     _focusNode = FocusNode(debugLabel: 'TextClipEdit-${clip.id}');
     _boundClipId = clip.id;
     _focusNode!.addListener(() {
@@ -169,16 +201,25 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
     final id = _boundClipId;
     if (id != null) {
       final finalText = _controller?.text ?? '';
+      final finalFormatting = _controller?.formatting ?? TextFormatting.empty;
       final repo = ref.read(clipsRepositoryProvider);
       repo.updateTextContent(id, finalText);
+      repo.updateTextFormatting(id, finalFormatting);
       final before = _textBeforeEdit ?? '';
+      final beforeFormatting = _formattingBeforeEdit ?? TextFormatting.empty;
       if (before != finalText) {
         ref
             .read(undoManagerProvider.notifier)
             .push(
               UndoableAction(
-                undo: () => repo.updateTextContent(id, before),
-                redo: () => repo.updateTextContent(id, finalText),
+                undo: () => Future.wait([
+                  repo.updateTextContent(id, before),
+                  repo.updateTextFormatting(id, beforeFormatting),
+                ]),
+                redo: () => Future.wait([
+                  repo.updateTextContent(id, finalText),
+                  repo.updateTextFormatting(id, finalFormatting),
+                ]),
               ),
             );
       }
@@ -195,6 +236,7 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
     _focusNode = null;
     _boundClipId = null;
     _textBeforeEdit = null;
+    _formattingBeforeEdit = null;
   }
 
   @override
@@ -438,9 +480,20 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
                       border: InputBorder.none,
                       isCollapsed: true,
                     ),
-                    onChanged: (text) => ref
-                        .read(clipsRepositoryProvider)
-                        .updateTextContent(editingId, text),
+                    onChanged: (text) {
+                      final repo = ref.read(clipsRepositoryProvider);
+                      repo.updateTextContent(editingId, text);
+                      // The controller's `value` setter already re-mapped
+                      // formatting through this exact edit - persist it
+                      // alongside the text so it isn't lost (and doesn't
+                      // get overwritten back to its stale pre-edit value
+                      // by the `_controller!.formatting = clip.textFormatting`
+                      // sync a few lines up, next time this rebuilds).
+                      final formatting = _controller?.formatting;
+                      if (formatting != null) {
+                        repo.updateTextFormatting(editingId, formatting);
+                      }
+                    },
                   ),
                 ),
               ),

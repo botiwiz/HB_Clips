@@ -68,6 +68,107 @@ class TextStyleRanges {
     return _normalize([...ranges, (start: start, end: end)]);
   }
 
+  /// Describes the edit that turns [oldText] into [newText] as a minimal
+  /// (position, deletedLength, insertedLength) triple, found via common
+  /// prefix/suffix - the standard "diff" a plain `TextEditingController`
+  /// needs to track for a single edit (typing, backspacing, pasting,
+  /// cutting, or a select-and-replace), without having to separately track
+  /// the previous selection/cursor position.
+  static ({int start, int deletedLength, int insertedLength}) diffText(
+    String oldText,
+    String newText,
+  ) {
+    final maxPrefix = math.min(oldText.length, newText.length);
+    var prefix = 0;
+    while (prefix < maxPrefix && oldText[prefix] == newText[prefix]) {
+      prefix++;
+    }
+    var oldEnd = oldText.length;
+    var newEnd = newText.length;
+    while (oldEnd > prefix &&
+        newEnd > prefix &&
+        oldText[oldEnd - 1] == newText[newEnd - 1]) {
+      oldEnd--;
+      newEnd--;
+    }
+    return (
+      start: prefix,
+      deletedLength: oldEnd - prefix,
+      insertedLength: newEnd - prefix,
+    );
+  }
+
+  /// Maps a single character offset through an edit at [editStart] that
+  /// deletes [deletedLength] characters and inserts [insertedLength] new
+  /// ones - the building block [shiftRanges] applies to both ends of every
+  /// range. An offset before the edit is untouched; one at or after the
+  /// deleted span shifts by the edit's net length change; one that fell
+  /// strictly inside the deleted span collapses to the edit point. Using
+  /// the same rule for both a range's start and its end (rather than
+  /// special-casing which end "wins" a tie at the boundary) happens to
+  /// give the intuitive behavior for free: typing right at the start of a
+  /// formatted run shifts the run later (new text isn't prepended into
+  /// it), while typing right at its end extends the run to include the
+  /// new text (continuing to type stays bold) - both without this
+  /// function needing to know it's looking at a "start" or an "end".
+  static int _mapOffset(
+    int x,
+    int editStart,
+    int deletedLength,
+    int insertedLength,
+  ) {
+    final deleteEnd = editStart + deletedLength;
+    if (x < editStart) return x;
+    if (x >= deleteEnd) return x + (insertedLength - deletedLength);
+    return editStart;
+  }
+
+  /// Re-maps every range in [ranges] through the same edit [diffText]
+  /// describes, so formatting stays attached to the same characters after
+  /// the user types/deletes/pastes anywhere in the text - without this,
+  /// a range's stored indices go stale the moment any edit happens before
+  /// or inside it, covering the wrong characters from then on (the bug
+  /// this exists to fix). Ranges fully inside the deleted span collapse
+  /// to zero length and are dropped; the rest come back normalized.
+  static List<IntRange> shiftRanges(
+    List<IntRange> ranges,
+    int editStart,
+    int deletedLength,
+    int insertedLength,
+  ) {
+    final shifted = <IntRange>[];
+    for (final r in ranges) {
+      final start = _mapOffset(
+        r.start,
+        editStart,
+        deletedLength,
+        insertedLength,
+      );
+      final end = _mapOffset(r.end, editStart, deletedLength, insertedLength);
+      if (end > start) shifted.add((start: start, end: end));
+    }
+    return _normalize(shifted);
+  }
+
+  /// [shiftRanges] applied to all 4 of [formatting]'s independent range
+  /// lists at once - the whole-formatting counterpart callers reach for
+  /// after a text edit.
+  static TextFormatting shiftFormatting(
+    TextFormatting formatting,
+    int editStart,
+    int deletedLength,
+    int insertedLength,
+  ) {
+    List<IntRange> shift(List<IntRange> ranges) =>
+        shiftRanges(ranges, editStart, deletedLength, insertedLength);
+    return TextFormatting(
+      bold: shift(formatting.bold),
+      italic: shift(formatting.italic),
+      underline: shift(formatting.underline),
+      strikethrough: shift(formatting.strikethrough),
+    );
+  }
+
   /// Flattens [formatting]'s 4 independent range lists into a sequence of
   /// non-overlapping [TextSpan]s over [text], each combining [base] with
   /// whichever of bold/italic/underline/strikethrough cover that run -
