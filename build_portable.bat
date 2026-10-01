@@ -2,7 +2,13 @@
 setlocal
 
 echo Building HB_Clips (Windows release)...
-call flutter build windows --release
+rem --no-tree-shake-icons: release builds subset the Material Icons font
+rem down to only the codepoints Flutter's static analysis can prove are
+rem referenced, dropping every other glyph entirely - button containers
+rem still render at their normal size, just empty, since the icon itself
+rem no longer exists in the shipped font. Full icon set is a few hundred
+rem KB; worth keeping over debugging which specific icon dropped out next.
+call flutter build windows --release --no-tree-shake-icons
 if errorlevel 1 (
   echo Build failed - see errors above.
   exit /b 1
