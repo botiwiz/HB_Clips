@@ -19,7 +19,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 17;
+  int get schemaVersion => 18;
 
   Future<void> _seedDefaultBoard(Migrator m) {
     return into(boards).insert(
@@ -99,6 +99,13 @@ class AppDatabase extends _$AppDatabase {
         await m.addColumn(clips, clips.shapeFillColorHex);
         await m.addColumn(clips, clips.shapeStrokeColorHex);
         await m.addColumn(clips, clips.shapeStrokeWidth);
+      }
+      if (from < 18) {
+        // Every connector originates from a text clip and, until now,
+        // defaulted to gray (`#9B9BA1`) with no UI ever letting a user
+        // recolor one individually - safe to blanket-update every
+        // existing row to the new white default, not just future ones.
+        await customStatement("UPDATE connectors SET color = '#FFFFFF'");
       }
     },
   );

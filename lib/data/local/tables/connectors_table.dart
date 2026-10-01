@@ -24,7 +24,7 @@ class Connectors extends Table {
   RealColumn get toRelX => real().nullable()();
   RealColumn get toRelY => real().nullable()();
 
-  TextColumn get color => text().withDefault(const Constant('#9B9BA1'))();
+  TextColumn get color => text().withDefault(const Constant('#FFFFFF'))();
   RealColumn get strokeWidth => real().withDefault(const Constant(2))();
 
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();

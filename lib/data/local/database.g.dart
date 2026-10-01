@@ -3463,7 +3463,7 @@ class $ConnectorsTable extends Connectors
     false,
     type: DriftSqlType.string,
     requiredDuringInsert: false,
-    defaultValue: const Constant('#9B9BA1'),
+    defaultValue: const Constant('#FFFFFF'),
   );
   static const VerificationMeta _strokeWidthMeta = const VerificationMeta(
     'strokeWidth',
