@@ -84,86 +84,48 @@ class _HsvColorPickerDialogState extends State<_HsvColorPickerDialog> {
     return AlertDialog(
       title: const Text('Color'),
       content: SizedBox(
-        width: 320,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+        width: 440,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: _hsv.toColor(),
-                    shape: BoxShape.circle,
-                    border: Border.all(color: AppTheme.border),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _GradientBar(
-                    colors: hueColors,
-                    value: _hsv.hue / 360,
-                    onChanged: (t) =>
-                        setState(() => _hsv = _hsv.withHue(t * 360)),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 4),
-            const Align(
-              alignment: Alignment.centerRight,
-              child: Text(
-                'Hue',
-                style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: _hsv.toColor(),
+                shape: BoxShape.circle,
+                border: Border.all(color: AppTheme.border),
               ),
             ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    children: [
-                      _GradientBar(
-                        colors: saturationColors,
-                        value: _hsv.saturation,
-                        onChanged: (t) =>
-                            setState(() => _hsv = _hsv.withSaturation(t)),
-                      ),
-                      const SizedBox(height: 4),
-                      const Text(
-                        'Saturation',
-                        style: TextStyle(
-                          color: AppTheme.textSecondary,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    children: [
-                      _GradientBar(
-                        colors: valueColors,
-                        value: _hsv.value,
-                        onChanged: (t) =>
-                            setState(() => _hsv = _hsv.withValue(t)),
-                      ),
-                      const SizedBox(height: 4),
-                      const Text(
-                        'Value',
-                        style: TextStyle(
-                          color: AppTheme.textSecondary,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+            const SizedBox(width: 12),
+            Expanded(
+              flex: 3,
+              child: _LabeledGradientBar(
+                label: 'Hue',
+                colors: hueColors,
+                value: _hsv.hue / 360,
+                onChanged: (t) => setState(() => _hsv = _hsv.withHue(t * 360)),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              flex: 1,
+              child: _LabeledGradientBar(
+                label: 'Saturation',
+                colors: saturationColors,
+                value: _hsv.saturation,
+                onChanged: (t) => setState(() => _hsv = _hsv.withSaturation(t)),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              flex: 1,
+              child: _LabeledGradientBar(
+                label: 'Value',
+                colors: valueColors,
+                value: _hsv.value,
+                onChanged: (t) => setState(() => _hsv = _hsv.withValue(t)),
+              ),
             ),
           ],
         ),
@@ -176,6 +138,37 @@ class _HsvColorPickerDialogState extends State<_HsvColorPickerDialog> {
         TextButton(
           onPressed: () => Navigator.of(context).pop(_hsv.toColor()),
           child: const Text('Done'),
+        ),
+      ],
+    );
+  }
+}
+
+/// A [_GradientBar] with its small secondary-colored label directly
+/// underneath - the repeated shape all 3 sliders (Hue/Saturation/Value)
+/// share when laid out side by side on one row.
+class _LabeledGradientBar extends StatelessWidget {
+  final String label;
+  final List<Color> colors;
+  final double value;
+  final ValueChanged<double> onChanged;
+
+  const _LabeledGradientBar({
+    required this.label,
+    required this.colors,
+    required this.value,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        _GradientBar(colors: colors, value: value, onChanged: onChanged),
+        const SizedBox(height: 4),
+        Text(
+          label,
+          style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
         ),
       ],
     );
