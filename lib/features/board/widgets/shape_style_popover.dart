@@ -232,8 +232,12 @@ class _StrokeWidthSliderState extends ConsumerState<_StrokeWidthSlider> {
         overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
       ),
       child: Slider(
-        value: widget.value.clamp(kMinStrokeWidth, kMaxStrokeWidth),
-        min: kMinStrokeWidth,
+        // Min is 0, not kMinStrokeWidth (used for the freehand draw tool,
+        // where a 0-width pen stroke makes no sense) - dragging a shape's
+        // stroke all the way down removes its outline entirely, which
+        // ShapePainter already does for any strokeWidth <= 0.
+        value: widget.value.clamp(0, kMaxStrokeWidth),
+        min: 0,
         max: kMaxStrokeWidth,
         activeColor: AppTheme.textPrimary,
         onChangeStart: (v) => _dragStartValue = widget.value,

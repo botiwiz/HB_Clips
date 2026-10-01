@@ -47,11 +47,10 @@ class _PageResult {
 /// scaling - a frame set to an A4 preset (`frame_presets.dart`) exports as a
 /// literal, exact A4 page.
 ///
-/// This mirrors `pur_writer.dart`'s architecture: no rasterization
-/// infrastructure exists in this codebase, so every clip is drawn fresh from
-/// its stored board-space geometry rather than screenshotting the on-screen
-/// widget tree. [readBytes] resolves a clip's `localFilePath` to its raw
-/// bytes, same convention as `writePurFile`.
+/// No rasterization infrastructure exists in this codebase, so every clip
+/// is drawn fresh from its stored board-space geometry rather than
+/// screenshotting the on-screen widget tree. [readBytes] resolves a
+/// clip's `localFilePath` to its raw bytes.
 ///
 /// Returns null (nothing to export) if the board has zero frames and zero
 /// clips.
@@ -173,10 +172,7 @@ Future<_PageResult> _buildPage({
                     stroke,
                     stroke.points
                         .map(
-                          (p) => Offset(
-                            p.dx * clip.width,
-                            p.dy * clip.height,
-                          ),
+                          (p) => Offset(p.dx * clip.width, p.dy * clip.height),
                         )
                         .toList(),
                   );
@@ -404,7 +400,8 @@ void _drawArrowHead(PdfGraphics canvas, List<Offset> points, double width) {
   final headLength = 8.0 + width * 2;
   const spreadAngle = 0.5;
   for (final sign in [-1, 1]) {
-    final wingEnd = tip + Offset.fromDirection(angle + pi + sign * spreadAngle, headLength);
+    final wingEnd =
+        tip + Offset.fromDirection(angle + pi + sign * spreadAngle, headLength);
     canvas
       ..moveTo(tip.dx, tip.dy)
       ..lineTo(wingEnd.dx, wingEnd.dy)

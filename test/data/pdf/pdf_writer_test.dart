@@ -79,8 +79,7 @@ BoardClip _textClip({
 }
 
 /// Small in-memory PNG bytes, keyed by clip localFilePath - a fake
-/// `readBytes` never touches real disk, mirroring `pur_writer_test.dart`'s
-/// own fixture style but without needing a temp directory.
+/// `readBytes` never touches real disk or needs a temp directory.
 Future<Uint8List?> _fakeReadBytes(String key) async {
   final image = img.Image(width: 40, height: 20);
   img.fill(image, color: img.ColorRgb8(10, 20, 30));
@@ -165,59 +164,65 @@ void main() {
     expect(_mediaBoxes(result.bytes).length, 1);
   });
 
-  test('an image clip whose file cannot be read is skipped, not fatal', () async {
-    final frames = [_frame(id: 'f1', x: 0, y: 0, width: 200, height: 200)];
-    final clips = [
-      _imageClip(
-        id: 'missing',
-        frameId: 'f1',
-        localFilePath: 'does-not-exist.png',
-        x: 0,
-        y: 0,
-        width: 50,
-        height: 50,
-      ),
-    ];
+  test(
+    'an image clip whose file cannot be read is skipped, not fatal',
+    () async {
+      final frames = [_frame(id: 'f1', x: 0, y: 0, width: 200, height: 200)];
+      final clips = [
+        _imageClip(
+          id: 'missing',
+          frameId: 'f1',
+          localFilePath: 'does-not-exist.png',
+          x: 0,
+          y: 0,
+          width: 50,
+          height: 50,
+        ),
+      ];
 
-    final result = await writePdfFile(
-      frames: frames,
-      clips: clips,
-      strokes: const [],
-      readBytes: (key) async => null,
-    );
+      final result = await writePdfFile(
+        frames: frames,
+        clips: clips,
+        strokes: const [],
+        readBytes: (key) async => null,
+      );
 
-    expect(result, isNotNull);
-    expect(result!.summary.imagesDrawn, 0);
-    expect(result.summary.imagesSkipped, 1);
-    // The frame's own page is still produced even though its only child
-    // was skipped.
-    expect(_mediaBoxes(result.bytes).length, 1);
-  });
+      expect(result, isNotNull);
+      expect(result!.summary.imagesDrawn, 0);
+      expect(result.summary.imagesSkipped, 1);
+      // The frame's own page is still produced even though its only child
+      // was skipped.
+      expect(_mediaBoxes(result.bytes).length, 1);
+    },
+  );
 
-  test('freestanding strokes intersecting no page are dropped silently', () async {
-    final frames = [_frame(id: 'f1', x: 0, y: 0, width: 200, height: 200)];
-    final now = DateTime.now();
-    final strokes = [
-      Stroke(
-        id: 's1',
-        boardId: 'board-1',
-        colorHex: '#FF0000',
-        strokeWidth: 2,
-        points: const [Offset(5000, 5000), Offset(5010, 5010)],
-        createdAt: now,
-        updatedAt: now,
-      ),
-    ];
+  test(
+    'freestanding strokes intersecting no page are dropped silently',
+    () async {
+      final frames = [_frame(id: 'f1', x: 0, y: 0, width: 200, height: 200)];
+      final now = DateTime.now();
+      final strokes = [
+        Stroke(
+          id: 's1',
+          boardId: 'board-1',
+          colorHex: '#FF0000',
+          strokeWidth: 2,
+          points: const [Offset(5000, 5000), Offset(5010, 5010)],
+          createdAt: now,
+          updatedAt: now,
+        ),
+      ];
 
-    final result = await writePdfFile(
-      frames: frames,
-      clips: const [],
-      strokes: strokes,
-      readBytes: _fakeReadBytes,
-    );
+      final result = await writePdfFile(
+        frames: frames,
+        clips: const [],
+        strokes: strokes,
+        readBytes: _fakeReadBytes,
+      );
 
-    expect(result, isNotNull);
-    // Doesn't throw, and the frame's page is still produced.
-    expect(_mediaBoxes(result!.bytes).length, 1);
-  });
+      expect(result, isNotNull);
+      // Doesn't throw, and the frame's page is still produced.
+      expect(_mediaBoxes(result!.bytes).length, 1);
+    },
+  );
 }

@@ -5,7 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import 'package:uuid/uuid.dart';
 
-import '../../core/constants.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/color_swatch_button.dart';
 import '../../core/widgets/hsv_color_picker.dart';
@@ -14,7 +13,6 @@ import '../../data/models/clip.dart';
 import '../../data/models/connector.dart';
 import '../../data/pdf/pdf_writer.dart';
 import '../../data/providers.dart';
-import '../../data/pureref/pur_writer.dart';
 import '../../data/repositories/clips_repository.dart';
 import '../about/about_screen.dart';
 import '../annotation/controllers/annotation_controller.dart';
@@ -180,67 +178,6 @@ class BoardScreen extends ConsumerWidget {
     );
   }
 
-  Future<void> _exportPurFile(BuildContext context, WidgetRef ref) async {
-    final clips = ref.read(activeClipsProvider).valueOrNull ?? [];
-    final blobStore = ref.read(localBlobStoreProvider);
-    final result = await writePurFile(clips, readBytes: blobStore.readBytes);
-    if (!context.mounted) return;
-
-    String? savePath;
-    try {
-      savePath = await FilePicker.platform.saveFile(
-        dialogTitle: 'Export board as .pur',
-        fileName: 'board.pur',
-        type: FileType.custom,
-        allowedExtensions: ['pur'],
-        bytes: result.bytes,
-      );
-    } catch (error) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            "Couldn't open the save dialog. On Linux this needs zenity "
-            '(or kdialog) installed.',
-          ),
-          backgroundColor: AppTheme.danger,
-        ),
-      );
-      return;
-    }
-    if (savePath == null) return;
-    if (!savePath.toLowerCase().endsWith('.pur')) {
-      savePath = '$savePath.pur';
-    }
-    await writeBytesToPath(savePath, result.bytes);
-    if (!context.mounted) return;
-
-    final summary = result.summary;
-    final parts = <String>[
-      '${summary.imagesExported} image${summary.imagesExported == 1 ? '' : 's'}',
-      '${summary.textNotesExported} text note${summary.textNotesExported == 1 ? '' : 's'}',
-    ];
-    if (summary.imagesSkipped > 0) {
-      parts.add(
-        '${summary.imagesSkipped} image${summary.imagesSkipped == 1 ? '' : 's'} skipped (unreadable file)',
-      );
-    }
-
-    await showDialog<void>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Export complete'),
-        content: Text('Exported ${parts.join(', ')}.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('OK'),
-          ),
-        ],
-      ),
-    );
-  }
-
   Future<void> _exportPdfFile(BuildContext context, WidgetRef ref) async {
     final clips = ref.read(activeClipsProvider).valueOrNull ?? [];
     final frames = ref.read(boardFramesProvider).valueOrNull ?? [];
@@ -315,47 +252,6 @@ class BoardScreen extends ConsumerWidget {
         ],
       ),
     );
-  }
-
-  Future<void> _addTextNote(BuildContext context, WidgetRef ref) async {
-    final controller = TextEditingController();
-    final text = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('New text note'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          maxLines: 5,
-          decoration: const InputDecoration(hintText: 'Type a note...'),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(controller.text),
-            child: const Text('Add'),
-          ),
-        ],
-      ),
-    );
-    if (text == null || text.trim().isEmpty) return;
-    if (!context.mounted) return;
-
-    final id = _uuid.v4();
-    final center = _viewportCenterBoardPoint(ref, MediaQuery.sizeOf(context));
-    await ref
-        .read(clipsRepositoryProvider)
-        .addTextNote(
-          id: id,
-          boardId: ref.read(currentBoardIdProvider),
-          textContent: text.trim(),
-          x: center.dx - kDefaultTextNoteWidth / 2,
-          y: center.dy - kDefaultTextNoteHeight / 2,
-        );
-    pushAddClipUndo(ref, id);
   }
 
   void _selectAll(WidgetRef ref) {
@@ -1096,6 +992,24 @@ class BoardScreen extends ConsumerWidget {
                               ),
                             ),
                             PillIconButton(
+                              tooltip: 'Bring forward',
+                              icon: Icons.arrow_upward,
+                              onPressed: () => _applyZOrder(
+                                ref,
+                                (repo, id, boardId) =>
+                                    repo.bringForward(id, boardId),
+                              ),
+                            ),
+                            PillIconButton(
+                              tooltip: 'Send backward',
+                              icon: Icons.arrow_downward,
+                              onPressed: () => _applyZOrder(
+                                ref,
+                                (repo, id, boardId) =>
+                                    repo.sendBackward(id, boardId),
+                              ),
+                            ),
+                            PillIconButton(
                               tooltip: 'Send to back',
                               icon: Icons.flip_to_back_outlined,
                               onPressed: () => _applyZOrder(
@@ -1157,17 +1071,6 @@ class BoardScreen extends ConsumerWidget {
                                     !framesPanelOpen,
                           ),
                           PillIconButton(
-                            tooltip: 'Paste image (Ctrl+V)',
-                            icon: Icons.content_paste_outlined,
-                            onPressed: () =>
-                                pasteImageFromClipboard(context, ref),
-                          ),
-                          PillIconButton(
-                            tooltip: 'Add text note',
-                            icon: Icons.note_add_outlined,
-                            onPressed: () => _addTextNote(context, ref),
-                          ),
-                          PillIconButton(
                             tooltip: 'Add image clip',
                             icon: Icons.add_photo_alternate_outlined,
                             onPressed: () => _addImageClip(context, ref),
@@ -1176,11 +1079,6 @@ class BoardScreen extends ConsumerWidget {
                             tooltip: 'Import PureRef (.pur) file',
                             icon: Icons.file_open_outlined,
                             onPressed: () => _importPurFile(context, ref),
-                          ),
-                          PillIconButton(
-                            tooltip: 'Export board as .pur',
-                            icon: Icons.file_download_outlined,
-                            onPressed: () => _exportPurFile(context, ref),
                           ),
                           PillIconButton(
                             tooltip: 'Export board as .pdf',

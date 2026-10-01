@@ -993,10 +993,6 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
         _pendingCollapseId = null;
       }
 
-      ref
-          .read(clipsRepositoryProvider)
-          .bringToFront(hit.id, ref.read(currentBoardIdProvider));
-
       final startPositions = <String, Offset>{};
       final dragMap = <String, DraggingClip>{};
       for (final id in activeSelection) {
