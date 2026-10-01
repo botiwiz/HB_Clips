@@ -36,9 +36,12 @@ const double kTextNoteFontSize = 14;
 
 /// Board-space (world) padding around a text note's content, converted to
 /// screen pixels via `* viewScale` at render time, same pattern as
-/// [kTextNoteFontSize]. Zero - the user wants the font to render flush
-/// to the box's edge, not inset.
-const double kTextNoteContentPadding = 0;
+/// [kTextNoteFontSize]. Horizontal is larger than vertical - text already
+/// has natural vertical breathing room from its own line-height
+/// (ascenders/descenders), so a flush left/right edge reads as visibly
+/// tighter than a flush top/bottom one unless the sides get more inset.
+const double kTextNoteHorizontalPadding = 8;
+const double kTextNoteVerticalPadding = 2;
 
 /// Board-space (world) radius for rounding a connector's 90-degree turns,
 /// converted to screen pixels via `* view.scale` at paint time - same

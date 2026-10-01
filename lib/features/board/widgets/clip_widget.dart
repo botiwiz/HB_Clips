@@ -140,7 +140,10 @@ class ClipWidget extends StatelessWidget {
       height: 1.3,
     );
     return Padding(
-      padding: EdgeInsets.all(kTextNoteContentPadding * viewScale),
+      padding: EdgeInsets.symmetric(
+        horizontal: kTextNoteHorizontalPadding * viewScale,
+        vertical: kTextNoteVerticalPadding * viewScale,
+      ),
       child: Text.rich(
         TextSpan(
           children: TextStyleRanges.buildSpans(
