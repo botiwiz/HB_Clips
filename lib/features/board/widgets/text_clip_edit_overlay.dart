@@ -10,6 +10,7 @@ import '../../annotation/stroke_painter.dart' show hexToColor;
 import '../controllers/board_controller.dart';
 import '../controllers/undo_controller.dart';
 import '../geometry/selection_geometry.dart';
+import '../geometry/text_note_geometry.dart';
 import '../geometry/text_style_ranges.dart';
 import 'board_toolbar.dart';
 
@@ -208,6 +209,16 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
       final before = _textBeforeEdit ?? '';
       final beforeFormatting = _formattingBeforeEdit ?? TextFormatting.empty;
       if (before != finalText) {
+        // Width/fontSize can't have changed mid-session (resize handles
+        // are hidden while editing; a font-size change pushes its own
+        // undo step - see _adjustFontSize), so the live clip's current
+        // values are also what they were throughout this whole session.
+        final liveClip = ClipGeometry.findById(
+          ref.read(activeClipsProvider).valueOrNull ?? [],
+          id,
+        );
+        final width = liveClip?.width ?? kDefaultTextNoteWidth;
+        final fontSize = liveClip?.fontSize ?? kTextNoteFontSize;
         ref
             .read(undoManagerProvider.notifier)
             .push(
@@ -215,10 +226,28 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
                 undo: () => Future.wait([
                   repo.updateTextContent(id, before),
                   repo.updateTextFormatting(id, beforeFormatting),
+                  repo.updateTransform(
+                    id,
+                    height: TextNoteGeometry.requiredHeight(
+                      text: before,
+                      formatting: beforeFormatting,
+                      fontSize: fontSize,
+                      width: width,
+                    ),
+                  ),
                 ]),
                 redo: () => Future.wait([
                   repo.updateTextContent(id, finalText),
                   repo.updateTextFormatting(id, finalFormatting),
+                  repo.updateTransform(
+                    id,
+                    height: TextNoteGeometry.requiredHeight(
+                      text: finalText,
+                      formatting: finalFormatting,
+                      fontSize: fontSize,
+                      width: width,
+                    ),
+                  ),
                 ]),
               ),
             );
@@ -316,13 +345,37 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
     final current = beforeRaw ?? kTextNoteFontSize;
     final next = (current + delta).clamp(_minFontSize, _maxFontSize);
     final repo = ref.read(clipsRepositoryProvider);
+    // A bigger font needs a taller box for the same text - fold a height
+    // recompute into the same undo step as the font-size change itself,
+    // same "height is a derived value" principle as everywhere else.
+    final text = _controller?.text ?? clip.textContent ?? '';
+    final formatting = _controller?.formatting ?? clip.textFormatting;
+    final beforeHeight = TextNoteGeometry.requiredHeight(
+      text: text,
+      formatting: formatting,
+      fontSize: current,
+      width: clip.width,
+    );
+    final afterHeight = TextNoteGeometry.requiredHeight(
+      text: text,
+      formatting: formatting,
+      fontSize: next,
+      width: clip.width,
+    );
     repo.updateFontSize(clip.id, next);
+    repo.updateTransform(clip.id, height: afterHeight);
     ref
         .read(undoManagerProvider.notifier)
         .push(
           UndoableAction(
-            undo: () => repo.updateFontSize(clip.id, beforeRaw),
-            redo: () => repo.updateFontSize(clip.id, next),
+            undo: () => Future.wait([
+              repo.updateFontSize(clip.id, beforeRaw),
+              repo.updateTransform(clip.id, height: beforeHeight),
+            ]),
+            redo: () => Future.wait([
+              repo.updateFontSize(clip.id, next),
+              repo.updateTransform(clip.id, height: afterHeight),
+            ]),
           ),
         );
   }
@@ -495,6 +548,21 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
                       final formatting = _controller?.formatting;
                       if (formatting != null) {
                         repo.updateTextFormatting(editingId, formatting);
+                      }
+                      // Auto-grow: height is a pure function of
+                      // (text, formatting, fontSize, width) - recompute and
+                      // persist it on every keystroke so the box always
+                      // fits its content exactly, growing or shrinking as
+                      // needed, anchored at the unchanged top-left (x, y).
+                      final fontSize = clip.fontSize ?? kTextNoteFontSize;
+                      final newHeight = TextNoteGeometry.requiredHeight(
+                        text: text,
+                        formatting: formatting ?? clip.textFormatting,
+                        fontSize: fontSize,
+                        width: clip.width,
+                      );
+                      if ((newHeight - clip.height).abs() > 0.5) {
+                        repo.updateTransform(editingId, height: newHeight);
                       }
                     },
                   ),
