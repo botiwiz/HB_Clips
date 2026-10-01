@@ -296,19 +296,16 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     }
   }
 
-  /// The connector's target endpoint in board space, honoring its stored
+  /// The connector's board-space orthogonal route, honoring its stored
   /// relative surface point when set (falls back to the nearest-boundary
   /// anchor otherwise) - shared by the endpoint-drag hit-test and the
-  /// click-to-select curve hit-test so both agree with what
+  /// click-to-select route hit-test so both agree with what
   /// `ConnectorsOverlay` actually paints.
-  ({Offset p0, Offset c1, Offset c2, Offset p3})? _connectorBezierBoard(
-    Connector connector,
-    List<BoardClip> clips,
-  ) {
+  List<Offset>? _connectorRoute(Connector connector, List<BoardClip> clips) {
     final fromClip = ClipGeometry.findById(clips, connector.fromClipId);
     final toClip = ClipGeometry.findById(clips, connector.toClipId);
     if (fromClip == null || toClip == null) return null;
-    return ConnectorGeometry.bezierBoard(
+    return ConnectorGeometry.routeBoard(
       fromClip: fromClip,
       fromSide: connector.fromSide,
       toClip: toClip,
@@ -746,11 +743,11 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     if (selectedConnectorId != null) {
       final connectors = ref.read(activeConnectorsProvider).valueOrNull ?? [];
       final connector = _findConnector(connectors, selectedConnectorId);
-      final bezier = connector == null
+      final route = connector == null
           ? null
-          : _connectorBezierBoard(connector, clips);
-      if (bezier != null) {
-        final p3Screen = bezier.p3 * view.scale + view.panOffset;
+          : _connectorRoute(connector, clips);
+      if (route != null) {
+        final p3Screen = route.last * view.scale + view.panOffset;
         if ((p3Screen - event.localPosition).distance <=
             ConnectorGeometry.handleHitRadius) {
           _retargetingConnectorId = connector!.id;
@@ -922,15 +919,12 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     // meaningfully shrink the clickable area of the image itself).
     final connectorsList = ref.read(activeConnectorsProvider).valueOrNull ?? [];
     for (final connector in connectorsList) {
-      final bezier = _connectorBezierBoard(connector, clips);
-      if (bezier == null) continue;
-      final screenBezier = (
-        p0: bezier.p0 * view.scale + view.panOffset,
-        c1: bezier.c1 * view.scale + view.panOffset,
-        c2: bezier.c2 * view.scale + view.panOffset,
-        p3: bezier.p3 * view.scale + view.panOffset,
-      );
-      if (ConnectorGeometry.hitTestCurve(screenBezier, event.localPosition)) {
+      final route = _connectorRoute(connector, clips);
+      if (route == null) continue;
+      final screenRoute = [
+        for (final point in route) point * view.scale + view.panOffset,
+      ];
+      if (ConnectorGeometry.hitTestRoute(screenRoute, event.localPosition)) {
         _exitTextEditUnlessClip(null);
         ref.read(selectedConnectorIdProvider.notifier).state = connector.id;
         ref.read(selectedClipIdsProvider.notifier).state = {};

@@ -30,13 +30,6 @@ BoardClip _clip({
   );
 }
 
-/// Cross product of (b-a) and (c-a) - zero means a/b/c are collinear.
-double _cross(Offset a, Offset b, Offset c) {
-  final ab = b - a;
-  final ac = c - a;
-  return ab.dx * ac.dy - ab.dy * ac.dx;
-}
-
 void main() {
   group('sideMidpointBoard', () {
     test('unrotated clip: exact midpoints of all 4 sides', () {
@@ -59,26 +52,35 @@ void main() {
       );
     });
 
-    test(
-      '90-degree rotation moves the top midpoint to where the right '
-      'midpoint was (square clip, so the two midpoints are equidistant '
-      'from center)',
-      () {
-        final clip = _clip(width: 100, height: 100, rotation: math.pi / 2);
-        final top = ConnectorGeometry.sideMidpointBoard(clip, ConnectorSide.top);
-        expect(top.dx, closeTo(100, 1e-9));
-        expect(top.dy, closeTo(50, 1e-9));
-      },
-    );
+    test('90-degree rotation moves the top midpoint to where the right '
+        'midpoint was (square clip, so the two midpoints are equidistant '
+        'from center)', () {
+      final clip = _clip(width: 100, height: 100, rotation: math.pi / 2);
+      final top = ConnectorGeometry.sideMidpointBoard(clip, ConnectorSide.top);
+      expect(top.dx, closeTo(100, 1e-9));
+      expect(top.dy, closeTo(50, 1e-9));
+    });
   });
 
   group('outwardNormal', () {
     test('unrotated clip: axis-aligned unit vectors per side', () {
       final clip = _clip();
-      expect(ConnectorGeometry.outwardNormal(clip, ConnectorSide.top), const Offset(0, -1));
-      expect(ConnectorGeometry.outwardNormal(clip, ConnectorSide.right), const Offset(1, 0));
-      expect(ConnectorGeometry.outwardNormal(clip, ConnectorSide.bottom), const Offset(0, 1));
-      expect(ConnectorGeometry.outwardNormal(clip, ConnectorSide.left), const Offset(-1, 0));
+      expect(
+        ConnectorGeometry.outwardNormal(clip, ConnectorSide.top),
+        const Offset(0, -1),
+      );
+      expect(
+        ConnectorGeometry.outwardNormal(clip, ConnectorSide.right),
+        const Offset(1, 0),
+      );
+      expect(
+        ConnectorGeometry.outwardNormal(clip, ConnectorSide.bottom),
+        const Offset(0, 1),
+      );
+      expect(
+        ConnectorGeometry.outwardNormal(clip, ConnectorSide.left),
+        const Offset(-1, 0),
+      );
     });
 
     test('rotated clip: normal rotates too, magnitude stays 1', () {
@@ -101,14 +103,22 @@ void main() {
     test('a point within the hit radius of a handle hits that side', () {
       final clip = _clip(x: 0, y: 0, width: 100, height: 60);
       const view = BoardViewState(panOffset: Offset(10, 20), scale: 2);
-      final side = ConnectorGeometry.hitTestHandle(clip, view, const Offset(110, 20));
+      final side = ConnectorGeometry.hitTestHandle(
+        clip,
+        view,
+        const Offset(110, 20),
+      );
       expect(side, ConnectorSide.top);
     });
 
     test('a point far from every handle misses', () {
       final clip = _clip(x: 0, y: 0, width: 100, height: 60);
       const view = BoardViewState();
-      final side = ConnectorGeometry.hitTestHandle(clip, view, const Offset(-500, -500));
+      final side = ConnectorGeometry.hitTestHandle(
+        clip,
+        view,
+        const Offset(-500, -500),
+      );
       expect(side, isNull);
     });
   });
@@ -116,14 +126,20 @@ void main() {
   group('nearestBoundaryAnchor', () {
     test('a point beyond the right edge resolves to the right side', () {
       final clip = _clip(x: 0, y: 0, width: 100, height: 60);
-      final result = ConnectorGeometry.nearestBoundaryAnchor(clip, const Offset(500, 30));
+      final result = ConnectorGeometry.nearestBoundaryAnchor(
+        clip,
+        const Offset(500, 30),
+      );
       expect(result.side, ConnectorSide.right);
       expect(result.point, const Offset(100, 30));
     });
 
     test('a point beyond the top edge resolves to the top side', () {
       final clip = _clip(x: 0, y: 0, width: 100, height: 60);
-      final result = ConnectorGeometry.nearestBoundaryAnchor(clip, const Offset(50, -500));
+      final result = ConnectorGeometry.nearestBoundaryAnchor(
+        clip,
+        const Offset(50, -500),
+      );
       expect(result.side, ConnectorSide.top);
       expect(result.point, const Offset(50, 0));
     });
@@ -131,74 +147,133 @@ void main() {
     test('a point inside the rect snaps to the nearest of the 4 edges', () {
       final clip = _clip(x: 0, y: 0, width: 100, height: 60);
       // Distances to left/right/top/bottom are 20/80/15/45 - top is nearest.
-      final result = ConnectorGeometry.nearestBoundaryAnchor(clip, const Offset(20, 15));
+      final result = ConnectorGeometry.nearestBoundaryAnchor(
+        clip,
+        const Offset(20, 15),
+      );
       expect(result.side, ConnectorSide.top);
       expect(result.point, const Offset(20, 0));
     });
 
     test('rotated clip: un-rotate/rotate round trip resolves correctly', () {
-      final clip = _clip(x: 0, y: 0, width: 100, height: 100, rotation: math.pi / 2);
+      final clip = _clip(
+        x: 0,
+        y: 0,
+        width: 100,
+        height: 100,
+        rotation: math.pi / 2,
+      );
       // Board-space point that sits far along the clip's local +x axis once
       // un-rotated - i.e. "to the local right" of the rotated square.
-      final result = ConnectorGeometry.nearestBoundaryAnchor(clip, const Offset(50, 500));
+      final result = ConnectorGeometry.nearestBoundaryAnchor(
+        clip,
+        const Offset(50, 500),
+      );
       expect(result.side, ConnectorSide.right);
       expect(result.point.dx, closeTo(50, 1e-9));
       expect(result.point.dy, closeTo(100, 1e-9));
     });
   });
 
-  group('bezierBoard', () {
-    test('control points land strictly off the straight p0-p3 line', () {
+  group('routeBoard', () {
+    test(
+      'opposite-direction horizontal anchors route as a straight line through stubs',
+      () {
+        final fromClip = _clip(id: 'from', x: 0, y: 0, width: 100, height: 60);
+        final toClip = _clip(id: 'to', x: 300, y: 0, width: 100, height: 60);
+        final result = ConnectorGeometry.routeBoard(
+          fromClip: fromClip,
+          fromSide: ConnectorSide.right,
+          toClip: toClip,
+        );
+
+        expect(result, [
+          const Offset(100, 30),
+          const Offset(140, 30),
+          const Offset(200, 30),
+          const Offset(260, 30),
+          const Offset(300, 30),
+        ]);
+      },
+    );
+
+    test('perpendicular source/target directions route as a single-bend L', () {
       final fromClip = _clip(id: 'from', x: 0, y: 0, width: 100, height: 60);
-      final toClip = _clip(id: 'to', x: 300, y: 200, width: 100, height: 60);
-      final result = ConnectorGeometry.bezierBoard(
+      final toClip = _clip(id: 'to', x: 150, y: 500, width: 100, height: 60);
+      final result = ConnectorGeometry.routeBoard(
         fromClip: fromClip,
-        fromSide: ConnectorSide.top,
+        fromSide: ConnectorSide.right,
         toClip: toClip,
       );
 
-      expect(_cross(result.p0, result.p3, result.c1).abs(), greaterThan(1));
-      expect(_cross(result.p0, result.p3, result.c2).abs(), greaterThan(1));
+      expect(result, [
+        const Offset(100, 30),
+        const Offset(140, 30),
+        const Offset(150, 30),
+        const Offset(150, 460),
+        const Offset(150, 500),
+      ]);
     });
 
-    test('very close clips clamp the control offset to the minimum', () {
+    test('every segment is axis-aligned (horizontal or vertical only)', () {
+      final fromClip = _clip(id: 'from', x: 0, y: 0, width: 100, height: 60);
+      final toClip = _clip(id: 'to', x: 340, y: 220, width: 100, height: 60);
+      final result = ConnectorGeometry.routeBoard(
+        fromClip: fromClip,
+        fromSide: ConnectorSide.bottom,
+        toClip: toClip,
+      );
+      for (var i = 0; i < result.length - 1; i++) {
+        final delta = result[i + 1] - result[i];
+        final axisAligned = delta.dx == 0 || delta.dy == 0;
+        expect(axisAligned, isTrue, reason: 'segment $i is diagonal: $delta');
+      }
+    });
+
+    test('very close clips clamp the stub length to the minimum', () {
       final fromClip = _clip(id: 'from', x: 0, y: 0, width: 100, height: 60);
       final toClip = _clip(id: 'to', x: 105, y: 0, width: 100, height: 60);
-      final result = ConnectorGeometry.bezierBoard(
+      final result = ConnectorGeometry.routeBoard(
         fromClip: fromClip,
         fromSide: ConnectorSide.right,
         toClip: toClip,
       );
 
-      expect((result.c1 - result.p0).distance, closeTo(20, 1e-9));
+      expect((result[1] - result[0]).distance, closeTo(16, 1e-9));
     });
 
-    test('very far clips clamp the control offset to the maximum', () {
+    test('very far clips clamp the stub length to the maximum', () {
       final fromClip = _clip(id: 'from', x: 0, y: 0, width: 100, height: 60);
       final toClip = _clip(id: 'to', x: 5000, y: 0, width: 100, height: 60);
-      final result = ConnectorGeometry.bezierBoard(
+      final result = ConnectorGeometry.routeBoard(
         fromClip: fromClip,
         fromSide: ConnectorSide.right,
         toClip: toClip,
       );
 
-      expect((result.c1 - result.p0).distance, closeTo(120, 1e-9));
+      expect((result[1] - result[0]).distance, closeTo(40, 1e-9));
     });
 
-    test('explicit relative target lands at pointFromRelative, not the boundary', () {
-      final fromClip = _clip(id: 'from', x: 0, y: 0, width: 100, height: 60);
-      final toClip = _clip(id: 'to', x: 300, y: 200, width: 100, height: 60);
-      final result = ConnectorGeometry.bezierBoard(
-        fromClip: fromClip,
-        fromSide: ConnectorSide.top,
-        toClip: toClip,
-        toRelX: 0.5,
-        toRelY: 0.5,
-      );
+    test(
+      'explicit relative target lands at pointFromRelative, not the boundary',
+      () {
+        final fromClip = _clip(id: 'from', x: 0, y: 0, width: 100, height: 60);
+        final toClip = _clip(id: 'to', x: 300, y: 200, width: 100, height: 60);
+        final result = ConnectorGeometry.routeBoard(
+          fromClip: fromClip,
+          fromSide: ConnectorSide.top,
+          toClip: toClip,
+          toRelX: 0.5,
+          toRelY: 0.5,
+        );
 
-      expect(result.p3, ConnectorGeometry.pointFromRelative(toClip, const Offset(0.5, 0.5)));
-      expect(result.p3, ClipGeometry.clipCenter(toClip));
-    });
+        expect(
+          result.last,
+          ConnectorGeometry.pointFromRelative(toClip, const Offset(0.5, 0.5)),
+        );
+        expect(result.last, ClipGeometry.clipCenter(toClip));
+      },
+    );
   });
 
   group('relativePointInClip / pointFromRelative', () {
@@ -214,7 +289,13 @@ void main() {
     });
 
     test('round-trips through a rotated clip', () {
-      final clip = _clip(x: 0, y: 0, width: 100, height: 100, rotation: math.pi / 2);
+      final clip = _clip(
+        x: 0,
+        y: 0,
+        width: 100,
+        height: 100,
+        rotation: math.pi / 2,
+      );
       final boardPoint = const Offset(50, 500);
       final rel = ConnectorGeometry.relativePointInClip(clip, boardPoint);
       final back = ConnectorGeometry.pointFromRelative(clip, rel);
@@ -227,7 +308,13 @@ void main() {
     });
 
     test('a point inside the rect round-trips exactly', () {
-      final clip = _clip(x: 0, y: 0, width: 100, height: 100, rotation: math.pi / 2);
+      final clip = _clip(
+        x: 0,
+        y: 0,
+        width: 100,
+        height: 100,
+        rotation: math.pi / 2,
+      );
       final center = ClipGeometry.clipCenter(clip);
       final rel = ConnectorGeometry.relativePointInClip(clip, center);
       expect(rel.dx, closeTo(0.5, 1e-9));
@@ -235,33 +322,31 @@ void main() {
     });
   });
 
-  group('hitTestCurve', () {
-    test('true near the curve\'s midpoint', () {
+  group('hitTestRoute', () {
+    test('true near the midpoint of a route segment', () {
       final fromClip = _clip(id: 'from', x: 0, y: 0, width: 100, height: 60);
       final toClip = _clip(id: 'to', x: 300, y: 0, width: 100, height: 60);
-      final bezier = ConnectorGeometry.bezierBoard(
+      final route = ConnectorGeometry.routeBoard(
         fromClip: fromClip,
         fromSide: ConnectorSide.right,
         toClip: toClip,
       );
-      // t=0.5 of the cubic bezier.
-      final mid =
-          bezier.p0 * 0.125 +
-          bezier.c1 * 0.375 +
-          bezier.c2 * 0.375 +
-          bezier.p3 * 0.125;
-      expect(ConnectorGeometry.hitTestCurve(bezier, mid), isTrue);
+      final mid = Offset.lerp(route.first, route.last, 0.5)!;
+      expect(ConnectorGeometry.hitTestRoute(route, mid), isTrue);
     });
 
-    test('false far from the curve', () {
+    test('false far from the route', () {
       final fromClip = _clip(id: 'from', x: 0, y: 0, width: 100, height: 60);
       final toClip = _clip(id: 'to', x: 300, y: 0, width: 100, height: 60);
-      final bezier = ConnectorGeometry.bezierBoard(
+      final route = ConnectorGeometry.routeBoard(
         fromClip: fromClip,
         fromSide: ConnectorSide.right,
         toClip: toClip,
       );
-      expect(ConnectorGeometry.hitTestCurve(bezier, const Offset(-1000, -1000)), isFalse);
+      expect(
+        ConnectorGeometry.hitTestRoute(route, const Offset(-1000, -1000)),
+        isFalse,
+      );
     });
   });
 }

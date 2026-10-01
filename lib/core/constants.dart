@@ -41,3 +41,9 @@ const double kTextNoteFontSize = 14;
 /// eventually leaving zero/negative width for text to wrap into and
 /// forcing it to wrap after nearly every character.
 const double kTextNoteContentPadding = 10;
+
+/// Board-space (world) radius for rounding a connector's 90-degree turns,
+/// converted to screen pixels via `* view.scale` at paint time - same
+/// "world unit -> screen pixels" pattern as everything else about a
+/// connector's rendered size (`strokeWidth * view.scale`).
+const double kConnectorCornerRadius = 10;

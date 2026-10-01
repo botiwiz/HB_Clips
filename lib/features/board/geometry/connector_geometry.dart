@@ -20,11 +20,12 @@ class ConnectorGeometry {
   static const double handleHitRadius = ClipGeometry.handleHitRadius;
   static const double handleVisualSize = 8;
 
-  /// Minimum/maximum bezier control-point offset (board units) from each
-  /// anchor along its outward normal, so very close clips still read as a
-  /// visible curve and very far clips don't balloon into an absurd arc.
-  static const double _minControlOffset = 20;
-  static const double _maxControlOffset = 120;
+  /// Minimum/maximum orthogonal-route stub length (board units) pushed out
+  /// from each anchor along its direction before the route turns, so very
+  /// close clips still read as a visible elbow and very far clips don't
+  /// grow an absurdly long stub.
+  static const double _minStubLength = 16;
+  static const double _maxStubLength = 40;
 
   static Offset _boardToScreen(Offset boardPoint, BoardViewState view) {
     return boardPoint * view.scale + view.panOffset;
@@ -149,8 +150,24 @@ class ConnectorGeometry {
     );
   }
 
-  static double _controlOffset(Offset a, Offset b) {
-    return ((a - b).distance * 0.5).clamp(_minControlOffset, _maxControlOffset);
+  static double _stubLength(Offset a, Offset b) {
+    return ((a - b).distance * 0.5).clamp(_minStubLength, _maxStubLength);
+  }
+
+  /// Rounds an arbitrary (possibly rotated) direction vector to the
+  /// nearest of the 4 board-space cardinal directions - whichever axis
+  /// has the larger-magnitude component wins, snapped to its sign. Lets
+  /// [routeBoard] stay strictly axis-aligned ("90-degree angle shifts")
+  /// even when an anchor's true outward normal is diagonal because its
+  /// clip is rotated; the anchor *point* itself stays exactly correct -
+  /// only the very first/last segment's direction is approximated this
+  /// way, which is visually identical to the true normal for the common
+  /// unrotated case and a reasonable approximation otherwise.
+  static Offset _snapToCardinal(Offset direction) {
+    if (direction.dx.abs() >= direction.dy.abs()) {
+      return Offset(direction.dx >= 0 ? 1 : -1, 0);
+    }
+    return Offset(0, direction.dy >= 0 ? 1 : -1);
   }
 
   /// [boardPoint] expressed as a fraction (0-1 on each axis, clamped) of
@@ -181,19 +198,27 @@ class ConnectorGeometry {
     return ClipGeometry.rotatePoint(local, center, clip.rotation);
   }
 
-  /// The 4 board-space points (P0 start anchor, C1, C2, P3 end anchor) of
-  /// a cubic bezier connecting [fromClip]'s fixed [fromSide] to
-  /// [toClip]. When [toRelX]/[toRelY] are both given, the target anchor is
-  /// that exact surface point ([pointFromRelative]) and its control point
-  /// is aimed back toward the source anchor (no "side" to take an outward
-  /// normal from, since the point can be anywhere inside the box).
-  /// Otherwise the target anchor falls back to the nearest boundary point
-  /// ([nearestBoundaryAnchor]), with the arrival control point pushed out
-  /// along that side's outward normal - today's behavior, unchanged.
-  /// Either way, control points are pushed out along each anchor's own
-  /// direction so the curve reads as a smooth arc, Miro-style, rather than
-  /// a straight line.
-  static ({Offset p0, Offset c1, Offset c2, Offset p3}) bezierBoard({
+  /// The board-space, axis-aligned polyline of an orthogonal ("elbow")
+  /// connector from [fromClip]'s fixed [fromSide] to [toClip] - a
+  /// flowchart-style route of straight horizontal/vertical segments only,
+  /// turning in 90-degree steps (actual corner rounding happens at paint
+  /// time, in screen space - see `ConnectorPainter`). When [toRelX]/
+  /// [toRelY] are both given, the target anchor is that exact surface
+  /// point ([pointFromRelative]); otherwise it falls back to the nearest
+  /// boundary point ([nearestBoundaryAnchor]) - same two cases
+  /// `bezierBoard` used to handle, unchanged.
+  ///
+  /// Construction: each anchor is pushed out a short "stub" along its own
+  /// direction ([_snapToCardinal]-ed to a cardinal axis), then the two
+  /// stub points are connected by a pure Manhattan path - a 2-bend "Z"
+  /// through the shared axis's midpoint when both directions are on the
+  /// same axis (both horizontal or both vertical), or a single-bend "L"
+  /// when they're on perpendicular axes. This always produces a valid
+  /// orthogonal polyline for any relative position/direction combination
+  /// - not always the visually shortest possible route in unusual
+  /// configurations (e.g. near-overlapping clips), but never a broken or
+  /// diagonal one.
+  static List<Offset> routeBoard({
     required BoardClip fromClip,
     required ConnectorSide fromSide,
     required BoardClip toClip,
@@ -202,51 +227,55 @@ class ConnectorGeometry {
   }) {
     final p0 = sideMidpointBoard(fromClip, fromSide);
 
-    final Offset p3;
-    Offset c2Direction;
+    final Offset p1;
+    Offset d1Source;
     if (toRelX != null && toRelY != null) {
-      p3 = pointFromRelative(toClip, Offset(toRelX, toRelY));
-      final toP0 = p0 - p3;
-      c2Direction = toP0.distance == 0
+      p1 = pointFromRelative(toClip, Offset(toRelX, toRelY));
+      final toP0 = p0 - p1;
+      d1Source = toP0.distance == 0
           ? const Offset(0, -1)
           : toP0 / toP0.distance;
     } else {
       final target = nearestBoundaryAnchor(toClip, p0);
-      p3 = target.point;
-      c2Direction = outwardNormal(toClip, target.side);
+      p1 = target.point;
+      d1Source = outwardNormal(toClip, target.side);
     }
 
-    final offset = _controlOffset(p0, p3);
-    final c1 = p0 + outwardNormal(fromClip, fromSide) * offset;
-    final c2 = p3 + c2Direction * offset;
-    return (p0: p0, c1: c1, c2: c2, p3: p3);
+    final d0 = _snapToCardinal(outwardNormal(fromClip, fromSide));
+    final d1 = _snapToCardinal(d1Source);
+    final stub = _stubLength(p0, p1);
+    final s0 = p0 + d0 * stub;
+    final s1 = p1 + d1 * stub;
+
+    final d0Horizontal = d0.dx != 0;
+    final d1Horizontal = d1.dx != 0;
+    final bends = <Offset>[];
+    if (d0Horizontal == d1Horizontal) {
+      if (d0Horizontal) {
+        final midX = (s0.dx + s1.dx) / 2;
+        bends.addAll([Offset(midX, s0.dy), Offset(midX, s1.dy)]);
+      } else {
+        final midY = (s0.dy + s1.dy) / 2;
+        bends.addAll([Offset(s0.dx, midY), Offset(s1.dx, midY)]);
+      }
+    } else {
+      bends.add(d0Horizontal ? Offset(s1.dx, s0.dy) : Offset(s0.dx, s1.dy));
+    }
+
+    final points = [p0, s0, ...bends, s1, p1];
+    final result = <Offset>[];
+    for (final point in points) {
+      if (result.isEmpty || result.last != point) result.add(point);
+    }
+    return result;
   }
 
-  /// Samples the cubic bezier described by [bezier] into a short polyline
-  /// ([segments] + 1 points, standard cubic Bezier interpolation) and
-  /// checks whether [screenPoint] comes within [ClipGeometry.handleHitRadius]
-  /// of it - reuses `EraserGeometry.strokeNearPoint`'s existing
-  /// point-to-polyline distance check rather than duplicating it.
-  static bool hitTestCurve(
-    ({Offset p0, Offset c1, Offset c2, Offset p3}) bezier,
-    Offset screenPoint, {
-    int segments = 16,
-  }) {
-    final points = <Offset>[];
-    for (var i = 0; i <= segments; i++) {
-      final t = i / segments;
-      final mt = 1 - t;
-      final point =
-          bezier.p0 * (mt * mt * mt) +
-          bezier.c1 * (3 * mt * mt * t) +
-          bezier.c2 * (3 * mt * t * t) +
-          bezier.p3 * (t * t * t);
-      points.add(point);
-    }
-    return EraserGeometry.strokeNearPoint(
-      points,
-      screenPoint,
-      handleHitRadius,
-    );
+  /// Whether [screenPoint] comes within [handleHitRadius] of the polyline
+  /// [points] (already screen-space) - a direct
+  /// `EraserGeometry.strokeNearPoint` call, no sampling needed since an
+  /// orthogonal route already *is* a polyline (unlike the old cubic
+  /// bezier, which had to be sampled into one first).
+  static bool hitTestRoute(List<Offset> points, Offset screenPoint) {
+    return EraserGeometry.strokeNearPoint(points, screenPoint, handleHitRadius);
   }
 }

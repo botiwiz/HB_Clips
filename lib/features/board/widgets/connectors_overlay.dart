@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/constants.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../data/providers.dart';
 import '../../annotation/stroke_painter.dart' show hexToColor;
@@ -32,7 +33,9 @@ class ConnectorsOverlay extends ConsumerWidget {
     final clips = ref.watch(activeClipsProvider).valueOrNull ?? [];
     final dragging = ref.watch(groupDragProvider);
     final view = ref.watch(boardViewProvider);
-    final retargetingId = ref.watch(connectorDraftProvider)?.existingConnectorId;
+    final retargetingId = ref
+        .watch(connectorDraftProvider)
+        ?.existingConnectorId;
     final selectedId = ref.watch(selectedConnectorIdProvider);
 
     Offset toScreen(Offset boardPoint) =>
@@ -66,7 +69,7 @@ class ConnectorsOverlay extends ConsumerWidget {
         );
       }
 
-      final bezier = ConnectorGeometry.bezierBoard(
+      final route = ConnectorGeometry.routeBoard(
         fromClip: fromClip,
         fromSide: connector.fromSide,
         toClip: toClip,
@@ -76,12 +79,10 @@ class ConnectorsOverlay extends ConsumerWidget {
       final selected = connector.id == selectedId;
       specs.add(
         ConnectorSpec(
-          p0: toScreen(bezier.p0),
-          c1: toScreen(bezier.c1),
-          c2: toScreen(bezier.c2),
-          p3: toScreen(bezier.p3),
+          points: [for (final point in route) toScreen(point)],
           color: selected ? AppTheme.red : hexToColor(connector.colorHex),
           width: connector.strokeWidth * view.scale,
+          cornerRadius: kConnectorCornerRadius * view.scale,
         ),
       );
     }

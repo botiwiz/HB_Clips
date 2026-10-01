@@ -46,13 +46,19 @@ class ConnectorHandles extends ConsumerWidget {
         final positions = ConnectorGeometry.handleScreenPositions(clip, view);
         children.addAll([
           for (final entry in positions.values)
-            _handle(entry, ConnectorGeometry.handleVisualSize, AppTheme.textSecondary),
+            _handle(
+              entry,
+              ConnectorGeometry.handleVisualSize,
+              AppTheme.textSecondary,
+            ),
         ]);
       }
     }
 
     final selectedConnectorId = ref.watch(selectedConnectorIdProvider);
-    final retargetingId = ref.watch(connectorDraftProvider)?.existingConnectorId;
+    final retargetingId = ref
+        .watch(connectorDraftProvider)
+        ?.existingConnectorId;
     if (selectedConnectorId != null && selectedConnectorId != retargetingId) {
       final connectors = ref.watch(activeConnectorsProvider).valueOrNull ?? [];
       Connector? connector;
@@ -86,16 +92,20 @@ class ConnectorHandles extends ConsumerWidget {
               rotation: toDrag.rotation,
             );
           }
-          final bezier = ConnectorGeometry.bezierBoard(
+          final route = ConnectorGeometry.routeBoard(
             fromClip: fromClip,
             fromSide: connector.fromSide,
             toClip: toClip,
             toRelX: connector.toRelX,
             toRelY: connector.toRelY,
           );
-          final p3Screen = bezier.p3 * view.scale + view.panOffset;
+          final p3Screen = route.last * view.scale + view.panOffset;
           children.add(
-            _handle(p3Screen, ConnectorGeometry.handleVisualSize + 4, AppTheme.red),
+            _handle(
+              p3Screen,
+              ConnectorGeometry.handleVisualSize + 4,
+              AppTheme.red,
+            ),
           );
         }
       }
