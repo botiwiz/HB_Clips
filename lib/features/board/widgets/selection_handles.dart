@@ -50,8 +50,7 @@ class SelectionHandles extends ConsumerWidget {
 
     return Stack(
       children: [
-        for (final entry in positions.entries)
-          _handle(entry.key, entry.value),
+        for (final entry in positions.entries) _handle(entry.key, entry.value),
       ],
     );
   }
