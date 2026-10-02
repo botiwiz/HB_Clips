@@ -36,11 +36,4 @@ class TextNoteGeometry {
     )..layout(maxWidth: innerWidth < 1 ? 1 : innerWidth);
     return painter.height + 2 * kTextNoteVerticalPadding;
   }
-
-  /// Board-space height of a single line of text at [fontSize] - the
-  /// same `fontSize * 1.3` line-height multiplier [requiredHeight]'s
-  /// `TextStyle(height: 1.3)` already uses, exposed so callers that need
-  /// "one line of slack" (not full re-measurement) share the same
-  /// definition instead of repeating the 1.3 constant.
-  static double lineHeight(double fontSize) => fontSize * 1.3;
 }

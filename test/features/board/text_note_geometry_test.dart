@@ -68,11 +68,4 @@ void main() {
       expect(bold, greaterThanOrEqualTo(plain));
     });
   });
-
-  group('lineHeight', () {
-    test('is fontSize scaled by the 1.3 line-height multiplier', () {
-      expect(TextNoteGeometry.lineHeight(14), closeTo(18.2, 0.001));
-      expect(TextNoteGeometry.lineHeight(20), closeTo(26.0, 0.001));
-    });
-  });
 }

@@ -153,16 +153,7 @@ class TextClipEditOverlay extends ConsumerStatefulWidget {
     final effectiveScale = clip.sizeLockScale ?? view.scale;
     final topLeft = Offset(clip.x, clip.y) * view.scale + view.panOffset;
     final boxWidth = clip.width * effectiveScale;
-    // Matches _liveHeight's one-extra-line buffer below the current text
-    // (this helper is only ever called while this exact clip is the one
-    // being edited, so the buffer applies unconditionally) - otherwise a
-    // click landing in that visible, typeable blank row would fall
-    // through this guard and steal focus instead of being recognized as
-    // "inside the note."
-    final fontSize = clip.fontSize ?? kTextNoteFontSize;
-    final boxHeight =
-        clip.height * effectiveScale +
-        TextNoteGeometry.lineHeight(fontSize) * effectiveScale;
+    final boxHeight = clip.height * effectiveScale;
     return Rect.fromLTWH(topLeft.dx, topLeft.dy, boxWidth, boxHeight);
   }
 
@@ -426,20 +417,12 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
   double _liveHeight(BoardClip clip) {
     final controller = _controller;
     if (controller == null) return clip.height;
-    final fontSize = clip.fontSize ?? kTextNoteFontSize;
-    // One extra blank line below whatever's being typed, as a second
-    // layer of insurance on top of the synchronous recompute above -
-    // simple slack rather than an exact-fit boundary. Editing-only: the
-    // persisted clip.height (written in onChanged below) stays exactly
-    // content-fit, so the box settles back down by one line the moment
-    // editing ends.
     return TextNoteGeometry.requiredHeight(
-          text: controller.text,
-          formatting: controller.formatting,
-          fontSize: fontSize,
-          width: clip.width,
-        ) +
-        TextNoteGeometry.lineHeight(fontSize);
+      text: controller.text,
+      formatting: controller.formatting,
+      fontSize: clip.fontSize ?? kTextNoteFontSize,
+      width: clip.width,
+    );
   }
 
   @override
