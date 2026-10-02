@@ -598,10 +598,23 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
       if (_boundClipId != null) _closeHighlightPicker(_boundClipId!);
       _disposeBinding();
       _bind(clip);
-    } else {
+    } else if (clip.textContent == _controller!.text) {
       // Keep the live controller's formatting in sync if it was mutated
       // elsewhere (e.g. a toggle just landed and activeClipsProvider's
-      // stream re-emitted) - a no-op rebuild otherwise.
+      // stream re-emitted) - a no-op rebuild otherwise. Gated on the
+      // text already matching: `clip.textContent` lags the
+      // controller's own text by at least one async round-trip through
+      // ClipsRepository.updateTextContent/activeClipsProvider's stream
+      // (onChanged below fires both writes without awaiting them), so
+      // while they differ, `clip.textFormatting` is a stale snapshot
+      // that must not overwrite the controller's own already-correct,
+      // locally-shifted formatting (see _RichTextEditingController
+      // .value) - doing this unconditionally was the actual cause of
+      // the edit-mode highlight/formatting offset bug: the live view's
+      // highlighted ranges stayed the correct length but got clobbered
+      // back to a stale, too-early start index on the very next
+      // keystroke's rebuild, compounding with each further edit before
+      // the stream caught up.
       _controller!.formatting = clip.textFormatting;
     }
 
