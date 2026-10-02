@@ -63,6 +63,26 @@ const double kConnectorCornerRadius = 10;
 /// `kTextNoteFontSize`/`fontSize`.
 const String kDefaultHighlightColorHex = '#FFEB3B';
 
+/// Fixed screen-space pixels reserved for the live `TextField`'s cursor,
+/// matching Flutter's own internal `RenderEditable` caret-margin
+/// reservation (`_kCaretGap` (1px, a private Flutter constant) plus the
+/// `cursorWidth` pinned on the TextField in `text_clip_edit_overlay
+/// .dart` - verified against the Flutter SDK source). `RenderEditable`
+/// lays its text out this many pixels narrower than the box it's given
+/// (to leave room for a cursor drawn after the last character of a full
+/// line) - `RenderParagraph` (what `Text`/`Text.rich` uses) and a bare
+/// `TextPainter` (what `HighlightGeometry` uses) do not reserve this
+/// margin, so every text-note rendering/measurement path that needs to
+/// agree with the live editor's real wrapping must subtract this from
+/// its own available width, or it wraps a line later than the live
+/// editor actually does - the root cause of text appearing to shift
+/// when entering/exiting edit mode, and of highlight rects landing
+/// where the un-corrected (wider) layout would have put that text
+/// rather than where the live editor's real, narrower layout does.
+/// Not board-space - this is a fixed screen-pixel Flutter mechanism,
+/// unrelated to the app's own board/zoom scale.
+const double kTextCaretReservedWidth = 3.0;
+
 /// Board-space (world) radius for rounding a text highlight's corners,
 /// converted to screen pixels via `* viewScale` at paint time - same
 /// "world unit -> screen pixels" pattern as `kConnectorCornerRadius`.

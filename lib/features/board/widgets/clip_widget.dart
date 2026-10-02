@@ -145,11 +145,25 @@ class ClipWidget extends StatelessWidget {
     final formatting = clip.textFormatting;
     final innerWidth =
         (clip.width - 2 * kTextNoteHorizontalPadding) * viewScale;
+    // The live editor's real TextField wraps text kTextCaretReservedWidth
+    // narrower than innerWidth (its RenderEditable reserves that margin
+    // for the cursor - see that constant's doc comment). Text.rich/
+    // RenderParagraph has no such reservation, so without this same
+    // correction here, this static render would wrap a line later than
+    // the live editor does - the same content producing a different line
+    // count (and so a different box shape/position) depending on whether
+    // the note is being edited, which read as the text "jumping" when
+    // entering/exiting edit mode. Constraining Text.rich itself to this
+    // narrower width (not just HighlightGeometry's rects below) is what
+    // makes the two agree.
+    final contentWidth = innerWidth > kTextCaretReservedWidth
+        ? innerWidth - kTextCaretReservedWidth
+        : innerWidth;
     final highlightRects = HighlightGeometry.rectsFor(
       text: text,
       formatting: formatting,
       baseStyle: baseStyle,
-      width: innerWidth,
+      width: contentWidth,
       cornerRadius: kHighlightCornerRadius * viewScale,
     );
     return Padding(
@@ -171,11 +185,24 @@ class ClipWidget extends StatelessWidget {
                 ),
               ),
             ),
-          Text.rich(
-            TextSpan(
-              children: TextStyleRanges.buildSpans(text, formatting, baseStyle),
+          // A Positioned (not a bare Stack child) so its explicit width
+          // survives this Stack's StackFit.expand - a non-positioned
+          // child would otherwise be forced to the Stack's full size,
+          // overriding contentWidth entirely.
+          Positioned(
+            left: 0,
+            top: 0,
+            width: contentWidth,
+            child: Text.rich(
+              TextSpan(
+                children: TextStyleRanges.buildSpans(
+                  text,
+                  formatting,
+                  baseStyle,
+                ),
+              ),
+              textScaler: TextScaler.noScaling,
             ),
-            textScaler: TextScaler.noScaling,
           ),
         ],
       ),

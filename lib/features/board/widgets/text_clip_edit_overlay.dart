@@ -128,20 +128,63 @@ class TextClipEditOverlay extends ConsumerStatefulWidget {
   /// overlays, e.g. `ArrangeSelectionButton.screenRectFor`), so it doesn't
   /// steal focus away from the TextField and exit edit mode before the
   /// toolbar's own button gets a chance to handle the tap.
-  static Rect screenRectFor(BoardClip clip, BoardViewState view) {
+  /// The toolbar's own screen-space width - also the highlight-color
+  /// picker bar's width (see [highlightPickerRectFor]), so the two stay
+  /// left-aligned and identically sized rather than two independent
+  /// guesses that could drift apart. 300 comfortably covers the toolbar
+  /// row's content (font-size label + compact chevron column + 5 standard
+  /// 40x40 PillIconButtons + 2 dividers); below that, the note's own
+  /// (narrower) width would make the toolbar look cramped, so 300 is a
+  /// floor, not just a fallback.
+  static double toolbarWidthFor(BoardClip clip, BoardViewState view) {
     final effectiveScale = clip.sizeLockScale ?? view.scale;
-    final topLeft = Offset(clip.x, clip.y) * view.scale + view.panOffset;
     final boxWidth = clip.width * effectiveScale;
+    return boxWidth < 300 ? 300.0 : boxWidth;
+  }
+
+  static Rect screenRectFor(BoardClip clip, BoardViewState view) {
+    final topLeft = Offset(clip.x, clip.y) * view.scale + view.panOffset;
     final top = topFor(topLeft.dy);
     // Width is generous (the toolbar's Row sizes to its content, which can
     // be wider than the note itself) - matching board_canvas.dart's other
     // guards, an approximate-but-safe rect is fine here since a miss only
     // means a click just outside the toolbar's edge falls through to
-    // normal canvas handling, same as clicking genuinely elsewhere. 300
-    // comfortably covers the row's content (font-size label + compact
-    // chevron column + 5 standard 40x40 PillIconButtons + 2 dividers).
-    final width = boxWidth < 300 ? 300.0 : boxWidth;
-    return Rect.fromLTWH(topLeft.dx, top, width, toolbarHeight);
+    // normal canvas handling, same as clicking genuinely elsewhere.
+    return Rect.fromLTWH(
+      topLeft.dx,
+      top,
+      toolbarWidthFor(clip, view),
+      toolbarHeight,
+    );
+  }
+
+  /// The highlight-color picker bar's fixed height - same role
+  /// [toolbarHeight] plays for the toolbar.
+  static const double highlightPickerHeight = 44;
+
+  /// The picker bar's clamped screen-space `top`, anchored directly above
+  /// the toolbar - same clamp-to-the-window-top idiom [topFor] uses, so a
+  /// note near the top of the viewport doesn't push the picker bar
+  /// off-screen.
+  static double highlightPickerTopFor(double topLeftDy) {
+    final top = topFor(topLeftDy) - 8 - highlightPickerHeight;
+    return top < 8 ? 8 : top;
+  }
+
+  /// Screen-space bounds of the anchored highlight-color picker bar for
+  /// [clip] at the current [view] - same click-through-guard role
+  /// [screenRectFor] plays for the toolbar (see `board_canvas.dart`'s use
+  /// of this, gated on [highlightPickerOpenProvider] since the bar only
+  /// exists while open).
+  static Rect highlightPickerRectFor(BoardClip clip, BoardViewState view) {
+    final topLeft = Offset(clip.x, clip.y) * view.scale + view.panOffset;
+    final top = highlightPickerTopFor(topLeft.dy);
+    return Rect.fromLTWH(
+      topLeft.dx,
+      top,
+      toolbarWidthFor(clip, view),
+      highlightPickerHeight,
+    );
   }
 
   /// Screen-space bounds of the note's own box for [clip] at the current
@@ -194,6 +237,13 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
   // panning/zooming) is a cheap no-op instead of a redundant repository
   // write.
   double? _lastSyncedHeight;
+  // The highlight color in effect when the anchored picker bar was last
+  // opened - captured so closing it (Done, or any exit path) can push a
+  // single undo step for the whole picker session, comparing against
+  // whatever the color ended up at, rather than one step per slider-drag
+  // tick (each tick writes live via _applyHighlightColorLive, with no
+  // undo push of its own).
+  String? _highlightColorBeforePicker;
 
   void _bind(BoardClip clip) {
     _controller = _RichTextEditingController(
@@ -373,24 +423,28 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
     ),
   );
 
-  /// Mirrors `shape_style_popover.dart`'s `ColorPickerSwatch.onColorSelected`
-  /// pattern exactly: capture the before hex, write the after hex, push one
-  /// undo step - applies to the whole note (one highlight color per note,
-  /// not per-range), not gated on a text selection.
-  void _setHighlightColor(BoardClip clip, Color color) {
-    final before = clip.highlightColorHex;
-    final after = colorToHex(color);
-    if (before == after) return;
-    final repo = ref.read(clipsRepositoryProvider);
-    repo.updateHighlightColor(clip.id, after);
+  /// Opens or closes the anchored highlight-color picker bar (tapped from
+  /// the toolbar's swatch button). Opening captures the note's current
+  /// highlight color as the undo-restore point (see _closeHighlightPicker,
+  /// which also handles the Done button and every other exit path).
+  void _toggleHighlightPicker(BoardClip clip) {
+    if (ref.read(highlightPickerOpenProvider)) {
+      _closeHighlightPicker(clip.id);
+    } else {
+      _highlightColorBeforePicker = clip.highlightColorHex;
+      ref.read(highlightPickerOpenProvider.notifier).state = true;
+    }
+  }
+
+  /// Writes the highlight color directly with no undo push of its own -
+  /// called on every slider-drag tick while the picker bar is open, so
+  /// the note's highlighted text updates live as the user drags. One
+  /// undo step for the whole picker session is pushed when it closes
+  /// (see _closeHighlightPicker), not per tick.
+  void _applyHighlightColorLive(BoardClip clip, Color color) {
     ref
-        .read(undoManagerProvider.notifier)
-        .push(
-          UndoableAction(
-            undo: () => repo.updateHighlightColor(clip.id, before),
-            redo: () => repo.updateHighlightColor(clip.id, after),
-          ),
-        );
+        .read(clipsRepositoryProvider)
+        .updateHighlightColor(clip.id, colorToHex(color));
   }
 
   void _adjustFontSize(BoardClip clip, double delta) {
@@ -490,11 +544,47 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
     });
   }
 
+  /// Closes the anchored highlight-color picker bar if it's open,
+  /// pushing one undo step for the whole picker session (comparing the
+  /// color captured when it was opened against [id]'s current color -
+  /// every slider-drag tick in between wrote live via
+  /// _applyHighlightColorLive with no undo push of its own). A no-op if
+  /// the picker isn't open. Called from every path that ends this
+  /// widget's edit session (both branches below, before _disposeBinding)
+  /// so a pending color change is never silently lost regardless of how
+  /// editing ends - deliberately NOT called from dispose() itself (ref
+  /// reads aren't safe there).
+  void _closeHighlightPicker(String id) {
+    if (!ref.read(highlightPickerOpenProvider)) return;
+    final before = _highlightColorBeforePicker;
+    _highlightColorBeforePicker = null;
+    ref.read(highlightPickerOpenProvider.notifier).state = false;
+    final liveClip = ClipGeometry.findById(
+      ref.read(activeClipsProvider).valueOrNull ?? [],
+      id,
+    );
+    final after = liveClip?.highlightColorHex;
+    if (before != after) {
+      final repo = ref.read(clipsRepositoryProvider);
+      ref
+          .read(undoManagerProvider.notifier)
+          .push(
+            UndoableAction(
+              undo: () => repo.updateHighlightColor(id, before),
+              redo: () => repo.updateHighlightColor(id, after),
+            ),
+          );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final editingId = ref.watch(editingTextClipIdProvider);
     if (editingId == null) {
-      if (_boundClipId != null) _disposeBinding();
+      if (_boundClipId != null) {
+        _closeHighlightPicker(_boundClipId!);
+        _disposeBinding();
+      }
       return const SizedBox.shrink();
     }
 
@@ -505,6 +595,7 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
     }
 
     if (_boundClipId != editingId) {
+      if (_boundClipId != null) _closeHighlightPicker(_boundClipId!);
       _disposeBinding();
       _bind(clip);
     } else {
@@ -519,17 +610,25 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
     final topLeft = Offset(clip.x, clip.y) * view.scale + view.panOffset;
     final boxWidth = clip.width * effectiveScale;
     final locked = clip.sizeLockScale != null;
+    final toolbarWidth = TextClipEditOverlay.toolbarWidthFor(clip, view);
+    final highlightPickerOpen = ref.watch(highlightPickerOpenProvider);
     final textStyle = TextNoteGeometry.baseStyle(
       fontSize: (clip.fontSize ?? kTextNoteFontSize) * effectiveScale,
       color: AppTheme.textNoteText,
     );
     final innerWidth =
         boxWidth - 2 * kTextNoteHorizontalPadding * effectiveScale;
+    // The live TextField's real RenderEditable lays text out
+    // kTextCaretReservedWidth narrower than innerWidth (reserved for the
+    // cursor - see that constant's doc comment) - HighlightGeometry's
+    // bare TextPainter must match that same narrower width, or its rects
+    // land where the (wider, uncorrected) layout would have wrapped
+    // instead of where the real TextField actually does.
     final highlightRects = HighlightGeometry.rectsFor(
       text: _controller!.text,
       formatting: _controller!.formatting,
       baseStyle: textStyle,
-      width: innerWidth,
+      width: innerWidth - kTextCaretReservedWidth,
       cornerRadius: kHighlightCornerRadius * effectiveScale,
     );
 
@@ -656,6 +755,12 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
                           focusNode: _focusNode,
                           maxLines: null,
                           minLines: 1,
+                          // Pinned explicitly (not relying on the
+                          // framework default, even though it happens to
+                          // already be 2.0) so kTextCaretReservedWidth has
+                          // a concrete, documented value to match - see
+                          // that constant's doc comment.
+                          cursorWidth: 2.0,
                           // Overrides EditableText's default "auto-unfocus on
                           // any tap outside this field" behavior with a no-op -
                           // board_canvas.dart's own explicit
@@ -710,9 +815,36 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
               ),
             ),
           ),
+          if (highlightPickerOpen)
+            Positioned(
+              left: topLeft.dx,
+              top: TextClipEditOverlay.highlightPickerTopFor(topLeft.dy),
+              width: toolbarWidth,
+              height: TextClipEditOverlay.highlightPickerHeight,
+              child: Material(
+                color: AppTheme.surfaceElevated,
+                borderRadius: BorderRadius.circular(8),
+                elevation: 6,
+                shadowColor: Colors.black54,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
+                  child: InlineHsvPickerBar(
+                    initialColor: hexToColor(
+                      clip.highlightColorHex ?? kDefaultHighlightColorHex,
+                    ),
+                    onChanged: (color) => _applyHighlightColorLive(clip, color),
+                    onDone: () => _toggleHighlightPicker(clip),
+                  ),
+                ),
+              ),
+            ),
           Positioned(
             left: topLeft.dx,
             top: TextClipEditOverlay.topFor(topLeft.dy),
+            width: toolbarWidth,
             height: TextClipEditOverlay.toolbarHeight,
             child: Material(
               color: AppTheme.surfaceElevated,
@@ -815,12 +947,26 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
                             : null,
                         onPressed: _toggleHighlight,
                       ),
-                      ColorPickerSwatch(
-                        color: hexToColor(
-                          clip.highlightColorHex ?? kDefaultHighlightColorHex,
+                      GestureDetector(
+                        onTap: () => _toggleHighlightPicker(clip),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                          child: Container(
+                            width: 24,
+                            height: 24,
+                            decoration: BoxDecoration(
+                              color: hexToColor(
+                                clip.highlightColorHex ??
+                                    kDefaultHighlightColorHex,
+                              ),
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: AppTheme.border,
+                                width: 1,
+                              ),
+                            ),
+                          ),
                         ),
-                        onColorSelected: (color) =>
-                            _setHighlightColor(clip, color),
                       ),
                       _divider(),
                       PillIconButton(

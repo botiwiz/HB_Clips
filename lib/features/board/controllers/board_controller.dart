@@ -239,6 +239,14 @@ final shapeToolDragRectProvider = StateProvider<Rect?>((ref) => null);
 /// pan/zoom.
 final editingTextClipIdProvider = StateProvider<String?>((ref) => null);
 
+/// Whether the text-edit toolbar's anchored highlight-color picker bar is
+/// currently open - read by `board_canvas.dart`'s click-through guard
+/// (alongside `TextClipEditOverlay.screenRectFor`/`noteRectFor`) so a
+/// click on the picker bar itself doesn't fall through to the canvas and
+/// exit edit mode before the picker's own sliders/Done button get a
+/// chance to handle it. Reset to false whenever edit mode ends.
+final highlightPickerOpenProvider = StateProvider<bool>((ref) => false);
+
 /// Snapshot of an in-progress connector drag - null when no such drag is
 /// active. Same ephemeral-preview role [defineFrameRectProvider]/
 /// [arrangeDragRectProvider] play elsewhere: `board_canvas.dart` updates it

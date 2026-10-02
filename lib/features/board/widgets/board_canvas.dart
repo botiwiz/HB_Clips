@@ -612,6 +612,17 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
         ).contains(event.localPosition)) {
           return;
         }
+        // Same guard, for the anchored highlight-color picker bar (only
+        // present above the toolbar while open) - without this, dragging
+        // one of its sliders would also steal focus away from the
+        // TextField on every pointer-down.
+        if (ref.read(highlightPickerOpenProvider) &&
+            TextClipEditOverlay.highlightPickerRectFor(
+              editingClip,
+              view,
+            ).contains(event.localPosition)) {
+          return;
+        }
         // Same reasoning, for the note's own box: a click/drag meant to
         // place the caret or drag-select text must never let this
         // canvas-level focus node steal focus away from the TextField
