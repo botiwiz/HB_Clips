@@ -1,8 +1,25 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:hb_clips/core/constants.dart';
 import 'package:hb_clips/data/models/clip.dart';
 import 'package:hb_clips/features/board/geometry/text_note_geometry.dart';
 
 void main() {
+  group('baseStyle', () {
+    test(
+      'pins every field TextStyle.merge could otherwise inject from an ambient theme',
+      () {
+        final style = TextNoteGeometry.baseStyle(fontSize: 14);
+        expect(style.fontSize, 14);
+        expect(style.letterSpacing, 0);
+        expect(style.height, kTextNoteLineHeight);
+        expect(style.fontWeight, FontWeight.w400);
+        expect(style.fontStyle, FontStyle.normal);
+        expect(style.decoration, TextDecoration.none);
+      },
+    );
+  });
+
   group('requiredHeight', () {
     test('empty text gives roughly one line of height', () {
       final height = TextNoteGeometry.requiredHeight(

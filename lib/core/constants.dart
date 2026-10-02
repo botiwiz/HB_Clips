@@ -43,6 +43,13 @@ const double kTextNoteFontSize = 14;
 const double kTextNoteHorizontalPadding = 8;
 const double kTextNoteVerticalPadding = 2;
 
+/// Line-height multiplier for text-note content - the single source of
+/// truth shared by `TextNoteGeometry.baseStyle` (and therefore every
+/// place that measures or renders text-note content), replacing what
+/// used to be 3 independent `height: 1.3` literals that had to be kept
+/// in sync by hand.
+const double kTextNoteLineHeight = 1.3;
+
 /// Board-space (world) radius for rounding a connector's 90-degree turns,
 /// converted to screen pixels via `* view.scale` at paint time - same
 /// "world unit -> screen pixels" pattern as everything else about a

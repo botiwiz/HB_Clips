@@ -8,6 +8,7 @@ import '../../annotation/controllers/annotation_controller.dart'
 import '../../annotation/stroke_painter.dart';
 import '../controllers/board_controller.dart' show ImagePanZoomLive;
 import '../geometry/highlight_geometry.dart';
+import '../geometry/text_note_geometry.dart';
 import '../geometry/text_style_ranges.dart';
 import 'gif_playback_view.dart';
 import 'highlight_painter.dart';
@@ -136,10 +137,9 @@ class ClipWidget extends StatelessWidget {
     // live zoom (see `board_canvas.dart._positionedClip`'s "constant size"
     // toggle handling), so the box and its font always agree on how big to
     // render regardless of which one is in effect.
-    final baseStyle = TextStyle(
-      color: AppTheme.textNoteText,
+    final baseStyle = TextNoteGeometry.baseStyle(
       fontSize: (clip.fontSize ?? kTextNoteFontSize) * viewScale,
-      height: 1.3,
+      color: AppTheme.textNoteText,
     );
     final text = clip.textContent ?? '';
     final formatting = clip.textFormatting;
@@ -175,6 +175,7 @@ class ClipWidget extends StatelessWidget {
             TextSpan(
               children: TextStyleRanges.buildSpans(text, formatting, baseStyle),
             ),
+            textScaler: TextScaler.noScaling,
           ),
         ],
       ),
