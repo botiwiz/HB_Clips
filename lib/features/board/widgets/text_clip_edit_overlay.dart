@@ -182,6 +182,19 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
   // that actually matched the pre-edit text, not the post-edit ranges
   // misapplied to reverted text.
   TextFormatting? _formattingBeforeEdit;
+  // Stable across rebuilds of the same edit session (recreated only when
+  // _bind binds a different clip) - identifies the outer Container whose
+  // real, Flutter-measured size _scheduleHeightSync reads back after
+  // every frame. A fresh GlobalKey() created inline in build() would
+  // force an unnecessary element remount on every keystroke.
+  GlobalKey? _boxKey;
+  // The last height value _scheduleHeightSync actually persisted (or the
+  // clip's starting height, seeded in _bind) - compared against on each
+  // sync so a rebuild unrelated to this note's content (e.g. the board
+  // panning/zooming) is a cheap no-op instead of a redundant repository
+  // write.
+  double? _lastSyncedHeight;
+
   void _bind(BoardClip clip) {
     _controller = _RichTextEditingController(
       text: clip.textContent ?? '',
@@ -189,6 +202,8 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
     );
     _textBeforeEdit = clip.textContent ?? '';
     _formattingBeforeEdit = clip.textFormatting;
+    _boxKey = GlobalKey(debugLabel: 'TextClipEditBox-${clip.id}');
+    _lastSyncedHeight = clip.height;
     _focusNode = FocusNode(debugLabel: 'TextClipEdit-${clip.id}');
     _boundClipId = clip.id;
     _focusNode!.addListener(() {
@@ -267,6 +282,8 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
     _boundClipId = null;
     _textBeforeEdit = null;
     _formattingBeforeEdit = null;
+    _boxKey = null;
+    _lastSyncedHeight = null;
   }
 
   @override
@@ -384,9 +401,16 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
     // A bigger font needs a taller box for the same text - fold a height
     // recompute into the same undo step as the font-size change itself,
     // same "height is a derived value" principle as everywhere else.
-    // clip.height already exactly fits the current font size (the
-    // invariant _liveHeight/onChanged maintain), so it doubles as the
-    // "before" value with no separate recompute needed.
+    // clip.height already exactly fits the current font size (kept
+    // accurate by _scheduleHeightSync, which reads it back from
+    // Flutter's own layout after every frame), so it doubles as the
+    // "before" value with no separate recompute needed. No live
+    // TextField exists yet for the "after" (not-yet-applied) font size,
+    // so afterHeight still has to be predicted here for the undo/redo
+    // closures below - but no immediate write is needed alongside
+    // updateFontSize: that triggers the same rebuild -> _scheduleHeightSync
+    // path every other change goes through, which will pick up and
+    // persist the real post-layout height on its own.
     final text = _controller?.text ?? clip.textContent ?? '';
     final formatting = _controller?.formatting ?? clip.textFormatting;
     final beforeHeight = clip.height;
@@ -397,7 +421,6 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
       width: clip.width,
     );
     repo.updateFontSize(clip.id, next);
-    repo.updateTransform(clip.id, height: afterHeight);
     ref
         .read(undoManagerProvider.notifier)
         .push(
@@ -438,28 +461,33 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
     return TextStyleRanges.isFullyCovered(ranges, sel.start, sel.end);
   }
 
-  /// The box height needed for the controller's *current* text, computed
-  /// synchronously from local state rather than read from `clip.height`
-  /// (which lags behind by at least one async round-trip through
-  /// `ClipsRepository.updateTransform` and `activeClipsProvider`'s
-  /// stream). Used for the live edit box's own size so it's always
-  /// correct by the time `TextField` lays out for this frame - without
-  /// this, a keystroke that wraps to a new line briefly overflows a box
-  /// still sized for the old height, and `TextField`'s internal
-  /// scrollable viewport kicks in (a scrollbar, and an inconsistent
-  /// scroll-to-caret position) until the round-trip catches up. The box
-  /// always snaps to an exact content fit - shrinking as readily as it
-  /// grows - the only way to change its shape is a manual resize drag
-  /// (board_canvas.dart), which changes width and lets height re-fit.
-  double _liveHeight(BoardClip clip) {
-    final controller = _controller;
-    if (controller == null) return clip.height;
-    return TextNoteGeometry.requiredHeight(
-      text: controller.text,
-      formatting: controller.formatting,
-      fontSize: clip.fontSize ?? kTextNoteFontSize,
-      width: clip.width,
-    );
+  /// Reads back the real height Flutter's own layout produced for the
+  /// note box (border + padding + content) and persists it to
+  /// `clip.height` if it has genuinely changed. This is the single
+  /// source of truth for this app's "no scrollbar, no clipping"
+  /// auto-grow behavior: the `TextField` in `build()` is given an
+  /// unbounded height and sizes itself to exactly fit its content (see
+  /// that method's doc comment), so there is nothing left to predict -
+  /// this just measures the real answer after each frame instead of
+  /// guessing it before the frame, which is what made the box
+  /// occasionally one line too short and clipped the last line.
+  /// Scheduled unconditionally at the end of every `build()` - cheap to
+  /// call even when nothing changed, since `_lastSyncedHeight` (not
+  /// `clip.height` directly, which can itself be mid-round-trip) turns a
+  /// rebuild from unrelated board activity (panning, another clip
+  /// moving) into a single key lookup and comparison, not a write.
+  void _scheduleHeightSync(String id, double effectiveScale) {
+    final key = _boxKey;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _boundClipId != id) return;
+      final box = key?.currentContext?.findRenderObject() as RenderBox?;
+      if (box == null || !box.hasSize) return;
+      final measured = box.size.height / effectiveScale;
+      final last = _lastSyncedHeight;
+      if (last != null && (measured - last).abs() <= 0.5) return;
+      _lastSyncedHeight = measured;
+      ref.read(clipsRepositoryProvider).updateTransform(id, height: measured);
+    });
   }
 
   @override
@@ -490,7 +518,6 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
     final effectiveScale = clip.sizeLockScale ?? view.scale;
     final topLeft = Offset(clip.x, clip.y) * view.scale + view.panOffset;
     final boxWidth = clip.width * effectiveScale;
-    final boxHeight = _liveHeight(clip) * effectiveScale;
     final locked = clip.sizeLockScale != null;
     final textStyle = TextNoteGeometry.baseStyle(
       fontSize: (clip.fontSize ?? kTextNoteFontSize) * effectiveScale,
@@ -506,6 +533,8 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
       cornerRadius: kHighlightCornerRadius * effectiveScale,
     );
 
+    _scheduleHeightSync(editingId, effectiveScale);
+
     return Positioned.fill(
       child: Stack(
         children: [
@@ -513,7 +542,11 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
             left: topLeft.dx,
             top: topLeft.dy,
             width: boxWidth,
-            height: boxHeight,
+            // No height - the TextField below sizes itself intrinsically
+            // to exactly fit its content (see build()'s class-level doc
+            // comment / Part 36), so this box's height is never a
+            // prediction, only ever whatever Flutter's own layout
+            // actually produces.
             child: CallbackShortcuts(
               bindings: {
                 const SingleActivator(LogicalKeyboardKey.escape):
@@ -557,6 +590,7 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
                     _toggleHighlight,
               },
               child: Container(
+                key: _boxKey,
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(color: AppTheme.red, width: 2.5),
@@ -582,7 +616,19 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
                     vertical: kTextNoteVerticalPadding * effectiveScale,
                   ),
                   child: Stack(
-                    fit: StackFit.expand,
+                    // passthrough, not loose: the incoming constraints
+                    // here are tight-width (from the outer Positioned's
+                    // `width:`) and loose-height (from that Positioned's
+                    // now-absent `height:`) - passthrough forwards both
+                    // unmodified to the TextField below, so it keeps
+                    // filling the box horizontally while sizing itself
+                    // intrinsically to its content vertically. StackFit
+                    // .loose would loosen the width too, shrink-wrapping
+                    // the field to its longest line instead of filling
+                    // the box; StackFit.expand would force an infinite
+                    // height (the incoming max is now unbounded) and
+                    // crash.
+                    fit: StackFit.passthrough,
                     children: [
                       if (highlightRects.isNotEmpty)
                         Positioned.fill(
@@ -609,7 +655,7 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
                           controller: _controller,
                           focusNode: _focusNode,
                           maxLines: null,
-                          expands: true,
+                          minLines: 1,
                           // Overrides EditableText's default "auto-unfocus on
                           // any tap outside this field" behavior with a no-op -
                           // board_canvas.dart's own explicit
@@ -641,31 +687,19 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
                             if (formatting != null) {
                               repo.updateTextFormatting(editingId, formatting);
                             }
-                            // Height is a pure function of (text, formatting,
-                            // fontSize, width) - recompute it on every
-                            // keystroke and always snap the box to an exact
-                            // fit, growing and shrinking as content changes.
-                            final fontSize = clip.fontSize ?? kTextNoteFontSize;
-                            final newHeight = TextNoteGeometry.requiredHeight(
-                              text: text,
-                              formatting: formatting ?? clip.textFormatting,
-                              fontSize: fontSize,
-                              width: clip.width,
-                            );
-                            if ((newHeight - clip.height).abs() > 0.5) {
-                              repo.updateTransform(
-                                editingId,
-                                height: newHeight,
-                              );
-                            }
-                            // Rebuild immediately so boxHeight (driven by
-                            // _liveHeight, reading the controller's text we
-                            // just updated) is correct before TextField lays
-                            // out this frame - without this, the box stays
-                            // sized for the stale clip.height until the write
-                            // above round-trips back through activeClipsProvider,
-                            // and TextField's expanding field briefly overflows
-                            // its own bounds, becoming internally scrollable.
+                            // No height recompute here - the TextField above
+                            // has an unbounded height and sizes itself to
+                            // exactly fit its own content on its own, with
+                            // zero help from this callback (see build()'s
+                            // doc comment / Part 36). _scheduleHeightSync
+                            // (called at the end of every build()) reads
+                            // back whatever Flutter's own layout produced
+                            // after this frame and persists it if it
+                            // changed. setState is still needed, though not
+                            // for layout: it refreshes highlightRects and
+                            // the toolbar's bold/italic/underline "active"
+                            // indicators, both computed fresh in build()
+                            // from the controller's current text/formatting.
                             setState(() {});
                           },
                         ),
