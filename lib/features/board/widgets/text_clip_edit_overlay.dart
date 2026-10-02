@@ -186,6 +186,12 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
   // that actually matched the pre-edit text, not the post-edit ranges
   // misapplied to reverted text.
   TextFormatting? _formattingBeforeEdit;
+  // The height floor in effect when this edit session started (see
+  // board_canvas.dart's manual-resize handling and _liveHeight above) -
+  // undoing/redoing this session's text change should land on whatever
+  // this floor was, not a pure content-fit that ignores a manual resize
+  // made before the session began.
+  double? _heightBeforeEdit;
 
   void _bind(BoardClip clip) {
     _controller = _RichTextEditingController(
@@ -197,6 +203,7 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
     );
     _textBeforeEdit = clip.textContent ?? '';
     _formattingBeforeEdit = clip.textFormatting;
+    _heightBeforeEdit = clip.height;
     _focusNode = FocusNode(debugLabel: 'TextClipEdit-${clip.id}');
     _boundClipId = clip.id;
     _focusNode!.addListener(() {
@@ -229,6 +236,20 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
         );
         final width = liveClip?.width ?? kDefaultTextNoteWidth;
         final fontSize = liveClip?.fontSize ?? kTextNoteFontSize;
+        // Same one-way floor _liveHeight/onChanged use - undoing/redoing
+        // this session's edit shouldn't shrink the box below whatever
+        // manual resize was in effect when the session started.
+        final floor = _heightBeforeEdit ?? liveClip?.height ?? 0;
+        double heightFor(String text, TextFormatting formatting) {
+          final contentFit = TextNoteGeometry.requiredHeight(
+            text: text,
+            formatting: formatting,
+            fontSize: fontSize,
+            width: width,
+          );
+          return contentFit > floor ? contentFit : floor;
+        }
+
         ref
             .read(undoManagerProvider.notifier)
             .push(
@@ -238,12 +259,7 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
                   repo.updateTextFormatting(id, beforeFormatting),
                   repo.updateTransform(
                     id,
-                    height: TextNoteGeometry.requiredHeight(
-                      text: before,
-                      formatting: beforeFormatting,
-                      fontSize: fontSize,
-                      width: width,
-                    ),
+                    height: heightFor(before, beforeFormatting),
                   ),
                 ]),
                 redo: () => Future.wait([
@@ -251,12 +267,7 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
                   repo.updateTextFormatting(id, finalFormatting),
                   repo.updateTransform(
                     id,
-                    height: TextNoteGeometry.requiredHeight(
-                      text: finalText,
-                      formatting: finalFormatting,
-                      fontSize: fontSize,
-                      width: width,
-                    ),
+                    height: heightFor(finalText, finalFormatting),
                   ),
                 ]),
               ),
@@ -276,6 +287,7 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
     _boundClipId = null;
     _textBeforeEdit = null;
     _formattingBeforeEdit = null;
+    _heightBeforeEdit = null;
   }
 
   @override
@@ -393,20 +405,22 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
     // A bigger font needs a taller box for the same text - fold a height
     // recompute into the same undo step as the font-size change itself,
     // same "height is a derived value" principle as everywhere else.
+    // clip.height is already the floor currently in effect (manual
+    // resize or prior growth) - beforeHeight is just that value; after
+    // only grows past it if the new font size needs more room, never
+    // shrinks it.
     final text = _controller?.text ?? clip.textContent ?? '';
     final formatting = _controller?.formatting ?? clip.textFormatting;
-    final beforeHeight = TextNoteGeometry.requiredHeight(
-      text: text,
-      formatting: formatting,
-      fontSize: current,
-      width: clip.width,
-    );
-    final afterHeight = TextNoteGeometry.requiredHeight(
+    final beforeHeight = clip.height;
+    final contentFitAfter = TextNoteGeometry.requiredHeight(
       text: text,
       formatting: formatting,
       fontSize: next,
       width: clip.width,
     );
+    final afterHeight = contentFitAfter > beforeHeight
+        ? contentFitAfter
+        : beforeHeight;
     repo.updateFontSize(clip.id, next);
     repo.updateTransform(clip.id, height: afterHeight);
     ref
@@ -459,15 +473,19 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
   /// still sized for the old height, and `TextField`'s internal
   /// scrollable viewport kicks in (a scrollbar, and an inconsistent
   /// scroll-to-caret position) until the round-trip catches up.
+  /// `clip.height` is also the current manually-set floor (see
+  /// `onChanged` below) - never returns less than it, so typing never
+  /// visibly shrinks the box below what was last dragged.
   double _liveHeight(BoardClip clip) {
     final controller = _controller;
     if (controller == null) return clip.height;
-    return TextNoteGeometry.requiredHeight(
+    final contentFit = TextNoteGeometry.requiredHeight(
       text: controller.text,
       formatting: controller.formatting,
       fontSize: clip.fontSize ?? kTextNoteFontSize,
       width: clip.width,
     );
+    return contentFit > clip.height ? contentFit : clip.height;
   }
 
   @override
@@ -621,10 +639,14 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
                         repo.updateTextFormatting(editingId, formatting);
                       }
                       // Auto-grow: height is a pure function of
-                      // (text, formatting, fontSize, width) - recompute and
-                      // persist it on every keystroke so the box always
-                      // fits its content exactly, growing or shrinking as
-                      // needed, anchored at the unchanged top-left (x, y).
+                      // (text, formatting, fontSize, width) - recompute it
+                      // on every keystroke and grow the box when content
+                      // needs more room than it currently has. One-way:
+                      // clip.height also doubles as the current
+                      // manually-set floor (see board_canvas.dart's resize
+                      // handling), so typing never auto-shrinks the box
+                      // below whatever was last dragged - only another
+                      // manual resize can make it shorter.
                       final fontSize = clip.fontSize ?? kTextNoteFontSize;
                       final newHeight = TextNoteGeometry.requiredHeight(
                         text: text,
@@ -632,7 +654,7 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
                         fontSize: fontSize,
                         width: clip.width,
                       );
-                      if ((newHeight - clip.height).abs() > 0.5) {
+                      if (newHeight > clip.height + 0.5) {
                         repo.updateTransform(editingId, height: newHeight);
                       }
                       // Rebuild immediately so boxHeight (driven by

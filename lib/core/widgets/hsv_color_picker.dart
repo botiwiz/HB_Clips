@@ -81,65 +81,68 @@ class _HsvColorPickerDialogState extends State<_HsvColorPickerDialog> {
       HSVColor.fromAHSV(1, _hsv.hue, _hsv.saturation, 1).toColor(),
     ];
 
-    return AlertDialog(
-      title: const Text('Color'),
-      content: SizedBox(
-        width: 440,
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                color: _hsv.toColor(),
-                shape: BoxShape.circle,
-                border: Border.all(color: AppTheme.border),
+    return Dialog(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: SizedBox(
+          width: 560,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: _hsv.toColor(),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: AppTheme.border),
+                ),
               ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              flex: 3,
-              child: _LabeledGradientBar(
-                label: 'Hue',
-                colors: hueColors,
-                value: _hsv.hue / 360,
-                onChanged: (t) => setState(() => _hsv = _hsv.withHue(t * 360)),
+              const SizedBox(width: 12),
+              Expanded(
+                flex: 3,
+                child: _LabeledGradientBar(
+                  label: 'Hue',
+                  colors: hueColors,
+                  value: _hsv.hue / 360,
+                  onChanged: (t) =>
+                      setState(() => _hsv = _hsv.withHue(t * 360)),
+                ),
               ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              flex: 1,
-              child: _LabeledGradientBar(
-                label: 'Saturation',
-                colors: saturationColors,
-                value: _hsv.saturation,
-                onChanged: (t) => setState(() => _hsv = _hsv.withSaturation(t)),
+              const SizedBox(width: 12),
+              Expanded(
+                flex: 1,
+                child: _LabeledGradientBar(
+                  label: 'Saturation',
+                  colors: saturationColors,
+                  value: _hsv.saturation,
+                  onChanged: (t) =>
+                      setState(() => _hsv = _hsv.withSaturation(t)),
+                ),
               ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              flex: 1,
-              child: _LabeledGradientBar(
-                label: 'Value',
-                colors: valueColors,
-                value: _hsv.value,
-                onChanged: (t) => setState(() => _hsv = _hsv.withValue(t)),
+              const SizedBox(width: 12),
+              Expanded(
+                flex: 1,
+                child: _LabeledGradientBar(
+                  label: 'Value',
+                  colors: valueColors,
+                  value: _hsv.value,
+                  onChanged: (t) => setState(() => _hsv = _hsv.withValue(t)),
+                ),
               ),
-            ),
-          ],
+              const SizedBox(width: 12),
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(_hsv.toColor()),
+                child: const Text('Done'),
+              ),
+            ],
+          ),
         ),
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(_hsv.toColor()),
-          child: const Text('Done'),
-        ),
-      ],
     );
   }
 }

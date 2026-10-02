@@ -24,7 +24,6 @@ import '../geometry/frame_geometry.dart';
 import '../geometry/image_pan_zoom_geometry.dart';
 import '../geometry/selection_geometry.dart';
 import '../geometry/snap_geometry.dart';
-import '../geometry/text_note_geometry.dart';
 import '../geometry/view_focus_geometry.dart';
 import '../services/add_image_service.dart';
 import '../services/eyedropper_service.dart';
@@ -1195,29 +1194,12 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
         final resultWidth = snap
             ? ClipGeometry.snap(result.width, kBoardGridSpacing)
             : result.width;
-        // A text clip's height is auto-fit to its content, not under
-        // manual drag control - only the X-axis component of a corner
-        // drag has any effect (narrowing/widening); Y never moves and
-        // height re-fits live to whatever width is currently being
-        // dragged to, same invariant as typing/font-size changes.
-        final double resultY;
-        final double resultHeight;
-        if (_handleStartClip!.type == ClipType.text) {
-          resultY = _handleStartClip!.y;
-          resultHeight = TextNoteGeometry.requiredHeight(
-            text: _handleStartClip!.textContent ?? '',
-            formatting: _handleStartClip!.textFormatting,
-            fontSize: _handleStartClip!.fontSize ?? kTextNoteFontSize,
-            width: resultWidth,
-          );
-        } else {
-          resultY = snap
-              ? ClipGeometry.snap(result.y, kBoardGridSpacing)
-              : result.y;
-          resultHeight = snap
-              ? ClipGeometry.snap(result.height, kBoardGridSpacing)
-              : result.height;
-        }
+        final resultY = snap
+            ? ClipGeometry.snap(result.y, kBoardGridSpacing)
+            : result.y;
+        final resultHeight = snap
+            ? ClipGeometry.snap(result.height, kBoardGridSpacing)
+            : result.height;
         ref.read(groupDragProvider.notifier).state = {
           id: current.copyWith(
             x: resultX,
