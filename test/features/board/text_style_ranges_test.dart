@@ -140,22 +140,10 @@ void main() {
       expect(spans.single.style?.decoration, TextDecoration.underline);
     });
 
-    test('highlight applies backgroundColor from highlightColor', () {
-      const formatting = TextFormatting(highlight: [(start: 1, end: 3)]);
-      final spans = TextStyleRanges.buildSpans(
-        'abcd',
-        formatting,
-        const TextStyle(fontSize: 14),
-        highlightColor: const Color(0xFFFFEB3B),
-      );
-
-      expect(spans.map((s) => s.text), ['a', 'bc', 'd']);
-      expect(spans[0].style?.backgroundColor, isNull);
-      expect(spans[1].style?.backgroundColor, const Color(0xFFFFEB3B));
-      expect(spans[2].style?.backgroundColor, isNull);
-    });
-
-    test('highlight with no highlightColor paints no background', () {
+    test('highlight does not affect buildSpans styling', () {
+      // Highlight is painted as a separate rounded-rect layer (see
+      // HighlightGeometry), not via TextStyle.backgroundColor - buildSpans
+      // ignores formatting.highlight entirely.
       const formatting = TextFormatting(highlight: [(start: 0, end: 3)]);
       final spans = TextStyleRanges.buildSpans(
         'abc',

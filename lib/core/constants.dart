@@ -55,3 +55,8 @@ const double kConnectorCornerRadius = 10;
 /// time, same "nullable override, constant fallback" pattern as
 /// `kTextNoteFontSize`/`fontSize`.
 const String kDefaultHighlightColorHex = '#FFEB3B';
+
+/// Board-space (world) radius for rounding a text highlight's corners,
+/// converted to screen pixels via `* viewScale` at paint time - same
+/// "world unit -> screen pixels" pattern as `kConnectorCornerRadius`.
+const double kHighlightCornerRadius = 3.5;

@@ -7,8 +7,10 @@ import '../../annotation/controllers/annotation_controller.dart'
     show kDefaultStrokeWidth;
 import '../../annotation/stroke_painter.dart';
 import '../controllers/board_controller.dart' show ImagePanZoomLive;
+import '../geometry/highlight_geometry.dart';
 import '../geometry/text_style_ranges.dart';
 import 'gif_playback_view.dart';
+import 'highlight_painter.dart';
 import 'image_pan_zoom_frame.dart';
 import 'local_image.dart';
 import 'shape_painter.dart';
@@ -139,22 +141,41 @@ class ClipWidget extends StatelessWidget {
       fontSize: (clip.fontSize ?? kTextNoteFontSize) * viewScale,
       height: 1.3,
     );
+    final text = clip.textContent ?? '';
+    final formatting = clip.textFormatting;
+    final innerWidth =
+        (clip.width - 2 * kTextNoteHorizontalPadding) * viewScale;
+    final highlightRects = HighlightGeometry.rectsFor(
+      text: text,
+      formatting: formatting,
+      baseStyle: baseStyle,
+      width: innerWidth,
+      cornerRadius: kHighlightCornerRadius * viewScale,
+    );
     return Padding(
       padding: EdgeInsets.symmetric(
         horizontal: kTextNoteHorizontalPadding * viewScale,
         vertical: kTextNoteVerticalPadding * viewScale,
       ),
-      child: Text.rich(
-        TextSpan(
-          children: TextStyleRanges.buildSpans(
-            clip.textContent ?? '',
-            clip.textFormatting,
-            baseStyle,
-            highlightColor: hexToColor(
-              clip.highlightColorHex ?? kDefaultHighlightColorHex,
+      child: Stack(
+        children: [
+          if (highlightRects.isNotEmpty)
+            Positioned.fill(
+              child: CustomPaint(
+                painter: HighlightPainter(
+                  rects: highlightRects,
+                  color: hexToColor(
+                    clip.highlightColorHex ?? kDefaultHighlightColorHex,
+                  ),
+                ),
+              ),
+            ),
+          Text.rich(
+            TextSpan(
+              children: TextStyleRanges.buildSpans(text, formatting, baseStyle),
             ),
           ),
-        ),
+        ],
       ),
     );
   }

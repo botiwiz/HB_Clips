@@ -10,10 +10,12 @@ import '../../../data/providers.dart';
 import '../../annotation/stroke_painter.dart' show colorToHex, hexToColor;
 import '../controllers/board_controller.dart';
 import '../controllers/undo_controller.dart';
+import '../geometry/highlight_geometry.dart';
 import '../geometry/selection_geometry.dart';
 import '../geometry/text_note_geometry.dart';
 import '../geometry/text_style_ranges.dart';
 import 'board_toolbar.dart';
+import 'highlight_painter.dart';
 
 /// A minimum/maximum for the whole-note font-size stepper in the edit
 /// toolbar - keeps a note readable without letting it grow/shrink to
@@ -31,13 +33,8 @@ const double _fontSizeStep = 2;
 /// embedded in the text, no custom cursor-offset math.
 class _RichTextEditingController extends TextEditingController {
   TextFormatting formatting;
-  Color highlightColor;
 
-  _RichTextEditingController({
-    required super.text,
-    required this.formatting,
-    required this.highlightColor,
-  });
+  _RichTextEditingController({required super.text, required this.formatting});
 
   void setFormatting(TextFormatting next) {
     formatting = next;
@@ -79,7 +76,6 @@ class _RichTextEditingController extends TextEditingController {
         text,
         formatting,
         style ?? const TextStyle(),
-        highlightColor: highlightColor,
       ),
     );
   }
@@ -197,9 +193,6 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
     _controller = _RichTextEditingController(
       text: clip.textContent ?? '',
       formatting: clip.textFormatting,
-      highlightColor: hexToColor(
-        clip.highlightColorHex ?? kDefaultHighlightColorHex,
-      ),
     );
     _textBeforeEdit = clip.textContent ?? '';
     _formattingBeforeEdit = clip.textFormatting;
@@ -510,9 +503,6 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
       // elsewhere (e.g. a toggle just landed and activeClipsProvider's
       // stream re-emitted) - a no-op rebuild otherwise.
       _controller!.formatting = clip.textFormatting;
-      _controller!.highlightColor = hexToColor(
-        clip.highlightColorHex ?? kDefaultHighlightColorHex,
-      );
     }
 
     final view = ref.watch(boardViewProvider);
@@ -521,6 +511,20 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
     final boxWidth = clip.width * effectiveScale;
     final boxHeight = _liveHeight(clip) * effectiveScale;
     final locked = clip.sizeLockScale != null;
+    final textStyle = TextStyle(
+      color: AppTheme.textNoteText,
+      fontSize: (clip.fontSize ?? kTextNoteFontSize) * effectiveScale,
+      height: 1.3,
+    );
+    final innerWidth =
+        boxWidth - 2 * kTextNoteHorizontalPadding * effectiveScale;
+    final highlightRects = HighlightGeometry.rectsFor(
+      text: _controller!.text,
+      formatting: _controller!.formatting,
+      baseStyle: textStyle,
+      width: innerWidth,
+      cornerRadius: kHighlightCornerRadius * effectiveScale,
+    );
 
     return Positioned.fill(
       child: Stack(
@@ -597,76 +601,87 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
                     horizontal: kTextNoteHorizontalPadding * effectiveScale,
                     vertical: kTextNoteVerticalPadding * effectiveScale,
                   ),
-                  child: TextField(
-                    controller: _controller,
-                    focusNode: _focusNode,
-                    maxLines: null,
-                    expands: true,
-                    // Overrides EditableText's default "auto-unfocus on
-                    // any tap outside this field" behavior with a no-op -
-                    // board_canvas.dart's own explicit
-                    // editingTextClipIdProvider clearing (at each point a
-                    // click resolves onto a different clip/frame/
-                    // connector/empty canvas) is what deliberately ends
-                    // edit mode now, not Flutter's internal tap-region
-                    // mechanism, which proved unreliable in this heavily
-                    // custom-transformed board (wrapping in
-                    // TextFieldTapRegion previously caused new regressions
-                    // - dropped character insertion and a text-rendering
-                    // artifact - without even fixing the original bug).
-                    onTapOutside: (event) {},
-                    style: TextStyle(
-                      color: AppTheme.textNoteText,
-                      fontSize:
-                          (clip.fontSize ?? kTextNoteFontSize) * effectiveScale,
-                      height: 1.3,
-                    ),
-                    decoration: const InputDecoration(
-                      border: InputBorder.none,
-                      isCollapsed: true,
-                    ),
-                    onChanged: (text) {
-                      final repo = ref.read(clipsRepositoryProvider);
-                      repo.updateTextContent(editingId, text);
-                      // The controller's `value` setter already re-mapped
-                      // formatting through this exact edit - persist it
-                      // alongside the text so it isn't lost (and doesn't
-                      // get overwritten back to its stale pre-edit value
-                      // by the `_controller!.formatting = clip.textFormatting`
-                      // sync a few lines up, next time this rebuilds).
-                      final formatting = _controller?.formatting;
-                      if (formatting != null) {
-                        repo.updateTextFormatting(editingId, formatting);
-                      }
-                      // Auto-grow: height is a pure function of
-                      // (text, formatting, fontSize, width) - recompute it
-                      // on every keystroke and grow the box when content
-                      // needs more room than it currently has. One-way:
-                      // clip.height also doubles as the current
-                      // manually-set floor (see board_canvas.dart's resize
-                      // handling), so typing never auto-shrinks the box
-                      // below whatever was last dragged - only another
-                      // manual resize can make it shorter.
-                      final fontSize = clip.fontSize ?? kTextNoteFontSize;
-                      final newHeight = TextNoteGeometry.requiredHeight(
-                        text: text,
-                        formatting: formatting ?? clip.textFormatting,
-                        fontSize: fontSize,
-                        width: clip.width,
-                      );
-                      if (newHeight > clip.height + 0.5) {
-                        repo.updateTransform(editingId, height: newHeight);
-                      }
-                      // Rebuild immediately so boxHeight (driven by
-                      // _liveHeight, reading the controller's text we
-                      // just updated) is correct before TextField lays
-                      // out this frame - without this, the box stays
-                      // sized for the stale clip.height until the write
-                      // above round-trips back through activeClipsProvider,
-                      // and TextField's expanding field briefly overflows
-                      // its own bounds, becoming internally scrollable.
-                      setState(() {});
-                    },
+                  child: Stack(
+                    children: [
+                      if (highlightRects.isNotEmpty)
+                        Positioned.fill(
+                          child: CustomPaint(
+                            painter: HighlightPainter(
+                              rects: highlightRects,
+                              color: hexToColor(
+                                clip.highlightColorHex ??
+                                    kDefaultHighlightColorHex,
+                              ),
+                            ),
+                          ),
+                        ),
+                      TextField(
+                        controller: _controller,
+                        focusNode: _focusNode,
+                        maxLines: null,
+                        expands: true,
+                        // Overrides EditableText's default "auto-unfocus on
+                        // any tap outside this field" behavior with a no-op -
+                        // board_canvas.dart's own explicit
+                        // editingTextClipIdProvider clearing (at each point a
+                        // click resolves onto a different clip/frame/
+                        // connector/empty canvas) is what deliberately ends
+                        // edit mode now, not Flutter's internal tap-region
+                        // mechanism, which proved unreliable in this heavily
+                        // custom-transformed board (wrapping in
+                        // TextFieldTapRegion previously caused new regressions
+                        // - dropped character insertion and a text-rendering
+                        // artifact - without even fixing the original bug).
+                        onTapOutside: (event) {},
+                        style: textStyle,
+                        decoration: const InputDecoration(
+                          border: InputBorder.none,
+                          isCollapsed: true,
+                        ),
+                        onChanged: (text) {
+                          final repo = ref.read(clipsRepositoryProvider);
+                          repo.updateTextContent(editingId, text);
+                          // The controller's `value` setter already re-mapped
+                          // formatting through this exact edit - persist it
+                          // alongside the text so it isn't lost (and doesn't
+                          // get overwritten back to its stale pre-edit value
+                          // by the `_controller!.formatting = clip.textFormatting`
+                          // sync a few lines up, next time this rebuilds).
+                          final formatting = _controller?.formatting;
+                          if (formatting != null) {
+                            repo.updateTextFormatting(editingId, formatting);
+                          }
+                          // Auto-grow: height is a pure function of
+                          // (text, formatting, fontSize, width) - recompute it
+                          // on every keystroke and grow the box when content
+                          // needs more room than it currently has. One-way:
+                          // clip.height also doubles as the current
+                          // manually-set floor (see board_canvas.dart's resize
+                          // handling), so typing never auto-shrinks the box
+                          // below whatever was last dragged - only another
+                          // manual resize can make it shorter.
+                          final fontSize = clip.fontSize ?? kTextNoteFontSize;
+                          final newHeight = TextNoteGeometry.requiredHeight(
+                            text: text,
+                            formatting: formatting ?? clip.textFormatting,
+                            fontSize: fontSize,
+                            width: clip.width,
+                          );
+                          if (newHeight > clip.height + 0.5) {
+                            repo.updateTransform(editingId, height: newHeight);
+                          }
+                          // Rebuild immediately so boxHeight (driven by
+                          // _liveHeight, reading the controller's text we
+                          // just updated) is correct before TextField lays
+                          // out this frame - without this, the box stays
+                          // sized for the stale clip.height until the write
+                          // above round-trips back through activeClipsProvider,
+                          // and TextField's expanding field briefly overflows
+                          // its own bounds, becoming internally scrollable.
+                          setState(() {});
+                        },
+                      ),
+                    ],
                   ),
                 ),
               ),
