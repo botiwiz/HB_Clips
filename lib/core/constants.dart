@@ -48,3 +48,10 @@ const double kTextNoteVerticalPadding = 2;
 /// "world unit -> screen pixels" pattern as everything else about a
 /// connector's rendered size (`strokeWidth * view.scale`).
 const double kConnectorCornerRadius = 10;
+
+/// Starting highlight color (a standard highlighter yellow) for a text
+/// note before its color has ever been customized via the toolbar's
+/// swatch - `BoardClip.highlightColorHex` falls back to this at render
+/// time, same "nullable override, constant fallback" pattern as
+/// `kTextNoteFontSize`/`fontSize`.
+const String kDefaultHighlightColorHex = '#FFEB3B';

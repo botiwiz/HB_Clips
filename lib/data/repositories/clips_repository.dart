@@ -197,6 +197,18 @@ class ClipsRepository {
     );
   }
 
+  /// Sets a text note's highlight color (one color per note, applied
+  /// behind every `textFormatting.highlight` range), or clears it back
+  /// to `kDefaultHighlightColorHex` when [colorHex] is null.
+  Future<void> updateHighlightColor(String id, String? colorHex) {
+    return (_db.update(_db.clips)..where((c) => c.id.equals(id))).write(
+      ClipsCompanion(
+        highlightColorHex: Value(colorHex),
+        updatedAt: Value(DateTime.now()),
+      ),
+    );
+  }
+
   /// Pins a text note's on-screen size to [scale] (the board-view scale at
   /// the moment the "constant size" toggle was switched on), or clears it
   /// back to normal world-space scaling when [scale] is null.

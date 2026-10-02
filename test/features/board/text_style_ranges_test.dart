@@ -140,6 +140,33 @@ void main() {
       expect(spans.single.style?.decoration, TextDecoration.underline);
     });
 
+    test('highlight applies backgroundColor from highlightColor', () {
+      const formatting = TextFormatting(highlight: [(start: 1, end: 3)]);
+      final spans = TextStyleRanges.buildSpans(
+        'abcd',
+        formatting,
+        const TextStyle(fontSize: 14),
+        highlightColor: const Color(0xFFFFEB3B),
+      );
+
+      expect(spans.map((s) => s.text), ['a', 'bc', 'd']);
+      expect(spans[0].style?.backgroundColor, isNull);
+      expect(spans[1].style?.backgroundColor, const Color(0xFFFFEB3B));
+      expect(spans[2].style?.backgroundColor, isNull);
+    });
+
+    test('highlight with no highlightColor paints no background', () {
+      const formatting = TextFormatting(highlight: [(start: 0, end: 3)]);
+      final spans = TextStyleRanges.buildSpans(
+        'abc',
+        formatting,
+        const TextStyle(fontSize: 14),
+      );
+
+      expect(spans, hasLength(1));
+      expect(spans.single.style?.backgroundColor, isNull);
+    });
+
     test('underline and strikethrough on the same run combine', () {
       const formatting = TextFormatting(
         underline: [(start: 0, end: 3)],
@@ -320,6 +347,18 @@ void main() {
       );
       expect(result.bold, [(start: 0, end: 5)]);
       expect(result.italic, isEmpty);
+    });
+
+    test('shifts the highlight range list too', () {
+      final formatting = TextFormatting(highlight: const [(start: 6, end: 11)]);
+      final diff = TextStyleRanges.diffText('Hello world', 'world');
+      final result = TextStyleRanges.shiftFormatting(
+        formatting,
+        diff.start,
+        diff.deletedLength,
+        diff.insertedLength,
+      );
+      expect(result.highlight, [(start: 0, end: 5)]);
     });
   });
 }

@@ -166,19 +166,22 @@ class TextStyleRanges {
       italic: shift(formatting.italic),
       underline: shift(formatting.underline),
       strikethrough: shift(formatting.strikethrough),
+      highlight: shift(formatting.highlight),
     );
   }
 
-  /// Flattens [formatting]'s 4 independent range lists into a sequence of
+  /// Flattens [formatting]'s 5 independent range lists into a sequence of
   /// non-overlapping [TextSpan]s over [text], each combining [base] with
-  /// whichever of bold/italic/underline/strikethrough cover that run -
-  /// underline and strikethrough combine via `TextDecoration.combine` when
-  /// both apply to the same run.
+  /// whichever of bold/italic/underline/strikethrough/highlight cover that
+  /// run - underline and strikethrough combine via `TextDecoration.combine`
+  /// when both apply to the same run; [highlightColor] paints behind any
+  /// run covered by `formatting.highlight` via `TextStyle.backgroundColor`.
   static List<TextSpan> buildSpans(
     String text,
     TextFormatting formatting,
-    TextStyle base,
-  ) {
+    TextStyle base, {
+    Color? highlightColor,
+  }) {
     if (text.isEmpty) return [TextSpan(text: text, style: base)];
 
     final boundaries = <int>{0, text.length};
@@ -187,6 +190,7 @@ class TextStyleRanges {
       ...formatting.italic,
       ...formatting.underline,
       ...formatting.strikethrough,
+      ...formatting.highlight,
     ]) {
       boundaries.add(r.start.clamp(0, text.length));
       boundaries.add(r.end.clamp(0, text.length));
@@ -202,6 +206,7 @@ class TextStyleRanges {
       final italic = isFullyCovered(formatting.italic, a, a + 1);
       final underline = isFullyCovered(formatting.underline, a, a + 1);
       final strike = isFullyCovered(formatting.strikethrough, a, a + 1);
+      final highlighted = isFullyCovered(formatting.highlight, a, a + 1);
       spans.add(
         TextSpan(
           text: text.substring(a, b),
@@ -214,6 +219,7 @@ class TextStyleRanges {
                     if (strike) TextDecoration.lineThrough,
                   ])
                 : null,
+            backgroundColor: highlighted ? highlightColor : null,
           ),
         ),
       );

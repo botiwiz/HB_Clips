@@ -93,6 +93,12 @@ class Clips extends Table {
   /// `kDefaultStrokeWidth`. Ignored for non-shape clips.
   RealColumn get shapeStrokeWidth => real().nullable()();
 
+  /// Background color behind text covered by `textFormattingJson`'s
+  /// `highlight` ranges, as `#RRGGBB`. Null falls back to
+  /// `kDefaultHighlightColorHex` at render time. One color per note, not
+  /// per-range. Ignored for image/shape clips.
+  TextColumn get highlightColorHex => text().nullable()();
+
   BoolColumn get isBinned => boolean().withDefault(const Constant(false))();
   DateTimeColumn get binnedAt => dateTime().nullable()();
 

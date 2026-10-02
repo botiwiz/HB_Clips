@@ -4,9 +4,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/constants.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/hsv_color_picker.dart';
 import '../../../data/models/clip.dart';
 import '../../../data/providers.dart';
-import '../../annotation/stroke_painter.dart' show hexToColor;
+import '../../annotation/stroke_painter.dart' show colorToHex, hexToColor;
 import '../controllers/board_controller.dart';
 import '../controllers/undo_controller.dart';
 import '../geometry/selection_geometry.dart';
@@ -30,8 +31,13 @@ const double _fontSizeStep = 2;
 /// embedded in the text, no custom cursor-offset math.
 class _RichTextEditingController extends TextEditingController {
   TextFormatting formatting;
+  Color highlightColor;
 
-  _RichTextEditingController({required super.text, required this.formatting});
+  _RichTextEditingController({
+    required super.text,
+    required this.formatting,
+    required this.highlightColor,
+  });
 
   void setFormatting(TextFormatting next) {
     formatting = next;
@@ -73,6 +79,7 @@ class _RichTextEditingController extends TextEditingController {
         text,
         formatting,
         style ?? const TextStyle(),
+        highlightColor: highlightColor,
       ),
     );
   }
@@ -184,6 +191,9 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
     _controller = _RichTextEditingController(
       text: clip.textContent ?? '',
       formatting: clip.textFormatting,
+      highlightColor: hexToColor(
+        clip.highlightColorHex ?? kDefaultHighlightColorHex,
+      ),
     );
     _textBeforeEdit = clip.textContent ?? '';
     _formattingBeforeEdit = clip.textFormatting;
@@ -307,6 +317,7 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
       italic: f.italic,
       underline: f.underline,
       strikethrough: f.strikethrough,
+      highlight: f.highlight,
     ),
   );
 
@@ -317,6 +328,7 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
       italic: r,
       underline: f.underline,
       strikethrough: f.strikethrough,
+      highlight: f.highlight,
     ),
   );
 
@@ -327,6 +339,7 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
       italic: f.italic,
       underline: r,
       strikethrough: f.strikethrough,
+      highlight: f.highlight,
     ),
   );
 
@@ -337,8 +350,40 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
       italic: f.italic,
       underline: f.underline,
       strikethrough: r,
+      highlight: f.highlight,
     ),
   );
+
+  void _toggleHighlight() => _toggleAttribute(
+    select: (f) => f.highlight,
+    update: (f, r) => TextFormatting(
+      bold: f.bold,
+      italic: f.italic,
+      underline: f.underline,
+      strikethrough: f.strikethrough,
+      highlight: r,
+    ),
+  );
+
+  /// Mirrors `shape_style_popover.dart`'s `ColorPickerSwatch.onColorSelected`
+  /// pattern exactly: capture the before hex, write the after hex, push one
+  /// undo step - applies to the whole note (one highlight color per note,
+  /// not per-range), not gated on a text selection.
+  void _setHighlightColor(BoardClip clip, Color color) {
+    final before = clip.highlightColorHex;
+    final after = colorToHex(color);
+    if (before == after) return;
+    final repo = ref.read(clipsRepositoryProvider);
+    repo.updateHighlightColor(clip.id, after);
+    ref
+        .read(undoManagerProvider.notifier)
+        .push(
+          UndoableAction(
+            undo: () => repo.updateHighlightColor(clip.id, before),
+            redo: () => repo.updateHighlightColor(clip.id, after),
+          ),
+        );
+  }
 
   void _adjustFontSize(BoardClip clip, double delta) {
     final beforeRaw = clip.fontSize;
@@ -447,6 +492,9 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
       // elsewhere (e.g. a toggle just landed and activeClipsProvider's
       // stream re-emitted) - a no-op rebuild otherwise.
       _controller!.formatting = clip.textFormatting;
+      _controller!.highlightColor = hexToColor(
+        clip.highlightColorHex ?? kDefaultHighlightColorHex,
+      );
     }
 
     final view = ref.watch(boardViewProvider);
@@ -503,6 +551,8 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
                     _toggleUnderline,
                 const SingleActivator(LogicalKeyboardKey.keyS, control: true):
                     _toggleStrikethrough,
+                const SingleActivator(LogicalKeyboardKey.keyH, control: true):
+                    _toggleHighlight,
               },
               child: Container(
                 decoration: BoxDecoration(
@@ -693,6 +743,24 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
                             ? AppTheme.red
                             : null,
                         onPressed: _toggleStrikethrough,
+                      ),
+                      PillIconButton(
+                        tooltip: 'Highlight',
+                        icon: Icons.format_color_fill,
+                        color:
+                            _selectionHasStyle(
+                              _controller?.formatting.highlight ?? const [],
+                            )
+                            ? AppTheme.red
+                            : null,
+                        onPressed: _toggleHighlight,
+                      ),
+                      ColorPickerSwatch(
+                        color: hexToColor(
+                          clip.highlightColorHex ?? kDefaultHighlightColorHex,
+                        ),
+                        onColorSelected: (color) =>
+                            _setHighlightColor(clip, color),
                       ),
                       _divider(),
                       PillIconButton(

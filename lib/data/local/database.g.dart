@@ -291,6 +291,18 @@ class $ClipsTable extends Clips with TableInfo<$ClipsTable, ClipRow> {
     type: DriftSqlType.double,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _highlightColorHexMeta = const VerificationMeta(
+    'highlightColorHex',
+  );
+  @override
+  late final GeneratedColumn<String> highlightColorHex =
+      GeneratedColumn<String>(
+        'highlight_color_hex',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
   static const VerificationMeta _isBinnedMeta = const VerificationMeta(
     'isBinned',
   );
@@ -369,6 +381,7 @@ class $ClipsTable extends Clips with TableInfo<$ClipsTable, ClipRow> {
     shapeFillColorHex,
     shapeStrokeColorHex,
     shapeStrokeWidth,
+    highlightColorHex,
     isBinned,
     binnedAt,
     createdAt,
@@ -566,6 +579,15 @@ class $ClipsTable extends Clips with TableInfo<$ClipsTable, ClipRow> {
         ),
       );
     }
+    if (data.containsKey('highlight_color_hex')) {
+      context.handle(
+        _highlightColorHexMeta,
+        highlightColorHex.isAcceptableOrUnknown(
+          data['highlight_color_hex']!,
+          _highlightColorHexMeta,
+        ),
+      );
+    }
     if (data.containsKey('is_binned')) {
       context.handle(
         _isBinnedMeta,
@@ -703,6 +725,10 @@ class $ClipsTable extends Clips with TableInfo<$ClipsTable, ClipRow> {
         DriftSqlType.double,
         data['${effectivePrefix}shape_stroke_width'],
       ),
+      highlightColorHex: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}highlight_color_hex'],
+      ),
       isBinned: attachedDatabase.typeMapping.read(
         DriftSqlType.bool,
         data['${effectivePrefix}is_binned'],
@@ -812,6 +838,12 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
   /// Stroke width in board-space pixels. Null falls back to
   /// `kDefaultStrokeWidth`. Ignored for non-shape clips.
   final double? shapeStrokeWidth;
+
+  /// Background color behind text covered by `textFormattingJson`'s
+  /// `highlight` ranges, as `#RRGGBB`. Null falls back to
+  /// `kDefaultHighlightColorHex` at render time. One color per note, not
+  /// per-range. Ignored for image/shape clips.
+  final String? highlightColorHex;
   final bool isBinned;
   final DateTime? binnedAt;
   final DateTime createdAt;
@@ -843,6 +875,7 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
     this.shapeFillColorHex,
     this.shapeStrokeColorHex,
     this.shapeStrokeWidth,
+    this.highlightColorHex,
     required this.isBinned,
     this.binnedAt,
     required this.createdAt,
@@ -902,6 +935,9 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
     }
     if (!nullToAbsent || shapeStrokeWidth != null) {
       map['shape_stroke_width'] = Variable<double>(shapeStrokeWidth);
+    }
+    if (!nullToAbsent || highlightColorHex != null) {
+      map['highlight_color_hex'] = Variable<String>(highlightColorHex);
     }
     map['is_binned'] = Variable<bool>(isBinned);
     if (!nullToAbsent || binnedAt != null) {
@@ -966,6 +1002,9 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
       shapeStrokeWidth: shapeStrokeWidth == null && nullToAbsent
           ? const Value.absent()
           : Value(shapeStrokeWidth),
+      highlightColorHex: highlightColorHex == null && nullToAbsent
+          ? const Value.absent()
+          : Value(highlightColorHex),
       isBinned: Value(isBinned),
       binnedAt: binnedAt == null && nullToAbsent
           ? const Value.absent()
@@ -1015,6 +1054,9 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
         json['shapeStrokeColorHex'],
       ),
       shapeStrokeWidth: serializer.fromJson<double?>(json['shapeStrokeWidth']),
+      highlightColorHex: serializer.fromJson<String?>(
+        json['highlightColorHex'],
+      ),
       isBinned: serializer.fromJson<bool>(json['isBinned']),
       binnedAt: serializer.fromJson<DateTime?>(json['binnedAt']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
@@ -1051,6 +1093,7 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
       'shapeFillColorHex': serializer.toJson<String?>(shapeFillColorHex),
       'shapeStrokeColorHex': serializer.toJson<String?>(shapeStrokeColorHex),
       'shapeStrokeWidth': serializer.toJson<double?>(shapeStrokeWidth),
+      'highlightColorHex': serializer.toJson<String?>(highlightColorHex),
       'isBinned': serializer.toJson<bool>(isBinned),
       'binnedAt': serializer.toJson<DateTime?>(binnedAt),
       'createdAt': serializer.toJson<DateTime>(createdAt),
@@ -1085,6 +1128,7 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
     Value<String?> shapeFillColorHex = const Value.absent(),
     Value<String?> shapeStrokeColorHex = const Value.absent(),
     Value<double?> shapeStrokeWidth = const Value.absent(),
+    Value<String?> highlightColorHex = const Value.absent(),
     bool? isBinned,
     Value<DateTime?> binnedAt = const Value.absent(),
     DateTime? createdAt,
@@ -1132,6 +1176,9 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
     shapeStrokeWidth: shapeStrokeWidth.present
         ? shapeStrokeWidth.value
         : this.shapeStrokeWidth,
+    highlightColorHex: highlightColorHex.present
+        ? highlightColorHex.value
+        : this.highlightColorHex,
     isBinned: isBinned ?? this.isBinned,
     binnedAt: binnedAt.present ? binnedAt.value : this.binnedAt,
     createdAt: createdAt ?? this.createdAt,
@@ -1183,6 +1230,9 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
       shapeStrokeWidth: data.shapeStrokeWidth.present
           ? data.shapeStrokeWidth.value
           : this.shapeStrokeWidth,
+      highlightColorHex: data.highlightColorHex.present
+          ? data.highlightColorHex.value
+          : this.highlightColorHex,
       isBinned: data.isBinned.present ? data.isBinned.value : this.isBinned,
       binnedAt: data.binnedAt.present ? data.binnedAt.value : this.binnedAt,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
@@ -1219,6 +1269,7 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
           ..write('shapeFillColorHex: $shapeFillColorHex, ')
           ..write('shapeStrokeColorHex: $shapeStrokeColorHex, ')
           ..write('shapeStrokeWidth: $shapeStrokeWidth, ')
+          ..write('highlightColorHex: $highlightColorHex, ')
           ..write('isBinned: $isBinned, ')
           ..write('binnedAt: $binnedAt, ')
           ..write('createdAt: $createdAt, ')
@@ -1255,6 +1306,7 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
     shapeFillColorHex,
     shapeStrokeColorHex,
     shapeStrokeWidth,
+    highlightColorHex,
     isBinned,
     binnedAt,
     createdAt,
@@ -1290,6 +1342,7 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
           other.shapeFillColorHex == this.shapeFillColorHex &&
           other.shapeStrokeColorHex == this.shapeStrokeColorHex &&
           other.shapeStrokeWidth == this.shapeStrokeWidth &&
+          other.highlightColorHex == this.highlightColorHex &&
           other.isBinned == this.isBinned &&
           other.binnedAt == this.binnedAt &&
           other.createdAt == this.createdAt &&
@@ -1323,6 +1376,7 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
   final Value<String?> shapeFillColorHex;
   final Value<String?> shapeStrokeColorHex;
   final Value<double?> shapeStrokeWidth;
+  final Value<String?> highlightColorHex;
   final Value<bool> isBinned;
   final Value<DateTime?> binnedAt;
   final Value<DateTime> createdAt;
@@ -1355,6 +1409,7 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
     this.shapeFillColorHex = const Value.absent(),
     this.shapeStrokeColorHex = const Value.absent(),
     this.shapeStrokeWidth = const Value.absent(),
+    this.highlightColorHex = const Value.absent(),
     this.isBinned = const Value.absent(),
     this.binnedAt = const Value.absent(),
     this.createdAt = const Value.absent(),
@@ -1388,6 +1443,7 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
     this.shapeFillColorHex = const Value.absent(),
     this.shapeStrokeColorHex = const Value.absent(),
     this.shapeStrokeWidth = const Value.absent(),
+    this.highlightColorHex = const Value.absent(),
     this.isBinned = const Value.absent(),
     this.binnedAt = const Value.absent(),
     this.createdAt = const Value.absent(),
@@ -1423,6 +1479,7 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
     Expression<String>? shapeFillColorHex,
     Expression<String>? shapeStrokeColorHex,
     Expression<double>? shapeStrokeWidth,
+    Expression<String>? highlightColorHex,
     Expression<bool>? isBinned,
     Expression<DateTime>? binnedAt,
     Expression<DateTime>? createdAt,
@@ -1459,6 +1516,7 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
       if (shapeStrokeColorHex != null)
         'shape_stroke_color_hex': shapeStrokeColorHex,
       if (shapeStrokeWidth != null) 'shape_stroke_width': shapeStrokeWidth,
+      if (highlightColorHex != null) 'highlight_color_hex': highlightColorHex,
       if (isBinned != null) 'is_binned': isBinned,
       if (binnedAt != null) 'binned_at': binnedAt,
       if (createdAt != null) 'created_at': createdAt,
@@ -1494,6 +1552,7 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
     Value<String?>? shapeFillColorHex,
     Value<String?>? shapeStrokeColorHex,
     Value<double?>? shapeStrokeWidth,
+    Value<String?>? highlightColorHex,
     Value<bool>? isBinned,
     Value<DateTime?>? binnedAt,
     Value<DateTime>? createdAt,
@@ -1527,6 +1586,7 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
       shapeFillColorHex: shapeFillColorHex ?? this.shapeFillColorHex,
       shapeStrokeColorHex: shapeStrokeColorHex ?? this.shapeStrokeColorHex,
       shapeStrokeWidth: shapeStrokeWidth ?? this.shapeStrokeWidth,
+      highlightColorHex: highlightColorHex ?? this.highlightColorHex,
       isBinned: isBinned ?? this.isBinned,
       binnedAt: binnedAt ?? this.binnedAt,
       createdAt: createdAt ?? this.createdAt,
@@ -1618,6 +1678,9 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
     if (shapeStrokeWidth.present) {
       map['shape_stroke_width'] = Variable<double>(shapeStrokeWidth.value);
     }
+    if (highlightColorHex.present) {
+      map['highlight_color_hex'] = Variable<String>(highlightColorHex.value);
+    }
     if (isBinned.present) {
       map['is_binned'] = Variable<bool>(isBinned.value);
     }
@@ -1665,6 +1728,7 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
           ..write('shapeFillColorHex: $shapeFillColorHex, ')
           ..write('shapeStrokeColorHex: $shapeStrokeColorHex, ')
           ..write('shapeStrokeWidth: $shapeStrokeWidth, ')
+          ..write('highlightColorHex: $highlightColorHex, ')
           ..write('isBinned: $isBinned, ')
           ..write('binnedAt: $binnedAt, ')
           ..write('createdAt: $createdAt, ')
@@ -4092,6 +4156,7 @@ typedef $$ClipsTableCreateCompanionBuilder =
       Value<String?> shapeFillColorHex,
       Value<String?> shapeStrokeColorHex,
       Value<double?> shapeStrokeWidth,
+      Value<String?> highlightColorHex,
       Value<bool> isBinned,
       Value<DateTime?> binnedAt,
       Value<DateTime> createdAt,
@@ -4126,6 +4191,7 @@ typedef $$ClipsTableUpdateCompanionBuilder =
       Value<String?> shapeFillColorHex,
       Value<String?> shapeStrokeColorHex,
       Value<double?> shapeStrokeWidth,
+      Value<String?> highlightColorHex,
       Value<bool> isBinned,
       Value<DateTime?> binnedAt,
       Value<DateTime> createdAt,
@@ -4268,6 +4334,11 @@ class $$ClipsTableFilterComposer extends Composer<_$AppDatabase, $ClipsTable> {
 
   ColumnFilters<double> get shapeStrokeWidth => $composableBuilder(
     column: $table.shapeStrokeWidth,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get highlightColorHex => $composableBuilder(
+    column: $table.highlightColorHex,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -4431,6 +4502,11 @@ class $$ClipsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get highlightColorHex => $composableBuilder(
+    column: $table.highlightColorHex,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<bool> get isBinned => $composableBuilder(
     column: $table.isBinned,
     builder: (column) => ColumnOrderings(column),
@@ -4557,6 +4633,11 @@ class $$ClipsTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<String> get highlightColorHex => $composableBuilder(
+    column: $table.highlightColorHex,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<bool> get isBinned =>
       $composableBuilder(column: $table.isBinned, builder: (column) => column);
 
@@ -4624,6 +4705,7 @@ class $$ClipsTableTableManager
                 Value<String?> shapeFillColorHex = const Value.absent(),
                 Value<String?> shapeStrokeColorHex = const Value.absent(),
                 Value<double?> shapeStrokeWidth = const Value.absent(),
+                Value<String?> highlightColorHex = const Value.absent(),
                 Value<bool> isBinned = const Value.absent(),
                 Value<DateTime?> binnedAt = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
@@ -4656,6 +4738,7 @@ class $$ClipsTableTableManager
                 shapeFillColorHex: shapeFillColorHex,
                 shapeStrokeColorHex: shapeStrokeColorHex,
                 shapeStrokeWidth: shapeStrokeWidth,
+                highlightColorHex: highlightColorHex,
                 isBinned: isBinned,
                 binnedAt: binnedAt,
                 createdAt: createdAt,
@@ -4690,6 +4773,7 @@ class $$ClipsTableTableManager
                 Value<String?> shapeFillColorHex = const Value.absent(),
                 Value<String?> shapeStrokeColorHex = const Value.absent(),
                 Value<double?> shapeStrokeWidth = const Value.absent(),
+                Value<String?> highlightColorHex = const Value.absent(),
                 Value<bool> isBinned = const Value.absent(),
                 Value<DateTime?> binnedAt = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
@@ -4722,6 +4806,7 @@ class $$ClipsTableTableManager
                 shapeFillColorHex: shapeFillColorHex,
                 shapeStrokeColorHex: shapeStrokeColorHex,
                 shapeStrokeWidth: shapeStrokeWidth,
+                highlightColorHex: highlightColorHex,
                 isBinned: isBinned,
                 binnedAt: binnedAt,
                 createdAt: createdAt,

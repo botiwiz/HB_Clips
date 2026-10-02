@@ -23,12 +23,14 @@ class TextFormatting {
   final List<IntRange> italic;
   final List<IntRange> underline;
   final List<IntRange> strikethrough;
+  final List<IntRange> highlight;
 
   const TextFormatting({
     this.bold = const [],
     this.italic = const [],
     this.underline = const [],
     this.strikethrough = const [],
+    this.highlight = const [],
   });
 
   static const empty = TextFormatting();
@@ -49,6 +51,7 @@ class TextFormatting {
       italic: ranges('italic'),
       underline: ranges('underline'),
       strikethrough: ranges('strikethrough'),
+      highlight: ranges('highlight'),
     );
   }
 
@@ -60,6 +63,7 @@ class TextFormatting {
       'italic': encode(italic),
       'underline': encode(underline),
       'strikethrough': encode(strikethrough),
+      'highlight': encode(highlight),
     });
   }
 }
@@ -141,6 +145,13 @@ class BoardClip {
   /// `kDefaultStrokeWidth`. Ignored for non-shape clips.
   final double? shapeStrokeWidth;
 
+  /// Background color behind text covered by `textFormatting.highlight`,
+  /// as `#RRGGBB`. Null falls back to `kDefaultHighlightColorHex` at
+  /// render time - same "nullable override, constant fallback" pattern
+  /// as [fontSize]/[backgroundColorHex]. One color per note, not
+  /// per-range.
+  final String? highlightColorHex;
+
   final bool isBinned;
   final DateTime? binnedAt;
   final DateTime createdAt;
@@ -173,6 +184,7 @@ class BoardClip {
     this.shapeFillColorHex,
     this.shapeStrokeColorHex,
     this.shapeStrokeWidth,
+    this.highlightColorHex,
     this.isBinned = false,
     this.binnedAt,
     required this.createdAt,
@@ -208,6 +220,7 @@ class BoardClip {
     shapeFillColorHex: row.shapeFillColorHex,
     shapeStrokeColorHex: row.shapeStrokeColorHex,
     shapeStrokeWidth: row.shapeStrokeWidth,
+    highlightColorHex: row.highlightColorHex,
     isBinned: row.isBinned,
     binnedAt: row.binnedAt,
     createdAt: row.createdAt,
@@ -262,6 +275,7 @@ class BoardClip {
       shapeFillColorHex: shapeFillColorHex,
       shapeStrokeColorHex: shapeStrokeColorHex,
       shapeStrokeWidth: shapeStrokeWidth,
+      highlightColorHex: highlightColorHex,
       isBinned: isBinned ?? this.isBinned,
       binnedAt: binnedAt ?? this.binnedAt,
       createdAt: createdAt,

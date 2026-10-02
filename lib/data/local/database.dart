@@ -19,7 +19,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 18;
+  int get schemaVersion => 19;
 
   Future<void> _seedDefaultBoard(Migrator m) {
     return into(boards).insert(
@@ -106,6 +106,9 @@ class AppDatabase extends _$AppDatabase {
         // recolor one individually - safe to blanket-update every
         // existing row to the new white default, not just future ones.
         await customStatement("UPDATE connectors SET color = '#FFFFFF'");
+      }
+      if (from < 19) {
+        await m.addColumn(clips, clips.highlightColorHex);
       }
     },
   );

@@ -150,6 +150,9 @@ class ClipWidget extends StatelessWidget {
             clip.textContent ?? '',
             clip.textFormatting,
             baseStyle,
+            highlightColor: hexToColor(
+              clip.highlightColorHex ?? kDefaultHighlightColorHex,
+            ),
           ),
         ),
       ),
