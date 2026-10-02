@@ -602,6 +602,7 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
                     vertical: kTextNoteVerticalPadding * effectiveScale,
                   ),
                   child: Stack(
+                    fit: StackFit.expand,
                     children: [
                       if (highlightRects.isNotEmpty)
                         Positioned.fill(

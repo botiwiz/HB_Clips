@@ -158,6 +158,7 @@ class ClipWidget extends StatelessWidget {
         vertical: kTextNoteVerticalPadding * viewScale,
       ),
       child: Stack(
+        fit: StackFit.expand,
         children: [
           if (highlightRects.isNotEmpty)
             Positioned.fill(
