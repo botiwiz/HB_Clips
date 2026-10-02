@@ -187,14 +187,20 @@ class GradientBar extends StatelessWidget {
   final double value;
   final ValueChanged<double> onChanged;
   static const double _height = 32;
-  // The bar is a fully-rounded pill (borderRadius = _height / 2), so its
-  // flat, draggable middle section only starts/ends this many pixels in
-  // from each edge - letting the indicator travel all the way to 0/width
-  // would let it slide out into the rounded cap, where a straight vertical
-  // bar reads as visually wrong (not following the pill's curve). Clamping
-  // the indicator's travel range to [capRadius, width - capRadius] keeps
-  // it within the cap's center at the extremes instead.
-  static const double _capRadius = _height / 2;
+  // Deliberately decoupled from _height - a full stadium/pill
+  // (borderRadius = _height / 2) leaves less usable width for the
+  // indicator to travel across than a lightly-rounded rect does, so this
+  // is kept modest instead of tracking the bar's own height.
+  static const double _cornerRadius = 8;
+  // The bar's flat, draggable middle section only starts/ends this many
+  // pixels in from each edge - letting the indicator travel all the way
+  // to 0/width would let it slide out into the rounded corner, where a
+  // straight vertical bar reads as visually wrong (not following the
+  // curve). Clamping the indicator's travel range to [capRadius, width -
+  // capRadius] keeps it within the corner's own curve at the extremes
+  // instead - tied to _cornerRadius itself, not a separate magic number,
+  // so the clamp always matches whatever the actual corner shape is.
+  static const double _capRadius = _cornerRadius;
 
   const GradientBar({
     super.key,
@@ -220,7 +226,7 @@ class GradientBar extends StatelessWidget {
           child: Container(
             height: _height,
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(_height / 2),
+              borderRadius: BorderRadius.circular(_cornerRadius),
               gradient: LinearGradient(colors: colors),
             ),
             child: Stack(
@@ -310,7 +316,7 @@ class _InlineHsvPickerBarState extends State<InlineHsvPickerBar> {
             onChanged: (t) => _update(_hsv.withHue(t * 360)),
           ),
         ),
-        const SizedBox(width: 8),
+        const SizedBox(width: 6),
         Expanded(
           flex: 1,
           child: GradientBar(
@@ -319,7 +325,7 @@ class _InlineHsvPickerBarState extends State<InlineHsvPickerBar> {
             onChanged: (t) => _update(_hsv.withSaturation(t)),
           ),
         ),
-        const SizedBox(width: 8),
+        const SizedBox(width: 6),
         Expanded(
           flex: 1,
           child: GradientBar(
@@ -328,8 +334,16 @@ class _InlineHsvPickerBarState extends State<InlineHsvPickerBar> {
             onChanged: (t) => _update(_hsv.withValue(t)),
           ),
         ),
-        const SizedBox(width: 8),
-        TextButton(onPressed: widget.onDone, child: const Text('Done')),
+        const SizedBox(width: 6),
+        TextButton(
+          onPressed: widget.onDone,
+          style: TextButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            minimumSize: Size.zero,
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          ),
+          child: const Text('Done'),
+        ),
       ],
     );
   }

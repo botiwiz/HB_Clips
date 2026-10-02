@@ -828,7 +828,7 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
                 shadowColor: Colors.black54,
                 child: Padding(
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
+                    horizontal: 8,
                     vertical: 6,
                   ),
                   child: InlineHsvPickerBar(
