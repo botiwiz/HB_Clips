@@ -35,7 +35,7 @@ class _SnapGuidesPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = AppTheme.accent.withValues(alpha: 0.13)
+      ..color = AppTheme.accent.withValues(alpha: 0.25)
       ..strokeWidth = 1;
 
     final x = guides.x;
