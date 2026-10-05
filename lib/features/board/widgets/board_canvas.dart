@@ -1156,6 +1156,18 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       // (matches) or explicitly exits edit mode for whatever else was
       // being edited (doesn't match) - covers every branch below.
       _exitTextEditUnlessClip(hit.id);
+      // Selecting a clip must drop any stale frame selection - every
+      // sub-branch below writes selectedClipIdsProvider but, unlike
+      // marquee/connector selection, never used to touch the frame
+      // selection too. A frame selected earlier and never explicitly
+      // cleared would otherwise silently survive alongside a newly
+      // selected clip, and _binSelected's frame-before-clip precedence
+      // would then delete that stale frame (and its children) instead of
+      // the clip actually being acted on - the real cause of "pressing
+      // delete sometimes deletes the frame instead."
+      if (ref.read(selectedFrameIdsProvider).isNotEmpty) {
+        ref.read(selectedFrameIdsProvider.notifier).state = {};
+      }
       // A click/drag landing on the clip currently being text-edited is
       // left entirely to the TextField's own gesture handling (caret
       // placement, click-drag-to-select, double-click-to-select-word) -
@@ -1410,6 +1422,13 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     final hitFrame = _hitTestFrameForSelection(frames, boardPos);
     if (hitFrame != null) {
       _exitTextEditUnlessClip(null);
+      // Symmetric counterpart to the clip-hit-test branch's own clear
+      // above - selecting a frame must drop any stale clip selection, so
+      // the two selections can never silently co-exist and confuse
+      // _binSelected's frame-before-clip precedence.
+      if (ref.read(selectedClipIdsProvider).isNotEmpty) {
+        ref.read(selectedClipIdsProvider.notifier).state = {};
+      }
       if (FrameGeometry.pointInTitleBand(boardPos, hitFrame) &&
           _isDoubleClickOn(hitFrame.id, event.localPosition)) {
         ref.read(selectedFrameIdsProvider.notifier).state = {hitFrame.id};
