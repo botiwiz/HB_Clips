@@ -14,12 +14,13 @@ BoardClip _clip({
   double width = 100,
   double height = 60,
   double rotation = 0,
+  ClipType type = ClipType.text,
 }) {
   final now = DateTime(2026);
   return BoardClip(
     id: id,
     boardId: 'board',
-    type: ClipType.text,
+    type: type,
     x: x,
     y: y,
     width: width,
@@ -201,6 +202,27 @@ void main() {
       expect(result.y, closeTo(10, 1e-9));
       expect(result.width, closeTo(200, 1e-9));
       expect(result.height, closeTo(100, 1e-9));
+    });
+
+    test('a shape clip clamps to the much smaller minShapeSize floor, not '
+        'minClipSize - letting it become a thin line-like sliver', () {
+      final clip = _clip(
+        x: 0,
+        y: 0,
+        width: 100,
+        height: 60,
+        type: ClipType.shape,
+      );
+      final result = ClipGeometry.resize(
+        startClip: clip,
+        corner: HandleKind.resizeTL,
+        // Dragged almost onto the anchor on both axes - would clamp to
+        // minClipSize (40) for a non-shape clip.
+        pointerBoard: const Offset(99.5, 59.5),
+      );
+      expect(result.width, closeTo(ClipGeometry.minShapeSize, 1e-9));
+      expect(result.height, closeTo(ClipGeometry.minShapeSize, 1e-9));
+      expect(result.width, lessThan(ClipGeometry.minClipSize));
     });
   });
 

@@ -24,6 +24,16 @@ class ClipGeometry {
 
   static const double minClipSize = 40;
 
+  /// Minimum width/height floor for a shape clip specifically - far
+  /// smaller than [minClipSize], which is a deliberate "don't let a
+  /// photo/note shrink to nothing" UX floor that doesn't apply to shapes:
+  /// the user should be able to drag a rectangle/ellipse down into a very
+  /// thin line-like sliver (e.g. a divider) on either axis. Not a UX
+  /// choice itself, just small enough to keep the resize/scale math
+  /// well-defined (never exactly 0, which would degenerate several
+  /// downstream computations - aspect ratios, scale factors).
+  static const double minShapeSize = 1.0;
+
   /// Rounds [value] to the nearest multiple of [spacing] - used to snap
   /// drag/resize positions and sizes to the board's dot grid.
   static double snap(double value, double spacing) {
@@ -251,9 +261,13 @@ class ClipGeometry {
       ),
     };
 
+    // Shapes get a much smaller floor than every other clip type - see
+    // minShapeSize's doc comment - so they can be resized down into a
+    // thin line-like sliver on either axis.
+    final floor = startClip.type == ClipType.shape ? minShapeSize : minClipSize;
     final rawRect = Rect.fromPoints(anchor, localPointer);
-    final width = rawRect.width < minClipSize ? minClipSize : rawRect.width;
-    final height = rawRect.height < minClipSize ? minClipSize : rawRect.height;
+    final width = rawRect.width < floor ? floor : rawRect.width;
+    final height = rawRect.height < floor ? floor : rawRect.height;
     final anchorIsLeft = (anchor.dx - rawRect.left).abs() < 0.01;
     final anchorIsTop = (anchor.dy - rawRect.top).abs() < 0.01;
     final x = anchorIsLeft ? anchor.dx : anchor.dx - width;
@@ -338,10 +352,11 @@ class ClipGeometry {
   /// whichever axis moved proportionally more of the group rect's own
   /// width/height - so the group scales uniformly (locked aspect ratio)
   /// rather than independently per axis like single-clip [resize]. The
-  /// factor is then clamped so the smallest clip in the group never drops
-  /// below [minClipSize] on its narrower edge; every clip is scaled by
-  /// that same clamped factor so relative spacing stays proportional even
-  /// at the floor.
+  /// factor is then clamped so no clip in the group drops below its own
+  /// type's floor on its narrower edge ([minClipSize] normally,
+  /// [minShapeSize] for a shape clip - see that constant's doc comment)
+  /// every clip is scaled by that same clamped factor so relative spacing
+  /// stays proportional even at the floor.
   ///
   /// v1 restriction (enforced by callers, not here): only meaningful when
   /// every clip in [startClips] has rotation == 0 - see
@@ -377,12 +392,18 @@ class ClipGeometry {
     var scale = math.max(scaleX, scaleY);
     if (scale <= 0) scale = 0.01;
 
-    var minEdge = double.infinity;
+    // Each clip is checked against its own type's floor (a shape's is
+    // much smaller - see minShapeSize) rather than clamping the whole
+    // group by a single shared minEdge/minClipSize pair, so a shape
+    // mixed into a group with e.g. a photo doesn't inherit the photo's
+    // much larger floor.
     for (final clip in startClips.values) {
-      minEdge = math.min(minEdge, math.min(clip.width, clip.height));
-    }
-    if (minEdge.isFinite && minEdge * scale < minClipSize) {
-      scale = minClipSize / minEdge;
+      final floor = clip.type == ClipType.shape ? minShapeSize : minClipSize;
+      final edge = math.min(clip.width, clip.height);
+      if (edge > 0) {
+        final requiredScale = floor / edge;
+        if (requiredScale > scale) scale = requiredScale;
+      }
     }
 
     return startClips.map((id, clip) {
