@@ -177,6 +177,12 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
   String? _frameResizeId;
   bool _frameResizing = false;
   Rect? _frameResizeStartRect;
+  // Which resize math/commit path an in-flight _frameResizeId gesture is
+  // using - true when it was started from the frame-only handle (see
+  // FrameGeometry.resizeFrameOnly), which never touches children. Default
+  // false covers the normal bottom-right handle without needing its own
+  // branch to set it explicitly.
+  bool _frameOnlyResize = false;
 
   // Frame move - map-based so one frame or several (a multi-selection)
   // go through the exact same path, mirroring how clip group-drag never
@@ -429,6 +435,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     _frameResizeId = null;
     _frameResizing = false;
     _frameResizeStartRect = null;
+    _frameOnlyResize = false;
     _frameDragStartRects = null;
     _frameGestureStartPointerBoard = null;
     _frameDragMoved = false;
@@ -1339,6 +1346,22 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     if (selectedFrameIds.length == 1) {
       final selectedFrame = _findFrameById(frames, selectedFrameIds.first);
       if (selectedFrame != null &&
+          FrameGeometry.hitTestFrameOnlyResizeHandle(
+            selectedFrame,
+            view,
+            event.localPosition,
+          )) {
+        _exitTextEditUnlessClip(null);
+        _frameResizing = true;
+        _frameOnlyResize = true;
+        _frameResizeId = selectedFrame.id;
+        _frameResizeStartRect = FrameGeometry.boardRect(selectedFrame);
+        _frameResizeChildStart = null; // deliberately never populated
+        ref.read(frameResizeRectProvider.notifier).state =
+            _frameResizeStartRect;
+        return;
+      }
+      if (selectedFrame != null &&
           FrameGeometry.hitTestResizeHandle(
             selectedFrame,
             view,
@@ -1783,7 +1806,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       if (!snap) {
         final others = [
           for (final c in ref.read(activeClipsProvider).valueOrNull ?? [])
-            if (c.frameId != _frameResizeId)
+            if (_frameOnlyResize || c.frameId != _frameResizeId)
               Rect.fromLTWH(c.x, c.y, c.width, c.height),
           for (final f in ref.read(boardFramesProvider).valueOrNull ?? [])
             if (f.id != _frameResizeId) FrameGeometry.boardRect(f),
@@ -1798,10 +1821,15 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       } else {
         _setSnapGuides((x: null, y: null));
       }
-      final resized = FrameGeometry.resize(
-        startRect: _frameResizeStartRect!,
-        pointerBoard: resizePointer,
-      );
+      final resized = _frameOnlyResize
+          ? FrameGeometry.resizeFrameOnly(
+              startRect: _frameResizeStartRect!,
+              pointerBoard: resizePointer,
+            )
+          : FrameGeometry.resize(
+              startRect: _frameResizeStartRect!,
+              pointerBoard: resizePointer,
+            );
       final finalRect = snap
           ? Rect.fromLTWH(
               ClipGeometry.snap(resized.left, kBoardGridSpacing),
@@ -2463,6 +2491,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       _frameResizeId = null;
       _frameResizing = false;
       _frameResizeStartRect = null;
+      _frameOnlyResize = false;
       _frameResizeChildStart = null;
       return;
     }
@@ -3315,6 +3344,8 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
                               ? frameResizeRect
                               : frameDragRects?[frame.id],
                           selectedFrameIds.contains(frame.id),
+                          selectedFrameIds.length == 1 &&
+                              selectedFrameIds.contains(frame.id),
                           view,
                         ),
                       for (final clip in sorted)
@@ -3374,6 +3405,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     FrameRow frame,
     Rect? dragRect,
     bool selected,
+    bool showResizeHandles,
     BoardViewState view,
   ) {
     final rect = dragRect ?? FrameGeometry.boardRect(frame);
@@ -3383,7 +3415,11 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       top: topLeft.dy,
       width: rect.width * view.scale,
       height: rect.height * view.scale,
-      child: FrameWidget(frame: frame, selected: selected),
+      child: FrameWidget(
+        frame: frame,
+        selected: selected,
+        showResizeHandles: showResizeHandles,
+      ),
     );
   }
 

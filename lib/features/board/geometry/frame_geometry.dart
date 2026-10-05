@@ -80,6 +80,28 @@ class FrameGeometry {
         handleHitRadius;
   }
 
+  /// Screen-space position of the frame-only resize handle (top-right
+  /// corner, anchored at the fixed bottom-left) - a separate control from
+  /// [resizeHandleScreenPosition] (bottom-right, anchored top-left, which
+  /// also scales children via [scaleChildren]). Dragging this one only
+  /// ever changes the frame's own rect - see [resizeFrameOnly].
+  static Offset frameOnlyResizeHandleScreenPosition(
+    FrameRow frame,
+    BoardViewState view,
+  ) {
+    return _boardToScreen(Offset(frame.x + frame.width, frame.y), view);
+  }
+
+  static bool hitTestFrameOnlyResizeHandle(
+    FrameRow frame,
+    BoardViewState view,
+    Offset screenPoint,
+  ) {
+    return (frameOnlyResizeHandleScreenPosition(frame, view) - screenPoint)
+            .distance <=
+        handleHitRadius;
+  }
+
   /// Resizes [startRect] by dragging its bottom-right corner to the current
   /// board-space pointer position, keeping the top-left corner fixed -
   /// frames don't rotate, so this is simpler than [ClipGeometry.resize].
@@ -91,6 +113,27 @@ class FrameGeometry {
         ? minFrameSize
         : pointerBoard.dy - startRect.top;
     return Rect.fromLTWH(startRect.left, startRect.top, width, height);
+  }
+
+  /// Resizes [startRect] by dragging its top-right corner to the current
+  /// board-space pointer position, keeping the BOTTOM-LEFT corner fixed -
+  /// the frame-only counterpart to [resize] (which anchors top-left and
+  /// drags the bottom-right corner). Deliberately has no "scale children"
+  /// counterpart: callers simply don't touch any child clip for this
+  /// gesture, which is the entire point of it existing.
+  static Rect resizeFrameOnly({
+    required Rect startRect,
+    required Offset pointerBoard,
+  }) {
+    final anchorX = startRect.left;
+    final anchorY = startRect.bottom;
+    final width = (pointerBoard.dx - anchorX) < minFrameSize
+        ? minFrameSize
+        : pointerBoard.dx - anchorX;
+    final height = (anchorY - pointerBoard.dy) < minFrameSize
+        ? minFrameSize
+        : anchorY - pointerBoard.dy;
+    return Rect.fromLTWH(anchorX, anchorY - height, width, height);
   }
 
   /// Scales every clip in [startClips] (gesture-start snapshots, keyed by

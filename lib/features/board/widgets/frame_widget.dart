@@ -4,8 +4,11 @@ import '../../../core/theme/app_theme.dart';
 import '../../../data/local/database.dart' show FrameRow;
 import '../../annotation/stroke_painter.dart' show hexToColor;
 
-/// Renders one frame's rectangle, name label, and (when selected) its
-/// single bottom-right resize handle. Purely presentational - all pointer
+/// Renders one frame's rectangle, name label, and (when selected, and
+/// exactly one frame is selected) its two resize handles: the existing
+/// bottom-right one (which also scales/moves children) and a second,
+/// top-right one (which only ever changes the frame's own rect, see
+/// `FrameGeometry.resizeFrameOnly`). Purely presentational - all pointer
 /// handling/hit-testing happens in `board_canvas.dart`'s Listener, same
 /// architecture as clips. Frames are always painted behind clips
 /// regardless of z-index (background/grouping elements, not peer
@@ -13,8 +16,18 @@ import '../../annotation/stroke_painter.dart' show hexToColor;
 class FrameWidget extends StatelessWidget {
   final FrameRow frame;
   final bool selected;
+  // Only true alongside `selected` when exactly one frame is selected -
+  // both handles are single-frame-only mechanisms (2+-frame resize goes
+  // through FrameGroupScaleHandles instead), so showing them during a
+  // multi-selection would be non-functional dead chrome.
+  final bool showResizeHandles;
 
-  const FrameWidget({super.key, required this.frame, required this.selected});
+  const FrameWidget({
+    super.key,
+    required this.frame,
+    required this.selected,
+    required this.showResizeHandles,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -58,7 +71,7 @@ class FrameWidget extends StatelessWidget {
               ),
             ),
           ),
-          if (selected)
+          if (showResizeHandles)
             Positioned(
               right: -5,
               bottom: -5,
@@ -67,6 +80,25 @@ class FrameWidget extends StatelessWidget {
                 height: 10,
                 decoration: BoxDecoration(
                   color: AppTheme.red,
+                  border: Border.all(
+                    color: AppTheme.canvasBackground,
+                    width: 1,
+                  ),
+                ),
+              ),
+            ),
+          // Frame-only resize handle (top-right) - a different corner and
+          // color from the one above so the two are never confused: this
+          // one never touches child clips, see FrameGeometry.resizeFrameOnly.
+          if (showResizeHandles)
+            Positioned(
+              right: -5,
+              top: -5,
+              child: Container(
+                width: 10,
+                height: 10,
+                decoration: BoxDecoration(
+                  color: AppTheme.textPrimary,
                   border: Border.all(
                     color: AppTheme.canvasBackground,
                     width: 1,

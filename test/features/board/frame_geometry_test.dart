@@ -2,6 +2,8 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hb_clips/data/local/database.dart';
 import 'package:hb_clips/data/models/clip.dart';
+import 'package:hb_clips/features/board/controllers/board_controller.dart'
+    show BoardViewState;
 import 'package:hb_clips/features/board/geometry/frame_geometry.dart';
 import 'package:hb_clips/features/board/geometry/selection_geometry.dart'
     show HandleKind;
@@ -334,6 +336,68 @@ void main() {
         newRect: const Rect.fromLTWH(0, 0, 50, 50),
       );
       expect(results, isEmpty);
+    });
+  });
+
+  group(
+    'frameOnlyResizeHandleScreenPosition / hitTestFrameOnlyResizeHandle',
+    () {
+      test('sits at the frame\'s top-right corner at scale 1', () {
+        final frame = _frame(x: 10, y: 20, width: 100, height: 60);
+        const view = BoardViewState();
+        final pos = FrameGeometry.frameOnlyResizeHandleScreenPosition(
+          frame,
+          view,
+        );
+        expect(pos, const Offset(110, 20));
+      });
+
+      test('hits within the handle radius, misses far away', () {
+        final frame = _frame(x: 10, y: 20, width: 100, height: 60);
+        const view = BoardViewState();
+        expect(
+          FrameGeometry.hitTestFrameOnlyResizeHandle(
+            frame,
+            view,
+            const Offset(110, 20),
+          ),
+          isTrue,
+        );
+        expect(
+          FrameGeometry.hitTestFrameOnlyResizeHandle(
+            frame,
+            view,
+            const Offset(110, 200),
+          ),
+          isFalse,
+        );
+      });
+    },
+  );
+
+  group('resizeFrameOnly', () {
+    test('dragging the top-right corner outward grows from the fixed '
+        'bottom-left anchor', () {
+      final startRect = const Rect.fromLTWH(10, 20, 100, 60);
+      final result = FrameGeometry.resizeFrameOnly(
+        startRect: startRect,
+        pointerBoard: const Offset(210, -30), // further right, further up
+      );
+      // Bottom-left anchor (10, 80) stays fixed.
+      expect(result.left, closeTo(10, 1e-9));
+      expect(result.bottom, closeTo(80, 1e-9));
+      expect(result.width, closeTo(200, 1e-9));
+      expect(result.height, closeTo(110, 1e-9));
+    });
+
+    test('clamps to minFrameSize when dragged below the minimum', () {
+      final startRect = const Rect.fromLTWH(10, 20, 100, 60);
+      final result = FrameGeometry.resizeFrameOnly(
+        startRect: startRect,
+        pointerBoard: const Offset(15, 78), // almost collapsed
+      );
+      expect(result.width, FrameGeometry.minFrameSize);
+      expect(result.height, FrameGeometry.minFrameSize);
     });
   });
 }
