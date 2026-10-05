@@ -3,8 +3,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hb_clips/data/local/database.dart';
 import 'package:hb_clips/data/models/clip.dart';
 import 'package:hb_clips/features/board/geometry/frame_geometry.dart';
+import 'package:hb_clips/features/board/geometry/selection_geometry.dart'
+    show HandleKind;
 
 FrameRow _frame({
+  String id = 'frame-1',
   required double x,
   required double y,
   required double width,
@@ -12,7 +15,7 @@ FrameRow _frame({
 }) {
   final now = DateTime(2026);
   return FrameRow(
-    id: 'frame-1',
+    id: id,
     boardId: 'board',
     name: 'Frame',
     x: x,
@@ -143,6 +146,78 @@ void main() {
         ),
         isTrue,
       );
+    });
+  });
+
+  group('scaleFrameGroup', () {
+    test('scales a 2-frame group from the bounding box corner', () {
+      final frameA = _frame(id: 'a', x: 0, y: 0, width: 100, height: 100);
+      final frameB = _frame(id: 'b', x: 200, y: 0, width: 100, height: 100);
+      final groupRect = const Rect.fromLTWH(0, 0, 300, 100);
+
+      final result = FrameGeometry.scaleFrameGroup(
+        startFrameRects: {
+          'a': FrameGeometry.boardRect(frameA),
+          'b': FrameGeometry.boardRect(frameB),
+        },
+        startChildRects: const {},
+        startGroupRect: groupRect,
+        corner: HandleKind.resizeBR,
+        pointerBoard: const Offset(600, 200),
+      );
+
+      expect(result.frames['a'], const Rect.fromLTWH(0, 0, 200, 200));
+      expect(result.frames['b'], const Rect.fromLTWH(400, 0, 200, 200));
+    });
+
+    test('a child clip inside a scaled frame keeps its relative offset', () {
+      final frameA = _frame(id: 'a', x: 0, y: 0, width: 100, height: 100);
+      final frameB = _frame(id: 'b', x: 200, y: 0, width: 100, height: 100);
+      final groupRect = const Rect.fromLTWH(0, 0, 300, 100);
+
+      final result = FrameGeometry.scaleFrameGroup(
+        startFrameRects: {
+          'a': FrameGeometry.boardRect(frameA),
+          'b': FrameGeometry.boardRect(frameB),
+        },
+        startChildRects: const {'child': Rect.fromLTWH(20, 20, 10, 10)},
+        startGroupRect: groupRect,
+        corner: HandleKind.resizeBR,
+        pointerBoard: const Offset(600, 200),
+      );
+
+      final newFrameA = result.frames['a']!;
+      final newChild = result.children['child']!;
+      // Still 20% in from frame A's own left/top edge, same as before.
+      expect(
+        (newChild.left - newFrameA.left) / newFrameA.width,
+        closeTo(0.2, 1e-9),
+      );
+      expect(
+        (newChild.top - newFrameA.top) / newFrameA.height,
+        closeTo(0.2, 1e-9),
+      );
+    });
+
+    test('floors each frame at minFrameSize even on a drastic shrink', () {
+      final frameA = _frame(id: 'a', x: 0, y: 0, width: 50, height: 50);
+      final frameB = _frame(id: 'b', x: 100, y: 0, width: 50, height: 50);
+      final groupRect = const Rect.fromLTWH(0, 0, 150, 50);
+
+      final result = FrameGeometry.scaleFrameGroup(
+        startFrameRects: {
+          'a': FrameGeometry.boardRect(frameA),
+          'b': FrameGeometry.boardRect(frameB),
+        },
+        startChildRects: const {},
+        startGroupRect: groupRect,
+        corner: HandleKind.resizeBR,
+        pointerBoard: const Offset(15, 5), // a severe attempted shrink
+      );
+
+      final newFrameA = result.frames['a']!;
+      expect(newFrameA.width, closeTo(FrameGeometry.minFrameSize, 1e-9));
+      expect(newFrameA.height, closeTo(FrameGeometry.minFrameSize, 1e-9));
     });
   });
 

@@ -167,10 +167,19 @@ final selectedFrameIdsProvider = StateProvider<Set<String>>((ref) => {});
 /// `FrameRenameOverlay` once it commits/cancels.
 final renamingFrameIdProvider = StateProvider<String?>((ref) => null);
 
-/// Ephemeral, not-yet-persisted rect of the frame currently being dragged
-/// or resized - same "render this instead of the DB value, write on
-/// pointer-up" role [groupDragProvider] plays for clips.
-final frameDragRectProvider = StateProvider<Rect?>((ref) => null);
+/// Ephemeral, not-yet-persisted live rect of the single frame currently
+/// being resized via its own corner handle - unaffected by multi-select;
+/// group move/scale (1 or several frames) use [frameDragRectsProvider]
+/// instead.
+final frameResizeRectProvider = StateProvider<Rect?>((ref) => null);
+
+/// Ephemeral, not-yet-persisted live rects of every frame currently
+/// being moved or group-scaled, keyed by frame id - the frame
+/// equivalent of [groupDragProvider], generalized from a single `Rect?`
+/// so one frame or several can be dragged/scaled through the same code
+/// path (mirrors how clip group-drag/group-scale never special-case
+/// "just one clip" either).
+final frameDragRectsProvider = StateProvider<Map<String, Rect>?>((ref) => null);
 
 /// Whether the frames-list navigation panel is docked open over the canvas.
 final framesPanelOpenProvider = StateProvider<bool>((ref) => false);
@@ -207,7 +216,7 @@ class ImagePanZoomLive {
 final panZoomLiveProvider = StateProvider<ImagePanZoomLive?>((ref) => null);
 
 /// Live board-space rect of an in-progress "C"+drag frame redefinition -
-/// same ephemeral-preview role as [marqueeRectProvider]/[frameDragRectProvider].
+/// same ephemeral-preview role as [marqueeRectProvider]/[frameDragRectsProvider].
 final defineFrameRectProvider = StateProvider<Rect?>((ref) => null);
 
 /// Board-space coordinates of the "smart guide" edge-alignment lines

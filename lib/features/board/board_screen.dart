@@ -328,6 +328,78 @@ class BoardScreen extends ConsumerWidget {
   }
 
   void _nudgeSelection(WidgetRef ref, Offset delta) {
+    // A selected frame (or several) takes priority over a clip
+    // selection, same precedence _binSelected/_copySelection already
+    // document - arrow keys should move whichever is actually selected.
+    final selectedFrameIds = ref.read(selectedFrameIdsProvider);
+    if (selectedFrameIds.isNotEmpty) {
+      final frames = ref.read(boardFramesProvider).valueOrNull ?? [];
+      final clips = ref.read(activeClipsProvider).valueOrNull ?? [];
+      final framesRepo = ref.read(framesRepositoryProvider);
+      final repo = ref.read(clipsRepositoryProvider);
+      final beforeFrames = <String, Offset>{};
+      final afterFrames = <String, Offset>{};
+      final beforeChildren = <String, Offset>{};
+      final afterChildren = <String, Offset>{};
+      for (final id in selectedFrameIds) {
+        FrameRow? frame;
+        for (final f in frames) {
+          if (f.id == id) {
+            frame = f;
+            break;
+          }
+        }
+        if (frame == null) continue;
+        beforeFrames[id] = Offset(frame.x, frame.y);
+        final next = Offset(frame.x + delta.dx, frame.y + delta.dy);
+        afterFrames[id] = next;
+        framesRepo.updateTransform(id, x: next.dx, y: next.dy);
+        for (final c in clips) {
+          if (c.frameId != id) continue;
+          beforeChildren[c.id] = Offset(c.x, c.y);
+          final childNext = Offset(c.x + delta.dx, c.y + delta.dy);
+          afterChildren[c.id] = childNext;
+          repo.updateTransform(c.id, x: childNext.dx, y: childNext.dy);
+        }
+      }
+      if (beforeFrames.isEmpty) return;
+      ref
+          .read(undoManagerProvider.notifier)
+          .push(
+            UndoableAction(
+              undo: () => Future.wait([
+                for (final entry in beforeFrames.entries)
+                  framesRepo.updateTransform(
+                    entry.key,
+                    x: entry.value.dx,
+                    y: entry.value.dy,
+                  ),
+                for (final entry in beforeChildren.entries)
+                  repo.updateTransform(
+                    entry.key,
+                    x: entry.value.dx,
+                    y: entry.value.dy,
+                  ),
+              ]),
+              redo: () => Future.wait([
+                for (final entry in afterFrames.entries)
+                  framesRepo.updateTransform(
+                    entry.key,
+                    x: entry.value.dx,
+                    y: entry.value.dy,
+                  ),
+                for (final entry in afterChildren.entries)
+                  repo.updateTransform(
+                    entry.key,
+                    x: entry.value.dx,
+                    y: entry.value.dy,
+                  ),
+              ]),
+            ),
+          );
+      return;
+    }
+
     final selection = ref.read(selectedClipIdsProvider);
     if (selection.isEmpty) return;
     final clips = ref.read(activeClipsProvider).valueOrNull ?? [];

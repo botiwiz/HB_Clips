@@ -3,6 +3,7 @@ import 'package:flutter/rendering.dart';
 import '../../../data/local/database.dart' show FrameRow;
 import '../../../data/models/clip.dart';
 import '../controllers/board_controller.dart';
+import 'selection_geometry.dart' show HandleKind;
 
 /// Pure geometry for frame hit-testing/resizing - a strict subset of
 /// [ClipGeometry]'s math, since frames never rotate. No widget imports,
@@ -123,6 +124,69 @@ class FrameGeometry {
         height: clip.height * scaleY,
       ));
     });
+  }
+
+  /// Scales every frame in [startFrameRects], and every clip in
+  /// [startChildRects] nested in one of them, together - anchored at the
+  /// bounding box's opposite corner from [corner], the frame-group
+  /// equivalent of `ClipGeometry.scaleGroup` (that function stays
+  /// untouched - this is a separate function, not a generalization of
+  /// it, so existing clip behavior can't regress). A uniform scale (the
+  /// larger of the two axis ratios), floored so no selected frame's own
+  /// smaller dimension drops below [minFrameSize] - children have no
+  /// such floor, matching [scaleChildren]'s own "shrink freely" behavior.
+  static ({Map<String, Rect> frames, Map<String, Rect> children})
+  scaleFrameGroup({
+    required Map<String, Rect> startFrameRects,
+    required Map<String, Rect> startChildRects,
+    required Rect startGroupRect,
+    required HandleKind corner,
+    required Offset pointerBoard,
+  }) {
+    assert(corner != HandleKind.rotate);
+    assert(startFrameRects.isNotEmpty);
+
+    final anchor = switch (corner) {
+      HandleKind.resizeTL => startGroupRect.bottomRight,
+      HandleKind.resizeTR => startGroupRect.bottomLeft,
+      HandleKind.resizeBR => startGroupRect.topLeft,
+      HandleKind.resizeBL => startGroupRect.topRight,
+      HandleKind.rotate => throw ArgumentError(
+        'scaleFrameGroup() called with rotate handle',
+      ),
+    };
+
+    final rawWidth = (pointerBoard.dx - anchor.dx).abs();
+    final rawHeight = (pointerBoard.dy - anchor.dy).abs();
+    final scaleX = startGroupRect.width == 0
+        ? 1.0
+        : rawWidth / startGroupRect.width;
+    final scaleY = startGroupRect.height == 0
+        ? 1.0
+        : rawHeight / startGroupRect.height;
+    var scale = scaleX > scaleY ? scaleX : scaleY;
+    if (scale <= 0) scale = 0.01;
+
+    var minEdge = double.infinity;
+    for (final rect in startFrameRects.values) {
+      final smaller = rect.width < rect.height ? rect.width : rect.height;
+      if (smaller < minEdge) minEdge = smaller;
+    }
+    if (minEdge.isFinite && minEdge * scale < minFrameSize) {
+      scale = minFrameSize / minEdge;
+    }
+
+    Rect scaleRect(Rect r) => Rect.fromLTWH(
+      anchor.dx + (r.left - anchor.dx) * scale,
+      anchor.dy + (r.top - anchor.dy) * scale,
+      r.width * scale,
+      r.height * scale,
+    );
+
+    return (
+      frames: startFrameRects.map((id, r) => MapEntry(id, scaleRect(r))),
+      children: startChildRects.map((id, r) => MapEntry(id, scaleRect(r))),
+    );
   }
 
   /// The lowest-numbered "Frame N" name not already used by [frames] -
