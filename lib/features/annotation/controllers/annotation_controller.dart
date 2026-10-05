@@ -25,6 +25,14 @@ final strokeColorHexProvider = StateProvider<String>(
   (ref) => kStrokeColorPalette.first,
 );
 
+/// Whether `DrawToolbar`'s anchored stroke-color picker bar is currently
+/// open - same click-through-guard role `highlightPickerOpenProvider`
+/// plays for the text-edit toolbar (see `board_canvas.dart`'s use of this
+/// alongside `DrawToolbar.pillRectFor`/`pickerRectFor`). Unlike that one,
+/// no undo/"before" snapshot is needed when it closes - `strokeColorHexProvider`
+/// is just the ambient color for future strokes, not a document mutation.
+final drawStrokeColorPickerOpenProvider = StateProvider<bool>((ref) => false);
+
 final strokeWidthValueProvider = StateProvider<double>(
   (ref) => kDefaultStrokeWidth,
 );

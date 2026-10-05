@@ -20,12 +20,18 @@ import '../geometry/selection_geometry.dart';
 /// `GroupScaleHandles` use. Each control pushes its own `UndoableAction`
 /// (not one combined "update style" action), matching this app's
 /// established per-action undo pattern.
-class ShapeStylePopover extends ConsumerWidget {
+///
+/// The fill/stroke swatches open an anchored [InlineHsvPickerBar] above
+/// the pill - the same "stays open until you click elsewhere, live-updates
+/// as you drag" pattern `TextClipEditOverlay`'s highlight-color picker
+/// uses - instead of a modal dialog.
+class ShapeStylePopover extends ConsumerStatefulWidget {
   const ShapeStylePopover({super.key});
 
   static const double _height = 48;
   static const double _gapAboveCorner = 12;
   static const double _width = 272;
+  static const double _pickerHeight = 44;
 
   static Rect screenRectFor(BoardClip clip, BoardViewState view) {
     final topRightBoard = Offset(clip.x + clip.width, clip.y);
@@ -35,38 +41,142 @@ class ShapeStylePopover extends ConsumerWidget {
     return Rect.fromLTWH(left, top < 8 ? 8 : top, _width, _height);
   }
 
+  /// Screen-space bounds of the anchored fill/stroke color-picker bar,
+  /// shown directly above the pill while either swatch is toggled open -
+  /// same click-through-guard role [screenRectFor] plays for the pill
+  /// itself (see `board_canvas.dart`'s use of this, gated on either
+  /// picker-open provider since the bar only exists while one is open).
+  static Rect pickerRectFor(BoardClip clip, BoardViewState view) {
+    final pillRect = screenRectFor(clip, view);
+    final top = pillRect.top - 8 - _pickerHeight;
+    return Rect.fromLTWH(
+      pillRect.left,
+      top < 8 ? 8 : top,
+      _width,
+      _pickerHeight,
+    );
+  }
+
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ShapeStylePopover> createState() => _ShapeStylePopoverState();
+}
+
+class _ShapeStylePopoverState extends ConsumerState<ShapeStylePopover> {
+  // Which clip the two picker-open providers (and the *before* snapshots
+  // below) currently refer to - lets build() detect a selection change
+  // (a different shape selected, or none) and close/commit any picker
+  // left open for the PREVIOUS clip, instead of carrying stale open
+  // state over onto whichever shape is selected next (this State object
+  // is reused across rebuilds regardless of which clip is selected).
+  String? _boundClipId;
+  String? _fillColorBeforePicker;
+  String? _strokeColorBeforePicker;
+
+  /// Closes whichever of the two pickers is open for [id], pushing one
+  /// undo step per picker that actually changed color while open - mirrors
+  /// `TextClipEditOverlay._closeHighlightPicker` exactly. Safe to call
+  /// with a since-deleted/deselected clip id (the repository write below
+  /// just no-ops against zero rows).
+  void _closePickers(String id) {
+    final fillOpen = ref.read(shapeFillPickerOpenProvider);
+    final strokeOpen = ref.read(shapeStrokePickerOpenProvider);
+    if (!fillOpen && !strokeOpen) return;
+    final repo = ref.read(clipsRepositoryProvider);
+    final liveClip = ClipGeometry.findById(
+      ref.read(activeClipsProvider).valueOrNull ?? [],
+      id,
+    );
+    if (fillOpen) {
+      final before = _fillColorBeforePicker;
+      _fillColorBeforePicker = null;
+      ref.read(shapeFillPickerOpenProvider.notifier).state = false;
+      final after = liveClip?.shapeFillColorHex;
+      if (before != after) {
+        ref
+            .read(undoManagerProvider.notifier)
+            .push(
+              UndoableAction(
+                undo: () => repo.updateShapeFillColor(id, before),
+                redo: () => repo.updateShapeFillColor(id, after),
+              ),
+            );
+      }
+    }
+    if (strokeOpen) {
+      final before = _strokeColorBeforePicker;
+      _strokeColorBeforePicker = null;
+      ref.read(shapeStrokePickerOpenProvider.notifier).state = false;
+      final after = liveClip?.shapeStrokeColorHex;
+      if (before != after) {
+        ref
+            .read(undoManagerProvider.notifier)
+            .push(
+              UndoableAction(
+                undo: () => repo.updateShapeStrokeColor(id, before),
+                redo: () => repo.updateShapeStrokeColor(id, after),
+              ),
+            );
+      }
+    }
+  }
+
+  void _toggleFillPicker(BoardClip clip) {
+    if (ref.read(shapeFillPickerOpenProvider)) {
+      _closePickers(clip.id);
+      return;
+    }
+    if (ref.read(shapeStrokePickerOpenProvider)) _closePickers(clip.id);
+    _fillColorBeforePicker = clip.shapeFillColorHex;
+    ref.read(shapeFillPickerOpenProvider.notifier).state = true;
+  }
+
+  void _toggleStrokePicker(BoardClip clip) {
+    if (ref.read(shapeStrokePickerOpenProvider)) {
+      _closePickers(clip.id);
+      return;
+    }
+    if (ref.read(shapeFillPickerOpenProvider)) _closePickers(clip.id);
+    _strokeColorBeforePicker = clip.shapeStrokeColorHex;
+    ref.read(shapeStrokePickerOpenProvider.notifier).state = true;
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final selection = ref.watch(selectedClipIdsProvider);
-    if (selection.length != 1) return const SizedBox.shrink();
     final clips = ref.watch(activeClipsProvider).valueOrNull ?? [];
-    final clip = ClipGeometry.findById(clips, selection.first);
-    if (clip == null || clip.type != ClipType.shape) {
+    BoardClip? clip;
+    if (selection.length == 1) {
+      final found = ClipGeometry.findById(clips, selection.first);
+      if (found != null && found.type == ClipType.shape) clip = found;
+    }
+
+    if (clip == null) {
+      if (_boundClipId != null) {
+        _closePickers(_boundClipId!);
+        _boundClipId = null;
+      }
       return const SizedBox.shrink();
+    }
+    final boundClip = clip;
+
+    if (_boundClipId != boundClip.id) {
+      if (_boundClipId != null) _closePickers(_boundClipId!);
+      _boundClipId = boundClip.id;
     }
 
     final view = ref.watch(boardViewProvider);
-    final rect = screenRectFor(clip, view);
+    final rect = ShapeStylePopover.screenRectFor(boundClip, view);
     final repo = ref.read(clipsRepositoryProvider);
+    final fillOpen = ref.watch(shapeFillPickerOpenProvider);
+    final strokeOpen = ref.watch(shapeStrokePickerOpenProvider);
 
     void pushFillUndo(String? before, String? after) {
       ref
           .read(undoManagerProvider.notifier)
           .push(
             UndoableAction(
-              undo: () => repo.updateShapeFillColor(clip.id, before),
-              redo: () => repo.updateShapeFillColor(clip.id, after),
-            ),
-          );
-    }
-
-    void pushStrokeColorUndo(String? before, String? after) {
-      ref
-          .read(undoManagerProvider.notifier)
-          .push(
-            UndoableAction(
-              undo: () => repo.updateShapeStrokeColor(clip.id, before),
-              redo: () => repo.updateShapeStrokeColor(clip.id, after),
+              undo: () => repo.updateShapeFillColor(boundClip.id, before),
+              redo: () => repo.updateShapeFillColor(boundClip.id, after),
             ),
           );
     }
@@ -76,77 +186,131 @@ class ShapeStylePopover extends ConsumerWidget {
           .read(undoManagerProvider.notifier)
           .push(
             UndoableAction(
-              undo: () => repo.updateShapeStrokeWidth(clip.id, before),
-              redo: () => repo.updateShapeStrokeWidth(clip.id, after),
+              undo: () => repo.updateShapeStrokeWidth(boundClip.id, before),
+              redo: () => repo.updateShapeStrokeWidth(boundClip.id, after),
             ),
           );
     }
 
-    return Positioned(
-      left: rect.left,
-      top: rect.top,
-      child: Material(
-        color: AppTheme.surfaceElevated,
-        borderRadius: BorderRadius.circular(999),
-        elevation: 6,
-        shadowColor: Colors.black54,
-        child: SizedBox(
-          height: rect.height,
-          width: rect.width,
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const SizedBox(width: 6),
-                _NoFillButton(
-                  selected: clip.shapeFillColorHex == null,
-                  onTap: () {
-                    final before = clip.shapeFillColorHex;
-                    if (before == null) return;
-                    repo.updateShapeFillColor(clip.id, null);
-                    pushFillUndo(before, null);
-                  },
-                ),
-                ColorPickerSwatch(
-                  color: clip.shapeFillColorHex != null
-                      ? hexToColor(clip.shapeFillColorHex!)
-                      : AppTheme.surfaceCard,
-                  onColorSelected: (color) {
-                    final before = clip.shapeFillColorHex;
-                    final after = colorToHex(color);
-                    if (before == after) return;
-                    repo.updateShapeFillColor(clip.id, after);
-                    pushFillUndo(before, after);
-                  },
-                ),
-                const _Divider(),
-                ColorPickerSwatch(
-                  color: clip.shapeStrokeColorHex != null
-                      ? hexToColor(clip.shapeStrokeColorHex!)
-                      : AppTheme.border,
-                  onColorSelected: (color) {
-                    final before = clip.shapeStrokeColorHex;
-                    final after = colorToHex(color);
-                    if (before == after) return;
-                    repo.updateShapeStrokeColor(clip.id, after);
-                    pushStrokeColorUndo(before, after);
-                  },
-                ),
-                const _Divider(),
-                SizedBox(
-                  width: 110,
-                  child: _StrokeWidthSlider(
-                    clipId: clip.id,
-                    value: clip.shapeStrokeWidth ?? kDefaultStrokeWidth,
-                    onCommit: pushStrokeWidthUndo,
+    final pickerRect = ShapeStylePopover.pickerRectFor(boundClip, view);
+
+    return Positioned.fill(
+      child: Stack(
+        children: [
+          if (fillOpen || strokeOpen)
+            Positioned(
+              left: pickerRect.left,
+              top: pickerRect.top,
+              child: Material(
+                color: AppTheme.surfaceElevated,
+                borderRadius: BorderRadius.circular(999),
+                elevation: 6,
+                shadowColor: Colors.black54,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 6,
+                  ),
+                  child: SizedBox(
+                    width: pickerRect.width - 16,
+                    child: InlineHsvPickerBar(
+                      initialColor: fillOpen
+                          ? (boundClip.shapeFillColorHex != null
+                                ? hexToColor(boundClip.shapeFillColorHex!)
+                                : AppTheme.surfaceCard)
+                          : (boundClip.shapeStrokeColorHex != null
+                                ? hexToColor(boundClip.shapeStrokeColorHex!)
+                                : AppTheme.border),
+                      onChanged: (color) {
+                        if (fillOpen) {
+                          repo.updateShapeFillColor(
+                            boundClip.id,
+                            colorToHex(color),
+                          );
+                        } else {
+                          repo.updateShapeStrokeColor(
+                            boundClip.id,
+                            colorToHex(color),
+                          );
+                        }
+                      },
+                      onDone: () => fillOpen
+                          ? _toggleFillPicker(boundClip)
+                          : _toggleStrokePicker(boundClip),
+                    ),
                   ),
                 ),
-                const SizedBox(width: 6),
-              ],
+              ),
+            ),
+          Positioned(
+            left: rect.left,
+            top: rect.top,
+            child: Material(
+              color: AppTheme.surfaceElevated,
+              borderRadius: BorderRadius.circular(999),
+              elevation: 6,
+              shadowColor: Colors.black54,
+              child: SizedBox(
+                height: rect.height,
+                width: rect.width,
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const SizedBox(width: 6),
+                      _NoFillButton(
+                        selected: boundClip.shapeFillColorHex == null,
+                        onTap: () {
+                          final before = boundClip.shapeFillColorHex;
+                          if (fillOpen) {
+                            // The upcoming "clear fill" undo below already
+                            // covers this whole change in one step - don't
+                            // also push the picker's own pending undo.
+                            _fillColorBeforePicker = null;
+                            ref
+                                    .read(shapeFillPickerOpenProvider.notifier)
+                                    .state =
+                                false;
+                          }
+                          if (before == null) return;
+                          repo.updateShapeFillColor(boundClip.id, null);
+                          pushFillUndo(before, null);
+                        },
+                      ),
+                      InlineColorPickerSwatch(
+                        color: boundClip.shapeFillColorHex != null
+                            ? hexToColor(boundClip.shapeFillColorHex!)
+                            : AppTheme.surfaceCard,
+                        open: fillOpen,
+                        onTap: () => _toggleFillPicker(boundClip),
+                      ),
+                      const _Divider(),
+                      InlineColorPickerSwatch(
+                        color: boundClip.shapeStrokeColorHex != null
+                            ? hexToColor(boundClip.shapeStrokeColorHex!)
+                            : AppTheme.border,
+                        open: strokeOpen,
+                        onTap: () => _toggleStrokePicker(boundClip),
+                      ),
+                      const _Divider(),
+                      SizedBox(
+                        width: 110,
+                        child: _StrokeWidthSlider(
+                          clipId: boundClip.id,
+                          value:
+                              boundClip.shapeStrokeWidth ?? kDefaultStrokeWidth,
+                          onCommit: pushStrokeWidthUndo,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                    ],
+                  ),
+                ),
+              ),
             ),
           ),
-        ),
+        ],
       ),
     );
   }

@@ -2,19 +2,29 @@ import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
 
-/// A solid-color circular swatch button - shows the current color and, on
-/// tap, opens [showHsvColorPicker]. Replaces the fixed-palette
-/// [ColorSwatchButton] wherever a free-form color choice is wanted instead
-/// of a small preset list.
-class ColorPickerSwatch extends StatelessWidget {
+/// A solid-color circular swatch button that toggles an external
+/// open/closed flag instead of opening a modal dialog - the "trigger"
+/// half of the anchored, stays-open-until-click-elsewhere
+/// [InlineHsvPickerBar] pattern (see that class's doc comment). Callers
+/// own the open/closed state (typically a
+/// `StateProvider<bool>`) and are responsible for actually rendering an
+/// [InlineHsvPickerBar] somewhere when [open] is true, plus a
+/// click-through guard wherever a raw canvas gesture listener could
+/// otherwise steal the tap/drag meant for that bar's sliders - same
+/// requirement `TextClipEditOverlay`'s highlight-color picker already
+/// has. [open] drives a red highlight ring so it's visually clear which
+/// swatch's picker (if any) is currently showing.
+class InlineColorPickerSwatch extends StatelessWidget {
   final Color color;
-  final ValueChanged<Color> onColorSelected;
+  final bool open;
+  final VoidCallback onTap;
   final double size;
 
-  const ColorPickerSwatch({
+  const InlineColorPickerSwatch({
     super.key,
     required this.color,
-    required this.onColorSelected,
+    required this.open,
+    required this.onTap,
     this.size = 24,
   });
 
@@ -23,165 +33,27 @@ class ColorPickerSwatch extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4),
       child: GestureDetector(
-        onTap: () async {
-          final picked = await showHsvColorPicker(context, initialColor: color);
-          if (picked != null) onColorSelected(picked);
-        },
+        onTap: onTap,
         child: Container(
           width: size,
           height: size,
           decoration: BoxDecoration(
             color: color,
             shape: BoxShape.circle,
-            border: Border.all(color: AppTheme.border, width: 1),
+            border: Border.all(
+              color: open ? AppTheme.red : AppTheme.border,
+              width: open ? 2 : 1,
+            ),
           ),
         ),
       ),
-    );
-  }
-}
-
-/// Opens a Hue/Saturation/Value color-picker dialog seeded at
-/// [initialColor]. Returns the picked color on "Done", or null if
-/// cancelled/dismissed without choosing.
-Future<Color?> showHsvColorPicker(
-  BuildContext context, {
-  required Color initialColor,
-}) {
-  return showDialog<Color>(
-    context: context,
-    builder: (context) => _HsvColorPickerDialog(initialColor: initialColor),
-  );
-}
-
-class _HsvColorPickerDialog extends StatefulWidget {
-  final Color initialColor;
-
-  const _HsvColorPickerDialog({required this.initialColor});
-
-  @override
-  State<_HsvColorPickerDialog> createState() => _HsvColorPickerDialogState();
-}
-
-class _HsvColorPickerDialogState extends State<_HsvColorPickerDialog> {
-  late HSVColor _hsv = HSVColor.fromColor(widget.initialColor);
-
-  @override
-  Widget build(BuildContext context) {
-    final hueColors = [
-      for (var i = 0; i <= 6; i++)
-        HSVColor.fromAHSV(1, i * 60.0, 1, 1).toColor(),
-    ];
-    final saturationColors = [
-      HSVColor.fromAHSV(1, _hsv.hue, 0, _hsv.value).toColor(),
-      HSVColor.fromAHSV(1, _hsv.hue, 1, _hsv.value).toColor(),
-    ];
-    final valueColors = [
-      HSVColor.fromAHSV(1, _hsv.hue, _hsv.saturation, 0).toColor(),
-      HSVColor.fromAHSV(1, _hsv.hue, _hsv.saturation, 1).toColor(),
-    ];
-
-    return Dialog(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: SizedBox(
-          width: 560,
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: _hsv.toColor(),
-                  shape: BoxShape.circle,
-                  border: Border.all(color: AppTheme.border),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                flex: 3,
-                child: _LabeledGradientBar(
-                  label: 'Hue',
-                  colors: hueColors,
-                  value: _hsv.hue / 360,
-                  onChanged: (t) =>
-                      setState(() => _hsv = _hsv.withHue(t * 360)),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                flex: 1,
-                child: _LabeledGradientBar(
-                  label: 'Saturation',
-                  colors: saturationColors,
-                  value: _hsv.saturation,
-                  onChanged: (t) =>
-                      setState(() => _hsv = _hsv.withSaturation(t)),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                flex: 1,
-                child: _LabeledGradientBar(
-                  label: 'Value',
-                  colors: valueColors,
-                  value: _hsv.value,
-                  onChanged: (t) => setState(() => _hsv = _hsv.withValue(t)),
-                ),
-              ),
-              const SizedBox(width: 12),
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('Cancel'),
-              ),
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(_hsv.toColor()),
-                child: const Text('Done'),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// A [GradientBar] with its small secondary-colored label directly
-/// underneath - the repeated shape all 3 sliders (Hue/Saturation/Value)
-/// share when laid out side by side on one row.
-class _LabeledGradientBar extends StatelessWidget {
-  final String label;
-  final List<Color> colors;
-  final double value;
-  final ValueChanged<double> onChanged;
-
-  const _LabeledGradientBar({
-    required this.label,
-    required this.colors,
-    required this.value,
-    required this.onChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        GradientBar(colors: colors, value: value, onChanged: onChanged),
-        const SizedBox(height: 4),
-        Text(
-          label,
-          style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
-        ),
-      ],
     );
   }
 }
 
 /// A draggable horizontal gradient bar - the shared building block behind
-/// every Hue/Saturation/Value slider in this app (the modal
-/// [showHsvColorPicker] dialog and [InlineHsvPickerBar] alike). [value] is
-/// normalized 0..1 along the bar's width.
+/// every Hue/Saturation/Value slider in this app's [InlineHsvPickerBar].
+/// [value] is normalized 0..1 along the bar's width.
 class GradientBar extends StatelessWidget {
   final List<Color> colors;
   final double value;
@@ -258,14 +130,16 @@ class GradientBar extends StatelessWidget {
 
 /// An inline, non-modal HSV picker bar - just the Hue/Saturation/Value
 /// [GradientBar] sliders and a "Done" button, no swatch preview and no
-/// Cancel. Every in-progress change is reported live via [onChanged] (vs.
-/// the modal [showHsvColorPicker]'s commit-only-on-Done flow), so a
-/// caller that already shows its own live-updating swatch elsewhere (e.g.
-/// a toolbar button) doesn't need a second, redundant preview here - and
-/// since there's no separate "working" color to discard, there's nothing
-/// for a Cancel button to revert. Used by `TextClipEditOverlay`'s
-/// highlight-color picker, anchored above its toolbar instead of
-/// appearing as a centered dialog.
+/// Cancel. Every in-progress change is reported live via [onChanged]
+/// (commit-as-you-drag, not commit-only-on-Done), so a caller that
+/// already shows its own live-updating swatch elsewhere (e.g. a toolbar
+/// button, via [InlineColorPickerSwatch]) doesn't need a second,
+/// redundant preview here - and since there's no separate "working"
+/// color to discard, there's nothing for a Cancel button to revert.
+/// Callers anchor this directly above/below their own trigger swatch and
+/// close it on a click elsewhere (see [InlineColorPickerSwatch]'s doc
+/// comment for the full pattern), rather than it appearing as a centered
+/// modal dialog.
 class InlineHsvPickerBar extends StatefulWidget {
   final Color initialColor;
   final ValueChanged<Color> onChanged;

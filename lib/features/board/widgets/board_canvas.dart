@@ -14,6 +14,7 @@ import '../../../data/models/connector.dart';
 import '../../../data/models/stroke.dart';
 import '../../../data/providers.dart';
 import '../../annotation/controllers/annotation_controller.dart';
+import '../../annotation/draw_toolbar.dart';
 import '../../annotation/drawing_overlay.dart';
 import '../../annotation/geometry/eraser_geometry.dart';
 import '../../annotation/stroke_painter.dart';
@@ -806,6 +807,25 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       return;
     }
 
+    // A click/drag landing on the draw-mode toolbar (including its
+    // anchored stroke-color picker bar, when open) must not also start a
+    // freehand stroke on the canvas underneath it - this raw Listener
+    // sees every pointer event regardless of what the toolbar's own
+    // button/slider widgets decide, the same reasoning every other
+    // floating-overlay guard in this function exists for.
+    if (ref.read(isDrawModeProvider)) {
+      final toolbarRect = DrawToolbar.pillRectFor(_canvasSize);
+      if (toolbarRect.contains(event.localPosition)) {
+        return;
+      }
+      if (ref.read(drawStrokeColorPickerOpenProvider) &&
+          DrawToolbar.pickerRectFor(
+            _canvasSize,
+          ).contains(event.localPosition)) {
+        return;
+      }
+    }
+
     // A click landing on the shape style popover must not fall through to
     // the canvas (which would deselect/drag) - same click-through-guard
     // role every other per-selection floating overlay in this app needs.
@@ -819,6 +839,18 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
           selectedClip,
           view,
         ).contains(event.localPosition)) {
+          return;
+        }
+        // Same guard, for the anchored fill/stroke color-picker bar (only
+        // present above the pill while one of the two swatches is
+        // toggled open) - without this, dragging its sliders would also
+        // deselect/drag on the canvas underneath.
+        if ((ref.read(shapeFillPickerOpenProvider) ||
+                ref.read(shapeStrokePickerOpenProvider)) &&
+            ShapeStylePopover.pickerRectFor(
+              selectedClip,
+              view,
+            ).contains(event.localPosition)) {
           return;
         }
       }

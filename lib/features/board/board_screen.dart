@@ -915,65 +915,98 @@ class BoardScreen extends ConsumerWidget {
   void _deleteFrame(WidgetRef ref, String frameId) =>
       _deleteFrames(ref, [frameId]);
 
+  /// Shows the frame-color picker as a plain `AlertDialog` (still modal -
+  /// its barrier fully protects against `board_canvas.dart`'s own raw
+  /// gesture `Listener` the way every modal dialog in this app already
+  /// does, so no new click-through guard is needed), but with the HSV
+  /// sliders shown inline via [InlineHsvPickerBar] instead of opening a
+  /// SECOND, nested modal dialog - live-updating the frame's color as the
+  /// user drags, same as every other color swatch in this app. One
+  /// combined undo step covers the whole dialog session (whatever the
+  /// color ends up as when it closes), rather than one per click.
   Future<void> _setFrameColor(
     BuildContext context,
     WidgetRef ref,
     FrameRow frame,
   ) async {
     final repo = ref.read(framesRepositoryProvider);
+    final before = frame.backgroundColorHex;
+    var pickerOpen = false;
     await showDialog<void>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Frame color'),
-        content: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ColorSwatchButton(
-              color: AppTheme.textSecondary,
-              selected: frame.backgroundColorHex == null,
-              onTap: () {
-                final before = frame.backgroundColorHex;
-                repo.updateColor(frame.id, null);
-                Navigator.of(context).pop();
-                ref
-                    .read(undoManagerProvider.notifier)
-                    .push(
-                      UndoableAction(
-                        undo: () => repo.updateColor(frame.id, before),
-                        redo: () => repo.updateColor(frame.id, null),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) {
+          final live = (ref.read(boardFramesProvider).valueOrNull ?? [])
+              .firstWhere((f) => f.id == frame.id, orElse: () => frame);
+          return AlertDialog(
+            title: const Text('Frame color'),
+            content: SizedBox(
+              width: 320,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      ColorSwatchButton(
+                        color: AppTheme.textSecondary,
+                        selected: live.backgroundColorHex == null,
+                        onTap: () {
+                          repo.updateColor(frame.id, null);
+                          setState(() => pickerOpen = false);
+                        },
                       ),
-                    );
-              },
-            ),
-            ColorPickerSwatch(
-              color: frame.backgroundColorHex != null
-                  ? hexToColor(frame.backgroundColorHex!)
-                  : AppTheme.surfaceCard,
-              onColorSelected: (color) {
-                final before = frame.backgroundColorHex;
-                final after = colorToHex(color);
-                repo.updateColor(frame.id, after);
-                Navigator.of(context).pop();
-                ref
-                    .read(undoManagerProvider.notifier)
-                    .push(
-                      UndoableAction(
-                        undo: () => repo.updateColor(frame.id, before),
-                        redo: () => repo.updateColor(frame.id, after),
+                      InlineColorPickerSwatch(
+                        color: live.backgroundColorHex != null
+                            ? hexToColor(live.backgroundColorHex!)
+                            : AppTheme.surfaceCard,
+                        open: pickerOpen,
+                        onTap: () => setState(() => pickerOpen = !pickerOpen),
                       ),
-                    );
-              },
+                    ],
+                  ),
+                  if (pickerOpen) ...[
+                    const SizedBox(height: 12),
+                    InlineHsvPickerBar(
+                      initialColor: live.backgroundColorHex != null
+                          ? hexToColor(live.backgroundColorHex!)
+                          : AppTheme.surfaceCard,
+                      onChanged: (color) =>
+                          repo.updateColor(frame.id, colorToHex(color)),
+                      onDone: () => setState(() => pickerOpen = false),
+                    ),
+                  ],
+                ],
+              ),
             ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Close'),
-          ),
-        ],
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Close'),
+              ),
+            ],
+          );
+        },
       ),
     );
+    final liveFrames = ref.read(boardFramesProvider).valueOrNull ?? [];
+    String? after;
+    for (final f in liveFrames) {
+      if (f.id == frame.id) {
+        after = f.backgroundColorHex;
+        break;
+      }
+    }
+    if (before != after) {
+      ref
+          .read(undoManagerProvider.notifier)
+          .push(
+            UndoableAction(
+              undo: () => repo.updateColor(frame.id, before),
+              redo: () => repo.updateColor(frame.id, after),
+            ),
+          );
+    }
   }
 
   Future<void> _applyFramePreset(

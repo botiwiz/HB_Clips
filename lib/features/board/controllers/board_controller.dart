@@ -269,6 +269,17 @@ final editingTextClipIdProvider = StateProvider<String?>((ref) => null);
 /// chance to handle it. Reset to false whenever edit mode ends.
 final highlightPickerOpenProvider = StateProvider<bool>((ref) => false);
 
+/// Whether `ShapeStylePopover`'s anchored fill-color picker bar is
+/// currently open - same click-through-guard role [highlightPickerOpenProvider]
+/// plays for the text-edit toolbar. Fill and stroke are mutually exclusive
+/// (opening one closes the other - see `ShapeStylePopover._togglePicker`);
+/// both reset to false whenever the popover's bound clip changes or stops
+/// being a single selected shape.
+final shapeFillPickerOpenProvider = StateProvider<bool>((ref) => false);
+
+/// Same role as [shapeFillPickerOpenProvider], for the stroke-color swatch.
+final shapeStrokePickerOpenProvider = StateProvider<bool>((ref) => false);
+
 /// Snapshot of an in-progress connector drag - null when no such drag is
 /// active. Same ephemeral-preview role [defineFrameRectProvider]/
 /// [arrangeDragRectProvider] play elsewhere: `board_canvas.dart` updates it
