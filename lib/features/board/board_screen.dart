@@ -6,6 +6,7 @@ import 'package:path/path.dart' as p;
 import 'package:pdf/pdf.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../core/constants.dart' show kBoardBackupExtension;
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/color_swatch_button.dart';
 import '../../core/widgets/hsv_color_picker.dart';
@@ -28,6 +29,7 @@ import 'geometry/pdf_export_selection.dart';
 import 'geometry/selection_geometry.dart';
 import 'services/add_image_service.dart' show pushAddClipUndo, pushAddClipsUndo;
 import 'services/apply_frame_preset.dart' show applyFramePreset;
+import 'services/board_backup_service.dart';
 import 'services/clipboard_paste_service.dart';
 import 'services/image_size_service.dart';
 import 'services/pureref_import_service.dart';
@@ -284,6 +286,114 @@ class BoardScreen extends ConsumerWidget {
       builder: (context) => AlertDialog(
         title: const Text('Export complete'),
         content: Text('Exported ${parts.join(', ')}.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _exportBoardBackup(BuildContext context, WidgetRef ref) async {
+    final bytes = await exportBoardBackup(
+      ref,
+      ref.read(currentBoardIdProvider),
+    );
+    if (!context.mounted) return;
+
+    String? savePath;
+    try {
+      savePath = await FilePicker.platform.saveFile(
+        dialogTitle: 'Export board backup',
+        fileName: 'board.$kBoardBackupExtension',
+        type: FileType.custom,
+        allowedExtensions: [kBoardBackupExtension],
+        bytes: bytes,
+      );
+    } catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            "Couldn't open the save dialog. On Linux this needs zenity "
+            '(or kdialog) installed.',
+          ),
+          backgroundColor: AppTheme.danger,
+        ),
+      );
+      return;
+    }
+    if (savePath == null) return;
+    if (!savePath.toLowerCase().endsWith('.$kBoardBackupExtension')) {
+      savePath = '$savePath.$kBoardBackupExtension';
+    }
+    await writeBytesToPath(savePath, bytes);
+  }
+
+  Future<void> _importBoardBackup(BuildContext context, WidgetRef ref) async {
+    final FilePickerResult? result;
+    try {
+      result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: [kBoardBackupExtension],
+        withData: true,
+      );
+    } catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            "Couldn't open the file picker. On Linux this needs zenity "
+            '(or kdialog) installed.',
+          ),
+          backgroundColor: AppTheme.danger,
+        ),
+      );
+      return;
+    }
+    final pickedBytes = result?.files.single.bytes;
+    if (pickedBytes == null) return;
+    if (!context.mounted) return;
+
+    BoardBackupSummary summary;
+    try {
+      summary = await importBoardBackup(ref, pickedBytes);
+    } catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Couldn't read this backup file: $error"),
+          backgroundColor: AppTheme.danger,
+        ),
+      );
+      return;
+    }
+    if (!context.mounted) return;
+    ref.read(currentBoardIdProvider.notifier).state = summary.newBoardId;
+
+    final parts = <String>[
+      '${summary.framesImported} frame${summary.framesImported == 1 ? '' : 's'}',
+      '${summary.clipsImported} clip${summary.clipsImported == 1 ? '' : 's'}',
+      '${summary.connectorsImported} connector${summary.connectorsImported == 1 ? '' : 's'}',
+      '${summary.strokesImported} stroke${summary.strokesImported == 1 ? '' : 's'}',
+    ];
+    if (summary.imagesMissing > 0) {
+      parts.add(
+        "${summary.imagesMissing} image${summary.imagesMissing == 1 ? '' : 's'} "
+        "couldn't be recovered (missing from this backup file)",
+      );
+    }
+
+    if (!context.mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Backup restored'),
+        content: Text(
+          "Restored '${summary.boardName}' as a new board: ${parts.join(', ')}.",
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
@@ -1359,6 +1469,16 @@ class BoardScreen extends ConsumerWidget {
                             tooltip: 'Export board as .pdf',
                             icon: Icons.picture_as_pdf_outlined,
                             onPressed: () => _exportPdfFile(context, ref),
+                          ),
+                          PillIconButton(
+                            tooltip: 'Export board backup',
+                            icon: Icons.backup_outlined,
+                            onPressed: () => _exportBoardBackup(context, ref),
+                          ),
+                          PillIconButton(
+                            tooltip: 'Import board backup',
+                            icon: Icons.restore_outlined,
+                            onPressed: () => _importBoardBackup(context, ref),
                           ),
                         ],
                       ),

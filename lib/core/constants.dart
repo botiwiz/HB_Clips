@@ -101,3 +101,13 @@ const double kTextCaretReservedWidth = 3.0;
 /// sizes (e.g. stroke width). Set to 0.0 for the app's sharp-corner
 /// design - see `kCornerRadius`'s doc comment.
 const double kHighlightCornerRadius = 0.0;
+
+/// Format version written into every `.hbbackup` file's manifest -
+/// bumped only if the manifest's own JSON shape changes incompatibly.
+/// `importBoardBackup` refuses to import a version newer than this.
+const int kBoardBackupFormatVersion = 1;
+
+/// File extension (no leading dot) for a board backup file - a
+/// proprietary, self-contained zip container (manifest.json + embedded
+/// image bytes) distinct from this app's `.pur` import/export format.
+const String kBoardBackupExtension = 'hbbackup';
