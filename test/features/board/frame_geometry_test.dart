@@ -51,28 +51,128 @@ void main() {
   group('pointInFrameOrTitleBand', () {
     test('a point inside the frame body counts', () {
       final frame = _frame(x: 0, y: 0, width: 200, height: 100);
-      expect(FrameGeometry.pointInFrameOrTitleBand(const Offset(50, 50), frame), isTrue);
+      expect(
+        FrameGeometry.pointInFrameOrTitleBand(const Offset(50, 50), frame),
+        isTrue,
+      );
     });
 
     test('a point in the title band above the frame counts', () {
       final frame = _frame(x: 0, y: 100, width: 200, height: 100);
       // 10px above the frame's top edge - within the 32px band.
-      expect(FrameGeometry.pointInFrameOrTitleBand(const Offset(50, 90), frame), isTrue);
+      expect(
+        FrameGeometry.pointInFrameOrTitleBand(const Offset(50, 90), frame),
+        isTrue,
+      );
     });
 
     test('a point above the band (too far up) does not count', () {
       final frame = _frame(x: 0, y: 100, width: 200, height: 100);
-      expect(FrameGeometry.pointInFrameOrTitleBand(const Offset(50, 50), frame), isFalse);
+      expect(
+        FrameGeometry.pointInFrameOrTitleBand(const Offset(50, 50), frame),
+        isFalse,
+      );
     });
 
-    test('a point beside the frame (same y as body, outside x range) does not count', () {
-      final frame = _frame(x: 0, y: 0, width: 200, height: 100);
-      expect(FrameGeometry.pointInFrameOrTitleBand(const Offset(300, 50), frame), isFalse);
-    });
+    test(
+      'a point beside the frame (same y as body, outside x range) does not count',
+      () {
+        final frame = _frame(x: 0, y: 0, width: 200, height: 100);
+        expect(
+          FrameGeometry.pointInFrameOrTitleBand(const Offset(300, 50), frame),
+          isFalse,
+        );
+      },
+    );
 
-    test('pointInFrame itself stays band-unaware (used for drop containment)', () {
+    test(
+      'pointInFrame itself stays band-unaware (used for drop containment)',
+      () {
+        final frame = _frame(x: 0, y: 100, width: 200, height: 100);
+        expect(
+          FrameGeometry.pointInFrame(const Offset(50, 90), frame),
+          isFalse,
+        );
+      },
+    );
+  });
+
+  group('pointInTitleBand', () {
+    test('true only for the band, not the body', () {
       final frame = _frame(x: 0, y: 100, width: 200, height: 100);
-      expect(FrameGeometry.pointInFrame(const Offset(50, 90), frame), isFalse);
+      expect(
+        FrameGeometry.pointInTitleBand(const Offset(50, 90), frame),
+        isTrue,
+      );
+      expect(
+        FrameGeometry.pointInTitleBand(const Offset(50, 150), frame),
+        isFalse,
+      );
+    });
+  });
+
+  group('marqueeIntersects', () {
+    test('overlapping rects intersect', () {
+      final frame = _frame(x: 0, y: 0, width: 100, height: 100);
+      expect(
+        FrameGeometry.marqueeIntersects(
+          const Rect.fromLTWH(50, 50, 100, 100),
+          frame,
+        ),
+        isTrue,
+      );
+    });
+
+    test('a marquee fully outside the frame does not intersect', () {
+      final frame = _frame(x: 0, y: 0, width: 100, height: 100);
+      expect(
+        FrameGeometry.marqueeIntersects(
+          const Rect.fromLTWH(200, 200, 50, 50),
+          frame,
+        ),
+        isFalse,
+      );
+    });
+
+    test('a marquee fully containing the frame intersects', () {
+      final frame = _frame(x: 10, y: 10, width: 20, height: 20);
+      expect(
+        FrameGeometry.marqueeIntersects(
+          const Rect.fromLTWH(0, 0, 100, 100),
+          frame,
+        ),
+        isTrue,
+      );
+    });
+  });
+
+  group('nextAvailableFrameName', () {
+    test('no frames yet -> "Frame 1"', () {
+      expect(FrameGeometry.nextAvailableFrameName(const []), 'Frame 1');
+    });
+
+    test('picks the next number after the highest used', () {
+      final frames = [
+        _frame(x: 0, y: 0, width: 10, height: 10).copyWith(name: 'Frame 1'),
+        _frame(x: 0, y: 0, width: 10, height: 10).copyWith(name: 'Frame 2'),
+      ];
+      expect(FrameGeometry.nextAvailableFrameName(frames), 'Frame 3');
+    });
+
+    test('reuses a gap left by a deleted frame', () {
+      final frames = [
+        _frame(x: 0, y: 0, width: 10, height: 10).copyWith(name: 'Frame 1'),
+        _frame(x: 0, y: 0, width: 10, height: 10).copyWith(name: 'Frame 3'),
+      ];
+      expect(FrameGeometry.nextAvailableFrameName(frames), 'Frame 2');
+    });
+
+    test('ignores names that do not match the "Frame <n>" pattern', () {
+      final frames = [
+        _frame(x: 0, y: 0, width: 10, height: 10).copyWith(name: 'Whiteboard'),
+        _frame(x: 0, y: 0, width: 10, height: 10).copyWith(name: 'Frame A'),
+      ];
+      expect(FrameGeometry.nextAvailableFrameName(frames), 'Frame 1');
     });
   });
 
@@ -101,7 +201,12 @@ void main() {
       final results = FrameGeometry.scaleChildren(
         startClips: {'a': child},
         startRect: startRect,
-        newRect: const Rect.fromLTWH(0, 0, 20, 20), // 0.2x - well under minClipSize
+        newRect: const Rect.fromLTWH(
+          0,
+          0,
+          20,
+          20,
+        ), // 0.2x - well under minClipSize
       );
 
       final r = results['a']!;
@@ -133,8 +238,7 @@ void main() {
       final startRect = const Rect.fromLTWH(0, 0, 100, 100);
       final a = _clip(id: 'a', x: 10, y: 10, width: 10, height: 10);
       final b = _clip(id: 'b', x: 50, y: 50, width: 10, height: 10);
-      final startDistance =
-          (Offset(b.x, b.y) - Offset(a.x, a.y)).distance;
+      final startDistance = (Offset(b.x, b.y) - Offset(a.x, a.y)).distance;
 
       final results = FrameGeometry.scaleChildren(
         startClips: {'a': a, 'b': b},
@@ -144,8 +248,7 @@ void main() {
 
       final ra = results['a']!;
       final rb = results['b']!;
-      final endDistance =
-          (Offset(rb.x, rb.y) - Offset(ra.x, ra.y)).distance;
+      final endDistance = (Offset(rb.x, rb.y) - Offset(ra.x, ra.y)).distance;
       expect(endDistance, closeTo(startDistance * 3, 1e-9));
     });
 

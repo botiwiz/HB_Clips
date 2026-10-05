@@ -38,6 +38,7 @@ import 'connector_handles.dart';
 import 'connectors_overlay.dart';
 import 'define_frame_overlay.dart';
 import 'dot_grid_background.dart';
+import 'frame_rename_overlay.dart';
 import 'frame_widget.dart';
 import 'frames_panel.dart';
 import 'group_scale_handles.dart';
@@ -564,7 +565,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       );
     }
 
-    ref.read(selectedFrameIdProvider.notifier).state = newFrameId;
+    ref.read(selectedFrameIdsProvider.notifier).state = {newFrameId};
     ref.read(selectedClipIdsProvider.notifier).state = {};
     ref
         .read(undoManagerProvider.notifier)
@@ -642,13 +643,16 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       return ClipGeometry.boardBoundingBox(selectedClips);
     }
 
-    final selectedFrameId = ref.read(selectedFrameIdProvider);
-    if (selectedFrameId == null) return null;
-    final frame = _findFrameById(
-      ref.read(boardFramesProvider).valueOrNull ?? [],
-      selectedFrameId,
-    );
-    return frame == null ? null : FrameGeometry.boardRect(frame);
+    final selectedFrameIds = ref.read(selectedFrameIdsProvider);
+    if (selectedFrameIds.isEmpty) return null;
+    final frames = ref.read(boardFramesProvider).valueOrNull ?? [];
+    Rect? union;
+    for (final frame in frames) {
+      if (!selectedFrameIds.contains(frame.id)) continue;
+      final rect = FrameGeometry.boardRect(frame);
+      union = union == null ? rect : union.expandToInclude(rect);
+    }
+    return union;
   }
 
   /// Pans/zooms the viewport to fit the current clip selection, or - if no
@@ -730,6 +734,28 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
         ).contains(event.localPosition)) {
           return;
         }
+      }
+    }
+
+    // A click landing on the frame-title inline-rename TextField must not
+    // fall through to this canvas's own frame-selection/drag logic -
+    // same click-through-guard role the text-edit toolbar's own guard
+    // plays just above. Unlike that one, nothing else needs to happen
+    // here when the click lands outside this rect: clicking elsewhere
+    // steals focus the same way it always does, which is exactly what
+    // commits/exits the rename via the overlay's own focus-loss handler.
+    final renamingFrameId = ref.read(renamingFrameIdProvider);
+    if (renamingFrameId != null) {
+      final renamingFrame = _findFrameById(
+        ref.read(boardFramesProvider).valueOrNull ?? [],
+        renamingFrameId,
+      );
+      if (renamingFrame != null &&
+          FrameRenameOverlay.screenRectFor(
+            renamingFrame,
+            ref.read(boardViewProvider),
+          ).contains(event.localPosition)) {
+        return;
       }
     }
 
@@ -1034,7 +1060,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
         _exitTextEditUnlessClip(null);
         ref.read(selectedConnectorIdProvider.notifier).state = connector.id;
         ref.read(selectedClipIdsProvider.notifier).state = {};
-        ref.read(selectedFrameIdProvider.notifier).state = null;
+        ref.read(selectedFrameIdsProvider.notifier).state = {};
         return;
       }
     }
@@ -1184,11 +1210,13 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     }
 
     // 2.5. Frames sit behind clips - only checked once no clip was hit.
-    // A resize-handle hit only applies to the already-selected frame.
+    // A resize-handle hit only applies when exactly one frame is
+    // selected - resize (like a plain move) is deliberately kept
+    // single-frame-only even though selection itself can hold several.
     final frames = ref.read(boardFramesProvider).valueOrNull ?? [];
-    final selectedFrameId = ref.read(selectedFrameIdProvider);
-    if (selectedFrameId != null) {
-      final selectedFrame = _findFrameById(frames, selectedFrameId);
+    final selectedFrameIds = ref.read(selectedFrameIdsProvider);
+    if (selectedFrameIds.length == 1) {
+      final selectedFrame = _findFrameById(frames, selectedFrameIds.first);
       if (selectedFrame != null &&
           FrameGeometry.hitTestResizeHandle(
             selectedFrame,
@@ -1229,11 +1257,23 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     final hitFrame = _hitTestFrameForSelection(frames, boardPos);
     if (hitFrame != null) {
       _exitTextEditUnlessClip(null);
+      if (FrameGeometry.pointInTitleBand(boardPos, hitFrame) &&
+          _isDoubleClickOn(hitFrame.id, event.localPosition)) {
+        ref.read(selectedFrameIdsProvider.notifier).state = {hitFrame.id};
+        ref.read(renamingFrameIdProvider.notifier).state = hitFrame.id;
+        return;
+      }
       if (HardwareKeyboard.instance.isAltPressed) {
         await _startFrameDuplicateDrag(hitFrame, clips, boardPos);
         return;
       }
-      ref.read(selectedFrameIdProvider.notifier).state = hitFrame.id;
+      if (_multiSelectModifierHeld) {
+        final newSelection = {...selectedFrameIds};
+        if (!newSelection.remove(hitFrame.id)) newSelection.add(hitFrame.id);
+        ref.read(selectedFrameIdsProvider.notifier).state = newSelection;
+        return;
+      }
+      ref.read(selectedFrameIdsProvider.notifier).state = {hitFrame.id};
       _frameDragId = hitFrame.id;
       _frameDragStartRect = FrameGeometry.boardRect(hitFrame);
       _frameGestureStartPointerBoard = boardPos;
@@ -1263,8 +1303,8 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       }
       return;
     }
-    if (selectedFrameId != null) {
-      ref.read(selectedFrameIdProvider.notifier).state = null;
+    if (selectedFrameIds.isNotEmpty) {
+      ref.read(selectedFrameIdsProvider.notifier).state = {};
     }
 
     // 3. Empty canvas: always a marquee now (pan was already handled above,
@@ -2000,12 +2040,18 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       if (_marqueeMoved) {
         final rect = ref.read(marqueeRectProvider);
         final clips = ref.read(activeClipsProvider).valueOrNull ?? [];
+        final frames = ref.read(boardFramesProvider).valueOrNull ?? [];
         if (rect != null) {
           final hits = clips
               .where((c) => ClipGeometry.marqueeIntersects(rect, c))
               .map((c) => c.id)
               .toSet();
           ref.read(selectedClipIdsProvider.notifier).state = hits;
+          final frameHits = frames
+              .where((f) => FrameGeometry.marqueeIntersects(rect, f))
+              .map((f) => f.id)
+              .toSet();
+          ref.read(selectedFrameIdsProvider.notifier).state = frameHits;
         }
       } else {
         // A plain click-no-drag on empty canvas clears the current
@@ -2013,6 +2059,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
         // when plain left-click started a pan; now plain left-click starts
         // a marquee, so the click-clears-selection behavior moved here.
         ref.read(selectedClipIdsProvider.notifier).state = {};
+        ref.read(selectedFrameIdsProvider.notifier).state = {};
       }
       ref.read(marqueeRectProvider.notifier).state = null;
       _marqueeStartBoard = null;
@@ -2721,7 +2768,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     final shapeToolDragRect = ref.watch(shapeToolDragRectProvider);
     final connectorDraft = ref.watch(connectorDraftProvider);
     final frames = ref.watch(boardFramesProvider).valueOrNull ?? [];
-    final selectedFrameId = ref.watch(selectedFrameIdProvider);
+    final selectedFrameIds = ref.watch(selectedFrameIdsProvider);
     final frameDragRect = ref.watch(frameDragRectProvider);
     final framesPanelOpen = ref.watch(framesPanelOpenProvider);
     final arrangeDragRect = ref.watch(arrangeDragRectProvider);
@@ -2773,8 +2820,10 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
                       for (final frame in frames)
                         _positionedFrame(
                           frame,
-                          frame.id == selectedFrameId ? frameDragRect : null,
-                          frame.id == selectedFrameId,
+                          selectedFrameIds.contains(frame.id)
+                              ? frameDragRect
+                              : null,
+                          selectedFrameIds.contains(frame.id),
                           view,
                         ),
                       for (final clip in sorted)
@@ -2796,6 +2845,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
                       if (connectorDraft != null) const ConnectorDraftOverlay(),
                       const SnapGuidesOverlay(),
                       const TextClipEditOverlay(),
+                      const FrameRenameOverlay(),
                       if (panZoomClipId == null &&
                           !isDrawMode &&
                           !isTextToolActive) ...[

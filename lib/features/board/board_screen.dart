@@ -300,6 +300,14 @@ class BoardScreen extends ConsumerWidget {
       return;
     }
 
+    // A selected frame (or several) also takes priority over a clip
+    // selection, same precedence `_copySelection` already documents.
+    final selectedFrameIds = ref.read(selectedFrameIdsProvider);
+    if (selectedFrameIds.isNotEmpty) {
+      _deleteFrames(ref, selectedFrameIds.toList());
+      return;
+    }
+
     final selection = ref.read(selectedClipIdsProvider);
     if (selection.isEmpty) return;
     final repo = ref.read(clipsRepositoryProvider);
@@ -373,13 +381,16 @@ class BoardScreen extends ConsumerWidget {
 
   /// Snapshots whichever is currently selected - a frame (+ its
   /// children) takes priority over a clip selection, since
-  /// `selectedFrameIdProvider`/`selectedClipIdsProvider` aren't strictly
+  /// `selectedFrameIdsProvider`/`selectedClipIdsProvider` aren't strictly
   /// enforced mutually-exclusive by every click path - into
   /// [copiedSelectionProvider], ready for [_pasteSelection]. A no-op if
-  /// nothing is selected.
+  /// nothing is selected. Copying a frame is single-frame-only (same as
+  /// renaming/color/preset) - with 2+ frames selected this falls through
+  /// to the clip-selection check below, same as 0 selected frames today.
   void _copySelection(WidgetRef ref) {
-    final frameId = ref.read(selectedFrameIdProvider);
-    if (frameId != null) {
+    final selectedFrameIds = ref.read(selectedFrameIdsProvider);
+    if (selectedFrameIds.length == 1) {
+      final frameId = selectedFrameIds.first;
       final frames = ref.read(boardFramesProvider).valueOrNull ?? [];
       FrameRow? frame;
       for (final f in frames) {
@@ -453,7 +464,7 @@ class BoardScreen extends ConsumerWidget {
         if (!context.mounted) return;
         newChildIds.add(newChildId);
       }
-      ref.read(selectedFrameIdProvider.notifier).state = newFrameId;
+      ref.read(selectedFrameIdsProvider.notifier).state = {newFrameId};
       ref.read(selectedClipIdsProvider.notifier).state = {};
       ref
           .read(undoManagerProvider.notifier)
@@ -686,35 +697,12 @@ class BoardScreen extends ConsumerWidget {
   }
 
   Future<void> _addFrame(BuildContext context, WidgetRef ref) async {
-    final controller = TextEditingController(text: 'Frame');
-    final name = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('New frame'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: const InputDecoration(hintText: 'Frame name'),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(controller.text),
-            child: const Text('Add'),
-          ),
-        ],
-      ),
-    );
-    if (name == null || name.trim().isEmpty) return;
-    if (!context.mounted) return;
+    final frames = ref.read(boardFramesProvider).valueOrNull ?? [];
+    final trimmedName = FrameGeometry.nextAvailableFrameName(frames);
 
     final center = _viewportCenterBoardPoint(ref, MediaQuery.sizeOf(context));
     final id = _uuid.v4();
     final boardId = ref.read(currentBoardIdProvider);
-    final trimmedName = name.trim();
     final x = center.dx - 160;
     final y = center.dy - 120;
     const width = 320.0;
@@ -786,52 +774,74 @@ class BoardScreen extends ConsumerWidget {
         );
   }
 
-  void _deleteFrame(WidgetRef ref, String frameId) {
+  /// Deletes every frame in [frameIds] (each unparents its own children
+  /// rather than deleting them, per `FramesRepository.deleteFrame`) and
+  /// pushes one combined undo covering all of them - recreating each
+  /// frame (+ its color) and re-parenting its children on undo, deleting
+  /// them all again on redo. No confirmation dialog, matching the
+  /// existing toolbar delete button's own unconfirmed-but-undoable
+  /// behavior.
+  void _deleteFrames(WidgetRef ref, List<String> frameIds) {
     final frames = ref.read(boardFramesProvider).valueOrNull ?? [];
-    FrameRow? frame;
-    for (final f in frames) {
-      if (f.id == frameId) {
-        frame = f;
-        break;
-      }
-    }
     final clips = ref.read(activeClipsProvider).valueOrNull ?? [];
-    final childIds = [
-      for (final c in clips)
-        if (c.frameId == frameId) c.id,
-    ];
     final framesRepo = ref.read(framesRepositoryProvider);
     final clipsRepo = ref.read(clipsRepositoryProvider);
-    framesRepo.deleteFrame(frameId);
-    ref.read(selectedFrameIdProvider.notifier).state = null;
-    if (frame != null) {
-      final f = frame;
-      ref
-          .read(undoManagerProvider.notifier)
-          .push(
-            UndoableAction(
-              undo: () async {
-                await framesRepo.createFrame(
-                  id: f.id,
-                  boardId: f.boardId,
-                  name: f.name,
-                  x: f.x,
-                  y: f.y,
-                  width: f.width,
-                  height: f.height,
-                );
-                await Future.wait([
-                  if (f.backgroundColorHex != null)
-                    framesRepo.updateColor(f.id, f.backgroundColorHex),
-                  for (final childId in childIds)
-                    clipsRepo.setFrameId(childId, f.id),
-                ]);
-              },
-              redo: () => framesRepo.deleteFrame(f.id),
-            ),
-          );
+
+    final snapshots = <FrameRow>[];
+    final childIdsByFrame = <String, List<String>>{};
+    for (final frameId in frameIds) {
+      FrameRow? frame;
+      for (final f in frames) {
+        if (f.id == frameId) {
+          frame = f;
+          break;
+        }
+      }
+      if (frame == null) continue;
+      snapshots.add(frame);
+      childIdsByFrame[frameId] = [
+        for (final c in clips)
+          if (c.frameId == frameId) c.id,
+      ];
     }
+    if (snapshots.isEmpty) return;
+
+    Future<void> restore(FrameRow f) async {
+      await framesRepo.createFrame(
+        id: f.id,
+        boardId: f.boardId,
+        name: f.name,
+        x: f.x,
+        y: f.y,
+        width: f.width,
+        height: f.height,
+      );
+      await Future.wait([
+        if (f.backgroundColorHex != null)
+          framesRepo.updateColor(f.id, f.backgroundColorHex),
+        for (final childId in childIdsByFrame[f.id] ?? const [])
+          clipsRepo.setFrameId(childId, f.id),
+      ]);
+    }
+
+    for (final f in snapshots) {
+      framesRepo.deleteFrame(f.id);
+    }
+    ref.read(selectedFrameIdsProvider.notifier).state = {};
+    ref
+        .read(undoManagerProvider.notifier)
+        .push(
+          UndoableAction(
+            undo: () => Future.wait([for (final f in snapshots) restore(f)]),
+            redo: () => Future.wait([
+              for (final f in snapshots) framesRepo.deleteFrame(f.id),
+            ]),
+          ),
+        );
   }
+
+  void _deleteFrame(WidgetRef ref, String frameId) =>
+      _deleteFrames(ref, [frameId]);
 
   Future<void> _setFrameColor(
     BuildContext context,
@@ -1021,15 +1031,18 @@ class BoardScreen extends ConsumerWidget {
     final panZoomClipId = ref.watch(panZoomClipIdProvider);
     final snapToGrid = ref.watch(snapToGridProvider);
     final framesPanelOpen = ref.watch(framesPanelOpenProvider);
-    final selectedFrameId = ref.watch(selectedFrameIdProvider);
+    final selectedFrameIds = ref.watch(selectedFrameIdsProvider);
     final frames = ref.watch(boardFramesProvider).valueOrNull ?? [];
-    FrameRow? selectedFrame;
-    for (final f in frames) {
-      if (f.id == selectedFrameId) {
-        selectedFrame = f;
-        break;
-      }
-    }
+    final selectedFrames = [
+      for (final f in frames)
+        if (selectedFrameIds.contains(f.id)) f,
+    ];
+    // Rename/color/preset stay single-frame-only actions (one text
+    // field, one color, one size) - only Delete (just below) acts on
+    // the whole selection.
+    final selectedFrame = selectedFrames.length == 1
+        ? selectedFrames.first
+        : null;
     final clips = ref.watch(activeClipsProvider).valueOrNull ?? [];
     final selectedClips = [
       for (final c in clips)
@@ -1215,28 +1228,25 @@ class BoardScreen extends ConsumerWidget {
                               tooltip: 'Rename frame',
                               icon: Icons.edit_outlined,
                               onPressed: () =>
-                                  _renameFrame(context, ref, selectedFrame!),
+                                  _renameFrame(context, ref, selectedFrame),
                             ),
                             PillIconButton(
                               tooltip: 'Frame color',
                               icon: Icons.palette_outlined,
                               onPressed: () =>
-                                  _setFrameColor(context, ref, selectedFrame!),
+                                  _setFrameColor(context, ref, selectedFrame),
                             ),
                             PillIconButton(
                               tooltip: 'Frame size preset',
                               icon: Icons.aspect_ratio,
-                              onPressed: () => _pickFramePreset(
-                                context,
-                                ref,
-                                selectedFrame!,
-                              ),
+                              onPressed: () =>
+                                  _pickFramePreset(context, ref, selectedFrame),
                             ),
                             PillIconButton(
                               tooltip: 'Delete frame',
                               icon: Icons.delete_outline,
                               onPressed: () =>
-                                  _deleteFrame(ref, selectedFrame!.id),
+                                  _deleteFrame(ref, selectedFrame.id),
                             ),
                           ],
                           PillIconButton(

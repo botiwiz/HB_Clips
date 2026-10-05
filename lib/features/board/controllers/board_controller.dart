@@ -149,11 +149,23 @@ final marqueeRectProvider = StateProvider<Rect?>((ref) => null);
 /// a per-session UI preference, not persisted.
 final snapToGridProvider = StateProvider<bool>((ref) => false);
 
-/// Id of the single currently-selected frame, or null. Frames use a
-/// separate, single-select-only selection model from clips -
-/// [selectedClipIdsProvider] - since they're a simpler background/grouping
-/// concept, not a peer object type with its own multi-select semantics.
-final selectedFrameIdProvider = StateProvider<String?>((ref) => null);
+/// Ids of every currently-selected frame - mirrors
+/// [selectedClipIdsProvider]'s multi-select shape (a plain click
+/// replaces the set with one id, a shift/ctrl-click toggles membership,
+/// a marquee replaces it with every overlapping frame). A handful of
+/// frame actions stay single-frame-only even with this model in place -
+/// renaming, the color/preset dialogs, Ctrl+C/paste, and starting a
+/// resize/move/duplicate drag all require (or collapse down to) exactly
+/// one selected frame; see `board_screen.dart`'s build method and
+/// `board_canvas.dart`'s frame-hit-test branch for where that's
+/// enforced.
+final selectedFrameIdsProvider = StateProvider<Set<String>>((ref) => {});
+
+/// Id of the frame currently showing an inline rename `TextField` over
+/// its title band, or null - set on a double-click of a frame's title
+/// (see `board_canvas.dart`'s frame-hit-test branch), cleared by
+/// `FrameRenameOverlay` once it commits/cancels.
+final renamingFrameIdProvider = StateProvider<String?>((ref) => null);
 
 /// Ephemeral, not-yet-persisted rect of the frame currently being dragged
 /// or resized - same "render this instead of the DB value, write on
@@ -280,7 +292,7 @@ final connectorDraftProvider = StateProvider<ConnectorDraft?>((ref) => null);
 
 /// The connector currently selected by clicking its curve - null when
 /// none is selected. Mutually exclusive with clip/frame selection: picking
-/// a connector clears [selectedClipIdsProvider]/[selectedFrameIdProvider]
+/// a connector clears [selectedClipIdsProvider]/[selectedFrameIdsProvider]
 /// and vice versa. Drives the connector's highlighted-red rendering, its
 /// draggable endpoint handle, and Backspace/Delete deleting it instead of
 /// binning a clip selection (see `board_screen.dart`'s `_binSelected`).

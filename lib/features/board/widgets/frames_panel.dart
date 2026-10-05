@@ -20,7 +20,7 @@ class FramesPanel extends ConsumerWidget {
   static const double _maxPanelHeight = 360;
 
   void _selectAndFit(WidgetRef ref, BuildContext context, FrameRow frame) {
-    ref.read(selectedFrameIdProvider.notifier).state = frame.id;
+    ref.read(selectedFrameIdsProvider.notifier).state = {frame.id};
     ref
         .read(boardViewProvider.notifier)
         .fitRect(FrameGeometry.boardRect(frame), MediaQuery.sizeOf(context));
@@ -29,7 +29,7 @@ class FramesPanel extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final frames = ref.watch(boardFramesProvider).valueOrNull ?? [];
-    final selectedFrameId = ref.watch(selectedFrameIdProvider);
+    final selectedFrameIds = ref.watch(selectedFrameIdsProvider);
 
     return Container(
       width: _panelWidth,
@@ -56,7 +56,7 @@ class FramesPanel extends ConsumerWidget {
               itemCount: frames.length,
               itemBuilder: (context, index) {
                 final frame = frames[index];
-                final selected = frame.id == selectedFrameId;
+                final selected = selectedFrameIds.contains(frame.id);
                 final swatchColor = frame.backgroundColorHex != null
                     ? hexToColor(frame.backgroundColorHex!)
                     : AppTheme.textSecondary;
@@ -76,7 +76,9 @@ class FramesPanel extends ConsumerWidget {
                     frame.name,
                     style: TextStyle(
                       color: selected ? AppTheme.red : AppTheme.textPrimary,
-                      fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
+                      fontWeight: selected
+                          ? FontWeight.w600
+                          : FontWeight.normal,
                     ),
                   ),
                   onTap: () => _selectAndFit(ref, context, frame),
