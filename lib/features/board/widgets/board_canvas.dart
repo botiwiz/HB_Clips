@@ -3066,6 +3066,11 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
           y: rect.top,
           width: rect.width,
           height: rect.height,
+          // Starts looking like the last shape the user styled, instead
+          // of always falling back to no-fill/default-border/default-width.
+          fillColorHex: ref.read(lastShapeFillColorHexProvider),
+          strokeColorHex: ref.read(lastShapeStrokeColorHexProvider),
+          strokeWidth: ref.read(lastShapeStrokeWidthProvider),
         );
     if (!mounted) return;
     pushAddClipUndo(ref, id);

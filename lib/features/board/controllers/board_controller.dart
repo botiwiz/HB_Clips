@@ -252,6 +252,19 @@ final selectedShapeKindProvider = StateProvider<ShapeKind>(
 /// ephemeral-preview role as [textToolDragRectProvider].
 final shapeToolDragRectProvider = StateProvider<Rect?>((ref) => null);
 
+/// The most recently applied fill color (null = no fill), stroke color,
+/// and stroke width for ANY shape clip - updated by `ShapeStylePopover`
+/// every time one of its controls actually changes a shape's style, and
+/// read by the shape-placement pointer-up handler in `board_canvas.dart`
+/// so a newly placed shape starts out looking like the last one the user
+/// styled, instead of always falling back to this app's hardcoded
+/// defaults. Session-only (not persisted) - a fresh app launch starts
+/// with no memory of a previous session's styling, same as every other
+/// StateProvider in this file.
+final lastShapeFillColorHexProvider = StateProvider<String?>((ref) => null);
+final lastShapeStrokeColorHexProvider = StateProvider<String?>((ref) => null);
+final lastShapeStrokeWidthProvider = StateProvider<double?>((ref) => null);
+
 /// Id of the text-note clip that should render as an actively-focused,
 /// editable TextField instead of static Text - set the instant a new
 /// text-note clip is created and cleared when editing ends (blur, Escape,

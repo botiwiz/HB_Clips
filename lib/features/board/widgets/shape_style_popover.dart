@@ -222,16 +222,21 @@ class _ShapeStylePopoverState extends ConsumerState<ShapeStylePopover> {
                                 ? hexToColor(boundClip.shapeStrokeColorHex!)
                                 : AppTheme.border),
                       onChanged: (color) {
+                        final hex = colorToHex(color);
                         if (fillOpen) {
-                          repo.updateShapeFillColor(
-                            boundClip.id,
-                            colorToHex(color),
-                          );
+                          repo.updateShapeFillColor(boundClip.id, hex);
+                          ref
+                                  .read(lastShapeFillColorHexProvider.notifier)
+                                  .state =
+                              hex;
                         } else {
-                          repo.updateShapeStrokeColor(
-                            boundClip.id,
-                            colorToHex(color),
-                          );
+                          repo.updateShapeStrokeColor(boundClip.id, hex);
+                          ref
+                                  .read(
+                                    lastShapeStrokeColorHexProvider.notifier,
+                                  )
+                                  .state =
+                              hex;
                         }
                       },
                       onDone: () => fillOpen
@@ -275,6 +280,10 @@ class _ShapeStylePopoverState extends ConsumerState<ShapeStylePopover> {
                           }
                           if (before == null) return;
                           repo.updateShapeFillColor(boundClip.id, null);
+                          ref
+                                  .read(lastShapeFillColorHexProvider.notifier)
+                                  .state =
+                              null;
                           pushFillUndo(before, null);
                         },
                       ),
@@ -409,6 +418,7 @@ class _StrokeWidthSliderState extends ConsumerState<_StrokeWidthSlider> {
           ref
               .read(clipsRepositoryProvider)
               .updateShapeStrokeWidth(widget.clipId, v);
+          ref.read(lastShapeStrokeWidthProvider.notifier).state = v;
         },
         onChangeEnd: (v) {
           final before = _dragStartValue;
