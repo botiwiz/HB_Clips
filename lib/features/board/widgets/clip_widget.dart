@@ -64,7 +64,7 @@ class ClipWidget extends StatelessWidget {
           border: selected
               ? Border.all(color: AppTheme.red, width: 2.5)
               : (isShape ? null : Border.all(color: AppTheme.border, width: 1)),
-          boxShadow: isShape
+          boxShadow: (isShape || clip.type == ClipType.text)
               ? null
               : const [
                   BoxShadow(

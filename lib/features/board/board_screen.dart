@@ -639,7 +639,12 @@ class BoardScreen extends ConsumerWidget {
         HardwareKeyboard.instance.isMetaPressed;
     final isCopyKey = modifierHeld && key == LogicalKeyboardKey.keyC;
     final isPasteKey = modifierHeld && key == LogicalKeyboardKey.keyV;
-    if (!isBinKey && !isArrowKey && !isCopyKey && !isPasteKey) {
+    final isSelectAllKey = modifierHeld && key == LogicalKeyboardKey.keyA;
+    if (!isBinKey &&
+        !isArrowKey &&
+        !isCopyKey &&
+        !isPasteKey &&
+        !isSelectAllKey) {
       return KeyEventResult.ignored;
     }
     if (ref.read(editingTextClipIdProvider) != null) {
@@ -651,6 +656,10 @@ class BoardScreen extends ConsumerWidget {
     }
     if (isCopyKey) {
       _copySelection(ref);
+      return KeyEventResult.handled;
+    }
+    if (isSelectAllKey) {
+      _selectAll(ref);
       return KeyEventResult.handled;
     }
     if (isPasteKey) {
@@ -1194,14 +1203,10 @@ class BoardScreen extends ConsumerWidget {
             // Windows' other common redo convention, alongside Ctrl+Shift+Z.
             const SingleActivator(LogicalKeyboardKey.keyY, control: true): () =>
                 ref.read(undoManagerProvider.notifier).redo(),
-            const SingleActivator(LogicalKeyboardKey.keyA, control: true): () =>
-                _selectAll(ref),
-            const SingleActivator(LogicalKeyboardKey.keyA, meta: true): () =>
-                _selectAll(ref),
-            // Ctrl/Cmd+C and +V are handled by _handleEditAwareShortcut
+            // Ctrl/Cmd+A, +C and +V are handled by _handleEditAwareShortcut
             // instead (above) - not as plain bindings here - since they
-            // need to stay out of the way of native text copy/paste
-            // while a note is being edited (see that method's doc
+            // need to stay out of the way of native text select-all/copy/
+            // paste while a note is being edited (see that method's doc
             // comment for why a CallbackShortcuts binding can't do that
             // conditionally).
           },
