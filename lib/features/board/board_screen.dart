@@ -656,8 +656,13 @@ class BoardScreen extends ConsumerWidget {
   /// keys either). While a text note is being edited, these keys are for
   /// the TextField itself (delete a character, move the caret, native
   /// text copy/paste) - ignored here so they keep bubbling up to that
-  /// root-level handling. Outside of editing, they bin the selection /
-  /// nudge it / copy-paste a clip or frame, exactly as before.
+  /// root-level handling. Same reasoning while a frame's title is being
+  /// inline-renamed (`renamingFrameIdProvider`, `FrameRenameOverlay`'s
+  /// own `TextField`) - without this check, Backspace/Delete fell
+  /// through to binning the selected (and still-selected-while-renaming)
+  /// frame instead of editing its name. Outside of editing/renaming,
+  /// these keys bin the selection / nudge it / copy-paste a clip or
+  /// frame, exactly as before.
   KeyEventResult _handleEditAwareShortcut(
     BuildContext context,
     WidgetRef ref,
@@ -687,7 +692,8 @@ class BoardScreen extends ConsumerWidget {
         !isSelectAllKey) {
       return KeyEventResult.ignored;
     }
-    if (ref.read(editingTextClipIdProvider) != null) {
+    if (ref.read(editingTextClipIdProvider) != null ||
+        ref.read(renamingFrameIdProvider) != null) {
       return KeyEventResult.ignored;
     }
     if (isBinKey) {

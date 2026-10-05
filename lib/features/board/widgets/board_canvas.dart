@@ -666,8 +666,14 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     // `_spaceKeyDown` bookkeeping, no `_focusOnSelection()` call on key-up
     // - rather than trying to block the raw key event somewhere upstream
     // (which previously suppressed Space from reaching the platform text-
-    // input channel entirely, breaking character insertion for it).
-    if (ref.read(editingTextClipIdProvider) != null) {
+    // input channel entirely, breaking character insertion for it). Same
+    // reasoning while a frame's title is being inline-renamed
+    // (`renamingFrameIdProvider`) - without this check, Space while
+    // typing a frame name would still toggle `_focusOnSelection()`'s
+    // zoom-to-selection view snap on key-up, since the frame being
+    // renamed is also still selected.
+    if (ref.read(editingTextClipIdProvider) != null ||
+        ref.read(renamingFrameIdProvider) != null) {
       return KeyEventResult.ignored;
     }
     if (event.logicalKey != LogicalKeyboardKey.space) {
