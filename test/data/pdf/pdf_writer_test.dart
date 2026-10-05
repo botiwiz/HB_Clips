@@ -315,24 +315,22 @@ void main() {
     expect(_mediaBoxes(result!.bytes), ['0 0 800 400']);
   });
 
-  test(
-    'a pageFormat with a different aspect ratio than the content still '
-    'sizes the page to the pageFormat exactly (letterboxed, not cropped)',
-    () async {
-      final frames = [_frame(id: 'f1', x: 0, y: 0, width: 400, height: 200)];
+  test('a pageFormat with a different aspect ratio than the content still '
+      'sizes the page to the pageFormat exactly (content covers and crops '
+      'to fill it, not letterboxed)', () async {
+    final frames = [_frame(id: 'f1', x: 0, y: 0, width: 400, height: 200)];
 
-      final result = await writePdfFile(
-        frames: frames,
-        clips: const [],
-        strokes: const [],
-        readBytes: _fakeReadBytes,
-        pageFormat: const PdfPageFormat(500, 500),
-      );
+    final result = await writePdfFile(
+      frames: frames,
+      clips: const [],
+      strokes: const [],
+      readBytes: _fakeReadBytes,
+      pageFormat: const PdfPageFormat(500, 500),
+    );
 
-      expect(result, isNotNull);
-      expect(_mediaBoxes(result!.bytes), ['0 0 500 500']);
-    },
-  );
+    expect(result, isNotNull);
+    expect(_mediaBoxes(result!.bytes), ['0 0 500 500']);
+  });
 
   test('pageFormat applies uniformly across an overview page and a frame '
       'page with different native content sizes', () async {
@@ -353,4 +351,37 @@ void main() {
     expect(boxes[0], '0 0 600 300');
     expect(boxes[1], '0 0 600 300');
   });
+
+  test(
+    "rasterizeTextClip renders at pixelRatio times the clip's board size",
+    () async {
+      final clip = _textClip(id: 't1', text: 'hello', x: 0, y: 0);
+      final bytes = await rasterizeTextClip(clip, pixelRatio: 2.0);
+      final decoded = img.decodeImage(bytes)!;
+      expect(decoded.width, 440);
+      expect(decoded.height, 280);
+    },
+  );
+
+  test(
+    'writePdfFile text clips are not counted as images drawn or skipped',
+    () async {
+      final frames = [_frame(id: 'f1', x: 0, y: 0, width: 300, height: 200)];
+      final clips = [
+        _textClip(id: 't1', frameId: 'f1', text: 'hi', x: 10, y: 10),
+      ];
+
+      final result = await writePdfFile(
+        frames: frames,
+        clips: clips,
+        strokes: const [],
+        readBytes: _fakeReadBytes,
+      );
+
+      expect(result, isNotNull);
+      expect(result!.summary.imagesDrawn, 0);
+      expect(result.summary.imagesSkipped, 0);
+      expect(_mediaBoxes(result.bytes).length, 1);
+    },
+  );
 }

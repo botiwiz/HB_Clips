@@ -7,13 +7,27 @@ import 'package:image/image.dart' as img;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
-import '../../core/constants.dart' show kBoardGridSpacing, kCornerRadius;
+import '../../core/constants.dart'
+    show
+        kBoardGridSpacing,
+        kDefaultHighlightColorHex,
+        kHighlightCornerRadius,
+        kTextCaretReservedWidth,
+        kTextNoteFontSize,
+        kTextNoteHorizontalPadding,
+        kTextNoteVerticalPadding;
+import '../../core/theme/app_theme.dart' show AppTheme;
 import '../../features/annotation/controllers/annotation_controller.dart'
     show kDefaultStrokeWidth;
+import '../../features/annotation/stroke_painter.dart' show hexToColor;
 import '../../features/board/geometry/frame_geometry.dart';
+import '../../features/board/geometry/highlight_geometry.dart';
 import '../../features/board/geometry/image_pan_zoom_geometry.dart';
+import '../../features/board/geometry/page_crop_settings.dart';
 import '../../features/board/geometry/selection_geometry.dart';
 import '../../features/board/geometry/shape_geometry.dart';
+import '../../features/board/geometry/text_note_geometry.dart';
+import '../../features/board/geometry/text_style_ranges.dart';
 import '../local/database.dart' show FrameRow;
 import '../models/clip.dart';
 import '../models/stroke.dart';
@@ -63,10 +77,12 @@ class _PageResult {
 /// scaling - a frame set to an A4 preset (`frame_presets.dart`) exports as a
 /// literal, exact A4 page.
 ///
-/// No rasterization infrastructure exists in this codebase, so every clip
-/// is drawn fresh from its stored board-space geometry rather than
-/// screenshotting the on-screen widget tree. [readBytes] resolves a
-/// clip's `localFilePath` to its raw bytes.
+/// Every clip is drawn fresh from its stored board-space geometry rather
+/// than screenshotting the on-screen widget tree - except text notes,
+/// which ARE rasterized (see [rasterizeTextClip]) using the app's own
+/// real text-rendering code, since `package:pdf`'s own text system uses a
+/// different font with no shared styling/highlight support. [readBytes]
+/// resolves a clip's `localFilePath` to its raw bytes.
 ///
 /// Returns null (nothing to export) if the board has zero frames and zero
 /// clips.
@@ -76,6 +92,7 @@ Future<PdfWriteResult?> writePdfFile({
   required List<Stroke> strokes,
   required Future<Uint8List?> Function(String key) readBytes,
   PdfPageFormat? pageFormat,
+  Map<String, PageCropSettings>? pageCrops,
 }) async {
   if (frames.isEmpty && clips.isEmpty) return null;
 
@@ -97,6 +114,7 @@ Future<PdfWriteResult?> writePdfFile({
       pageSize: pageFormat == null
           ? rect.size
           : Size(pageFormat.width, pageFormat.height),
+      crop: pageCrops?[kOverviewPageCropKey] ?? PageCropSettings.initial,
       backgroundColorHex: null,
       clips: looseClips,
       strokes: strokes,
@@ -118,6 +136,7 @@ Future<PdfWriteResult?> writePdfFile({
       pageSize: pageFormat == null
           ? frameRect.size
           : Size(pageFormat.width, pageFormat.height),
+      crop: pageCrops?[frame.id] ?? PageCropSettings.initial,
       backgroundColorHex: frame.backgroundColorHex,
       clips: children,
       strokes: strokes,
@@ -145,6 +164,7 @@ Future<_PageResult> _buildPage({
   required Offset origin,
   required Size size,
   required Size pageSize,
+  required PageCropSettings crop,
   required String? backgroundColorHex,
   required List<BoardClip> clips,
   required List<Stroke> strokes,
@@ -188,7 +208,18 @@ Future<_PageResult> _buildPage({
   for (final clip in clips) {
     pw.Widget? content;
     if (clip.type == ClipType.text) {
-      content = _buildTextWidget(clip);
+      // No try/catch unlike the image branch below: there's no external-
+      // file failure mode here (no I/O, no unparseable bytes) - a
+      // failure would be a genuine engine-level error that should
+      // surface as a crash, not silently vanish as a miscounted
+      // "skipped image".
+      final pngBytes = await rasterizeTextClip(clip);
+      content = pw.Image(
+        pw.MemoryImage(pngBytes),
+        fit: pw.BoxFit.fill,
+        width: clip.width,
+        height: clip.height,
+      );
     } else if (clip.type == ClipType.shape) {
       content = _buildShapeWidget(clip);
     } else {
@@ -269,67 +300,179 @@ Future<_PageResult> _buildPage({
     );
   }
 
-  // When a uniform pageSize was requested (the export-settings dialog's
-  // chosen resolution/orientation) and it doesn't match this page's own
-  // content rect, scale the content to fit entirely inside pageSize
-  // (never cropping) and center it, letterboxing any leftover margin
-  // with the same background color as the content itself so there's no
-  // visible seam. When pageSize == size (no pageFormat was requested,
-  // or it happens to already match), skip the wrapper entirely so
-  // output stays byte-identical to before this feature existed.
+  // When a uniform pageSize was requested (the export wizard's chosen
+  // resolution/orientation) and it doesn't match this page's own content
+  // rect, cover-fit the content into pageSize (always fills it
+  // completely, cropping overflow) with the user-adjustable [crop]
+  // zoom/pan applied on top - reuses ImagePanZoomGeometry exactly like
+  // _buildImageWidget already does for per-image crop, just treating
+  // this whole page's content block as "the image" and pageSize as "the
+  // frame". When pageSize == size (no pageFormat was requested, or it
+  // happens to already match), skip the wrapper entirely so output
+  // stays byte-identical to before this feature existed.
   final needsFit = pageSize != size;
-  final scale = needsFit
-      ? min(pageSize.width / size.width, pageSize.height / size.height)
-      : 1.0;
+  final pw.Widget pageContent;
+  if (!needsFit) {
+    pageContent = pw.Stack(children: pageChildren);
+  } else {
+    final contentAspect = size.width / size.height;
+    final cover = ImagePanZoomGeometry.coverSize(
+      pageSize.width,
+      pageSize.height,
+      contentAspect,
+    );
+    final zoom = ImagePanZoomGeometry.clampZoom(crop.zoom);
+    final scaled = ImagePanZoomGeometry.scaledSize(cover, zoom);
+    final scale = scaled.width / size.width; // == scaled.height / size.height
+
+    final overflow = ImagePanZoomGeometry.overflow(
+      pageSize.width,
+      pageSize.height,
+      scaled,
+    );
+    // Same formula _buildImageWidget already uses for per-image crop.
+    final visibleLeft = (overflow.dx / 2) * (1 + crop.panX);
+    final visibleTop = (overflow.dy / 2) * (1 + crop.panY);
+
+    pageContent = pw.Stack(
+      children: [
+        pw.Positioned.fill(
+          child: pw.Container(
+            color: PdfColor.fromHex(
+              backgroundColorHex ?? _kCanvasBackgroundHex,
+            ),
+          ),
+        ),
+        pw.Positioned(
+          left: -visibleLeft,
+          top: -visibleTop,
+          child: pw.Transform.scale(
+            scale: scale,
+            alignment: pw.Alignment.topLeft,
+            child: pw.SizedBox(
+              width: size.width,
+              height: size.height,
+              child: pw.Stack(children: pageChildren),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 
   doc.addPage(
     pw.Page(
       pageFormat: PdfPageFormat(pageSize.width, pageSize.height),
       margin: pw.EdgeInsets.zero,
       clip: true,
-      build: (context) => !needsFit
-          ? pw.Stack(children: pageChildren)
-          : pw.Stack(
-              children: [
-                pw.Positioned.fill(
-                  child: pw.Container(
-                    color: PdfColor.fromHex(
-                      backgroundColorHex ?? _kCanvasBackgroundHex,
-                    ),
-                  ),
-                ),
-                pw.Center(
-                  child: pw.Transform.scale(
-                    scale: scale,
-                    child: pw.SizedBox(
-                      width: size.width,
-                      height: size.height,
-                      child: pw.Stack(children: pageChildren),
-                    ),
-                  ),
-                ),
-              ],
-            ),
+      build: (context) => pageContent,
     ),
   );
 
   return _PageResult(drawn, skipped, skippedFileNames);
 }
 
-pw.Widget _buildTextWidget(BoardClip clip) => pw.Container(
-  decoration: pw.BoxDecoration(
-    color: clip.backgroundColorHex != null
-        ? PdfColor.fromHex(clip.backgroundColorHex!)
-        : null,
-    border: pw.Border.all(color: PdfColor.fromHex(_kGridDotHex), width: 1),
-    borderRadius: pw.BorderRadius.all(pw.Radius.circular(kCornerRadius)),
-  ),
-  padding: const pw.EdgeInsets.all(10),
-  child: pw.Text(
-    clip.textContent ?? '',
-    style: pw.TextStyle(color: PdfColors.white, fontSize: 14),
-  ),
-);
+/// Output resolution multiplier for rasterized text notes - a flat 1x
+/// (board-unit == PDF-point) would render blurry once a PDF viewer lets
+/// the user zoom in past 100% or the file is printed. 3x roughly matches
+/// a 288dpi effective resolution - crisp through normal zoom/print
+/// without each note's PNG getting needlessly large.
+const double _kTextRasterPixelRatio = 3.0;
+
+/// Rasterizes a text clip's content using the app's own real
+/// text-rendering logic (`TextNoteGeometry`/`TextStyleRanges`/
+/// `HighlightGeometry` - the exact calls `ClipWidget._buildText()`
+/// makes) instead of reimplementing rich-text/highlight rendering
+/// against package:pdf's own, unrelated font/widget system (a different
+/// font than Flutter's own, with no shared styling code - this
+/// previously meant highlights never rendered, a stray border always
+/// showed even though the live UI has none, and text could get cut off
+/// since the two systems' layouts could disagree). Guarantees the PDF
+/// matches what the user sees on the board; the accepted tradeoff is
+/// that exported text becomes a flat, non-selectable image, same as
+/// every other clip type already effectively is in this export.
+///
+/// Stays in native board-space units (board unit == PDF point) -
+/// [pixelRatio] is a flat canvas scale applied purely to bump output
+/// resolution, never touching layout/wrapping, so this always agrees
+/// with `ClipWidget` at `viewScale: 1.0`. No leading underscore - this
+/// needs to be callable directly from `pdf_writer_test.dart`.
+Future<Uint8List> rasterizeTextClip(
+  BoardClip clip, {
+  double pixelRatio = _kTextRasterPixelRatio,
+}) async {
+  final text = clip.textContent ?? '';
+  final formatting = clip.textFormatting;
+  final baseStyle = TextNoteGeometry.baseStyle(
+    fontSize: clip.fontSize ?? kTextNoteFontSize,
+    color: AppTheme.textNoteText,
+  );
+
+  // Same width math as ClipWidget._buildText() (NOT TextNoteGeometry's
+  // own requiredHeight(), which omits the caret-reservation subtraction
+  // - the raster must match what the live board actually draws).
+  final innerWidth = clip.width - 2 * kTextNoteHorizontalPadding;
+  final contentWidth = innerWidth > kTextCaretReservedWidth
+      ? innerWidth - kTextCaretReservedWidth
+      : innerWidth;
+
+  final pixelWidth = (clip.width * pixelRatio).round().clamp(1, 1 << 20);
+  final pixelHeight = (clip.height * pixelRatio).round().clamp(1, 1 << 20);
+
+  final recorder = ui.PictureRecorder();
+  final canvas = Canvas(
+    recorder,
+    Rect.fromLTWH(0, 0, pixelWidth.toDouble(), pixelHeight.toDouble()),
+  )..scale(pixelRatio);
+
+  // 1. Background fill - mirrors ClipWidget's outer Container `color`
+  // for a text clip: a custom color if set, else nothing (the default,
+  // AppTheme.textNoteSurface, is fully transparent).
+  if (clip.backgroundColorHex != null) {
+    canvas.drawRect(
+      Rect.fromLTWH(0, 0, clip.width, clip.height),
+      Paint()..color = hexToColor(clip.backgroundColorHex!),
+    );
+  }
+
+  // 2. Highlight layer - HighlightPainter's paint loop, inlined directly
+  // onto this raw Canvas instead of instantiating the widget/painter.
+  final highlightRects = HighlightGeometry.rectsFor(
+    text: text,
+    formatting: formatting,
+    baseStyle: baseStyle,
+    width: contentWidth,
+    cornerRadius: kHighlightCornerRadius,
+  );
+  if (highlightRects.isNotEmpty) {
+    final highlightPaint = Paint()
+      ..color = hexToColor(clip.highlightColorHex ?? kDefaultHighlightColorHex);
+    final padOffset = Offset(
+      kTextNoteHorizontalPadding,
+      kTextNoteVerticalPadding,
+    );
+    for (final rect in highlightRects) {
+      canvas.drawRRect(rect.shift(padOffset), highlightPaint);
+    }
+  }
+
+  // 3. Rich text itself - same TextSpan tree ClipWidget._buildText() builds.
+  final painter = TextPainter(
+    text: TextSpan(
+      children: TextStyleRanges.buildSpans(text, formatting, baseStyle),
+    ),
+    textDirection: TextDirection.ltr,
+  )..layout(maxWidth: contentWidth < 1 ? 1 : contentWidth);
+  painter.paint(
+    canvas,
+    Offset(kTextNoteHorizontalPadding, kTextNoteVerticalPadding),
+  );
+
+  final picture = recorder.endRecording();
+  final image = await picture.toImage(pixelWidth, pixelHeight);
+  final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+  return byteData!.buffer.asUint8List();
+}
 
 /// Replicates `DotGridPainter`'s board-space dot grid (fixed spacing,
 /// 1.5pt base radius, 0.5 alpha) onto a PDF page - unlike the live board,

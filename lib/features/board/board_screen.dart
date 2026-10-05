@@ -35,6 +35,7 @@ import 'widgets/board_canvas.dart';
 import 'widgets/board_switcher.dart';
 import 'widgets/board_toolbar.dart';
 import 'widgets/gif_playback_toolbar.dart';
+import 'widgets/pdf_export_wizard_screen.dart';
 import 'widgets/shape_tool_button.dart';
 
 const _uuid = Uuid();
@@ -204,23 +205,28 @@ class BoardScreen extends ConsumerWidget {
       return;
     }
 
-    final settings = await _pickExportSettings(context);
-    if (settings == null || !context.mounted) return;
+    final result = await Navigator.of(context).push<ExportWizardResult>(
+      MaterialPageRoute(
+        builder: (_) => PdfExportWizardScreen(selection: selection),
+      ),
+    );
+    if (result == null || !context.mounted) return;
 
     final blobStore = ref.read(localBlobStoreProvider);
-    final result = await writePdfFile(
+    final writeResult = await writePdfFile(
       frames: selection.frames,
       clips: selection.clips,
       strokes: selection.strokes,
       readBytes: blobStore.readBytes,
       pageFormat: PdfPageFormat(
-        settings.landscape ? settings.preset.height : settings.preset.width,
-        settings.landscape ? settings.preset.width : settings.preset.height,
+        result.landscape ? result.preset.height : result.preset.width,
+        result.landscape ? result.preset.width : result.preset.height,
       ),
+      pageCrops: result.pageCrops,
     );
     if (!context.mounted) return;
 
-    if (result == null) {
+    if (writeResult == null) {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('Nothing to export.')));
@@ -234,7 +240,7 @@ class BoardScreen extends ConsumerWidget {
         fileName: 'board.pdf',
         type: FileType.custom,
         allowedExtensions: ['pdf'],
-        bytes: result.bytes,
+        bytes: writeResult.bytes,
       );
     } catch (error) {
       if (!context.mounted) return;
@@ -253,10 +259,10 @@ class BoardScreen extends ConsumerWidget {
     if (!savePath.toLowerCase().endsWith('.pdf')) {
       savePath = '$savePath.pdf';
     }
-    await writeBytesToPath(savePath, result.bytes);
+    await writeBytesToPath(savePath, writeResult.bytes);
     if (!context.mounted) return;
 
-    final summary = result.summary;
+    final summary = writeResult.summary;
     final pageCount = summary.framePages + (summary.hasOverviewPage ? 1 : 0);
     final parts = <String>[
       '$pageCount page${pageCount == 1 ? '' : 's'}',
@@ -281,56 +287,6 @@ class BoardScreen extends ConsumerWidget {
             child: const Text('OK'),
           ),
         ],
-      ),
-    );
-  }
-
-  /// The resolution/orientation chosen by [_pickExportSettings], applied
-  /// uniformly to every page of one export.
-  Future<ExportSettings?> _pickExportSettings(BuildContext context) {
-    var selected = kFramePresets.first;
-    var landscape = false;
-    return showDialog<ExportSettings>(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setState) => AlertDialog(
-          title: const Text('Export settings'),
-          content: SizedBox(
-            width: 320,
-            child: RadioGroup<FramePreset>(
-              groupValue: selected,
-              onChanged: (value) => setState(() => selected = value!),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  for (final preset in kFramePresets)
-                    RadioListTile<FramePreset>(
-                      title: Text(preset.label),
-                      value: preset,
-                    ),
-                  const Divider(),
-                  SwitchListTile(
-                    title: const Text('Landscape'),
-                    value: landscape,
-                    onChanged: (value) => setState(() => landscape = value),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(
-                context,
-              ).pop(ExportSettings(preset: selected, landscape: landscape)),
-              child: const Text('Export'),
-            ),
-          ],
-        ),
       ),
     );
   }
@@ -1522,14 +1478,4 @@ class BoardScreen extends ConsumerWidget {
       ),
     );
   }
-}
-
-/// Result of `_pickExportSettings` - the resolution preset and
-/// portrait/landscape choice to apply uniformly to every page of this
-/// one export. `null` (returned by the dialog itself, not this class)
-/// means the user cancelled.
-class ExportSettings {
-  final FramePreset preset;
-  final bool landscape;
-  const ExportSettings({required this.preset, required this.landscape});
 }
