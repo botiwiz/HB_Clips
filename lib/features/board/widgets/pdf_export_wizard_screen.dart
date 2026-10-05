@@ -275,10 +275,13 @@ class _PageCropEditorState extends State<_PageCropEditor> {
     clampPageCropZoom(widget.crop.zoom),
   );
 
-  Offset get _overflow => ImagePanZoomGeometry.overflow(
-    widget.pageSize.width,
-    widget.pageSize.height,
-    _scaled,
+  // Raw, possibly-negative per-axis overflow - replaces the floored
+  // ImagePanZoomGeometry.overflow (correct for per-image crop, where
+  // zoom never drops below 1.0, but wrong here once content can shrink
+  // below the page) - feeds applyPageCropPanDelta.
+  Offset get _rawOverflow => Offset(
+    _scaled.width - widget.pageSize.width,
+    _scaled.height - widget.pageSize.height,
   );
 
   // The page-space scale factor the content block is actually rendered
@@ -309,10 +312,21 @@ class _PageCropEditorState extends State<_PageCropEditor> {
     widget.pageSize.height / _scaleFactor,
   );
 
-  void _handleScroll(PointerScrollEvent event) {
+  void _handleScroll(PointerScrollEvent event, double previewToPageScale) {
+    final oldZoom = clampPageCropZoom(widget.crop.zoom);
     final factor = event.scrollDelta.dy > 0 ? 0.9 : 1.1;
+    final newZoom = clampPageCropZoom(widget.crop.zoom * factor);
+    final pointerPageSpace = event.localPosition * previewToPageScale;
+    final newPan = zoomPageCropTowardPoint(
+      crop: widget.crop,
+      oldZoom: oldZoom,
+      newZoom: newZoom,
+      pointerPageSpace: pointerPageSpace,
+      cover: _cover,
+      pageSize: widget.pageSize,
+    );
     widget.onChanged(
-      widget.crop.copyWith(zoom: clampPageCropZoom(widget.crop.zoom * factor)),
+      widget.crop.copyWith(zoom: newZoom, panX: newPan.dx, panY: newPan.dy),
     );
   }
 
@@ -325,10 +339,10 @@ class _PageCropEditorState extends State<_PageCropEditor> {
     if (_dragStartLocal == null) return;
     final localDelta =
         (event.localPosition - _dragStartLocal!) * previewToPageScale;
-    final newPan = ImagePanZoomGeometry.applyPanDelta(
+    final newPan = applyPageCropPanDelta(
       _dragStartPan!,
       localDelta,
-      _overflow,
+      _rawOverflow,
     );
     widget.onChanged(widget.crop.copyWith(panX: newPan.dx, panY: newPan.dy));
   }
@@ -354,7 +368,10 @@ class _PageCropEditorState extends State<_PageCropEditor> {
               if (e is PointerScrollEvent) {
                 GestureBinding.instance.pointerSignalResolver.register(
                   e,
-                  (event) => _handleScroll(event as PointerScrollEvent),
+                  (event) => _handleScroll(
+                    event as PointerScrollEvent,
+                    previewToPageScale,
+                  ),
                 );
               }
             },
@@ -394,26 +411,40 @@ class _PageCropEditorState extends State<_PageCropEditor> {
                             ),
                           ),
                         ),
-                      ClipRect(
-                        child: OverflowBox(
-                          alignment: Alignment(
-                            widget.crop.panX,
-                            widget.crop.panY,
-                          ),
-                          minWidth: _scaled.width,
-                          maxWidth: _scaled.width,
-                          minHeight: _scaled.height,
-                          maxHeight: _scaled.height,
+                      // Positioned + Transform.scale (not OverflowBox) -
+                      // OverflowBox would FORCE this subtree's layout
+                      // size to _scaled (even when contentSize is
+                      // explicitly declared below), since OverflowBox's
+                      // min/maxWidth/Height become tight incoming
+                      // constraints that collapse any descendant's own
+                      // declared size into them. That's harmless when
+                      // _scaled is comfortably bigger than contentSize,
+                      // but once zoomed out far enough that _scaled
+                      // shrinks below contentSize, _PageContent's own
+                      // Stack (positioned via absolute native-board-unit
+                      // offsets up to contentSize) gets forced to that
+                      // same shrunken size and clips anything beyond it
+                      // - exactly the "elements disappear when zoomed
+                      // out far" bug. A plain Positioned (only
+                      // left/top set) hands its child fully unconstrained
+                      // BoxConstraints instead, so contentSize is
+                      // respected regardless of zoom - mirrors
+                      // pdf_writer.dart's own (already-correct)
+                      // Positioned+Transform.scale pattern exactly. The
+                      // outer Stack's default Clip.hardEdge still crops
+                      // this to pageSize, same as before.
+                      Positioned(
+                        left: -_visibleLeft,
+                        top: -_visibleTop,
+                        child: Transform.scale(
+                          scale: _scaleFactor,
+                          alignment: Alignment.topLeft,
                           child: SizedBox(
                             width: widget.contentSize.width,
                             height: widget.contentSize.height,
-                            child: Transform.scale(
-                              scale: _scaleFactor,
-                              alignment: Alignment.topLeft,
-                              child: _PageContent(
-                                contentOrigin: widget.contentOrigin,
-                                clips: widget.clips,
-                              ),
+                            child: _PageContent(
+                              contentOrigin: widget.contentOrigin,
+                              clips: widget.clips,
                             ),
                           ),
                         ),
