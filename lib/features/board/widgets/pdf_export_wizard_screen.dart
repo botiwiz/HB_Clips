@@ -13,6 +13,16 @@ import '../geometry/pdf_export_selection.dart';
 import '../geometry/selection_geometry.dart';
 import 'clip_widget.dart';
 
+/// Extra "bleed" margin shown around the page's own edges in the live
+/// crop preview, as a fraction of the page's own width/height per side
+/// - a fixed VIEWPORT overscan computed purely from pageSize (never
+/// from zoom/content/aspect ratio), so it's always present regardless
+/// of preset/orientation or how the crop is currently zoomed/panned -
+/// lets the user see exactly what bleeds past the real export boundary
+/// (marked by [_CropMarksOverlay]'s red rectangle). Tunable by eye once
+/// seen live.
+const double _kCropMarkBleedFraction = 0.25;
+
 /// Result of the export wizard - the resolution preset/orientation chosen
 /// once for the whole export, plus each page's committed pan/zoom crop.
 /// `null` (returned by [PdfExportWizardScreen]'s own `Navigator.pop()`,
@@ -299,24 +309,54 @@ class _PageCropEditorState extends State<_PageCropEditor> {
   double get _visibleTop =>
       ((_scaled.height - widget.pageSize.height) / 2) * (1 + widget.crop.panY);
 
-  // The full board-space window actually visible on the page - the
-  // inverse of the transform positioning the content below. Lets the
-  // dot-grid background layer continue past the content's own extent
-  // once zoomed out below cover-fit, mirroring pdf_writer.dart's
-  // `visibleBoardRect` exactly so the live preview and the final export
-  // always agree.
-  Rect get _visibleBoardRect => Rect.fromLTWH(
-    widget.contentOrigin.dx + _visibleLeft / _scaleFactor,
-    widget.contentOrigin.dy + _visibleTop / _scaleFactor,
-    widget.pageSize.width / _scaleFactor,
-    widget.pageSize.height / _scaleFactor,
+  // The bigger "canvas" rendered in place of the page itself, so the
+  // crop marks overlay always has a visible bleed margin around the
+  // real export boundary - see _kCropMarkBleedFraction's own doc
+  // comment. Scaled uniformly on both axes, so its aspect ratio always
+  // matches pageSize's own exactly - _PageCropSection's outer
+  // AspectRatio wrapper needs no change.
+  Size get _canvasSize => Size(
+    widget.pageSize.width * (1 + 2 * _kCropMarkBleedFraction),
+    widget.pageSize.height * (1 + 2 * _kCropMarkBleedFraction),
   );
 
-  void _handleScroll(PointerScrollEvent event, double previewToPageScale) {
+  // Where the page's own top-left corner sits within the bigger canvas
+  // - symmetric on both axes (verified algebraically: canvasSize.width
+  // - pageOffset.dx - pageSize.width == pageOffset.dx), so the page
+  // rect is always exactly centered in the canvas.
+  Offset get _pageOffsetInCanvas => Offset(
+    widget.pageSize.width * _kCropMarkBleedFraction,
+    widget.pageSize.height * _kCropMarkBleedFraction,
+  );
+
+  // The full board-space window actually visible across the whole
+  // CANVAS (not just the page) - the inverse of the transform
+  // positioning the content below, shifted by _pageOffsetInCanvas so
+  // the margin band's dot grid continues seamlessly past the red crop
+  // mark too, not just past the content's own extent. Reduces to
+  // pdf_writer.dart's own `visibleBoardRect` formula exactly when
+  // _pageOffsetInCanvas is zero and _canvasSize equals pageSize (i.e.
+  // with no bleed margin), so this is a strict generalization, not a
+  // behavior change for the underlying crop math itself.
+  Rect get _visibleBoardRect => Rect.fromLTWH(
+    widget.contentOrigin.dx +
+        (_visibleLeft - _pageOffsetInCanvas.dx) / _scaleFactor,
+    widget.contentOrigin.dy +
+        (_visibleTop - _pageOffsetInCanvas.dy) / _scaleFactor,
+    _canvasSize.width / _scaleFactor,
+    _canvasSize.height / _scaleFactor,
+  );
+
+  void _handleScroll(PointerScrollEvent event, double previewToCanvasScale) {
     final oldZoom = clampPageCropZoom(widget.crop.zoom);
     final factor = event.scrollDelta.dy > 0 ? 0.9 : 1.1;
     final newZoom = clampPageCropZoom(widget.crop.zoom * factor);
-    final pointerPageSpace = event.localPosition * previewToPageScale;
+    // Shifts from canvas-space (the widget's own on-screen rendering,
+    // now bigger than the page by the bleed margin) into page-space
+    // (origin at the page's own top-left) - the coordinate system
+    // zoomPageCropTowardPoint/_visibleLeft/_visibleTop already use.
+    final pointerPageSpace =
+        event.localPosition * previewToCanvasScale - _pageOffsetInCanvas;
     final newPan = zoomPageCropTowardPoint(
       crop: widget.crop,
       oldZoom: oldZoom,
@@ -335,10 +375,13 @@ class _PageCropEditorState extends State<_PageCropEditor> {
     _dragStartPan = Offset(widget.crop.panX, widget.crop.panY);
   }
 
-  void _handleMove(PointerMoveEvent event, double previewToPageScale) {
+  void _handleMove(PointerMoveEvent event, double previewToCanvasScale) {
     if (_dragStartLocal == null) return;
+    // A delta of two event.localPosition samples - the canvas/page
+    // offset is a constant that cancels out in the subtraction, so
+    // only the (renamed) scale factor itself needs to change here.
     final localDelta =
-        (event.localPosition - _dragStartLocal!) * previewToPageScale;
+        (event.localPosition - _dragStartLocal!) * previewToCanvasScale;
     final newPan = applyPageCropPanDelta(
       _dragStartPan!,
       localDelta,
@@ -351,7 +394,10 @@ class _PageCropEditorState extends State<_PageCropEditor> {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final previewToPageScale = widget.pageSize.width / constraints.maxWidth;
+        // The widget's own on-screen size now represents the bigger
+        // CANVAS (page + bleed margin), not the page itself - see
+        // _canvasSize's doc comment.
+        final previewToCanvasScale = _canvasSize.width / constraints.maxWidth;
         return ClipRect(
           child: Listener(
             onPointerSignal: (e) {
@@ -370,20 +416,20 @@ class _PageCropEditorState extends State<_PageCropEditor> {
                   e,
                   (event) => _handleScroll(
                     event as PointerScrollEvent,
-                    previewToPageScale,
+                    previewToCanvasScale,
                   ),
                 );
               }
             },
             onPointerDown: _handleDown,
-            onPointerMove: (e) => _handleMove(e, previewToPageScale),
+            onPointerMove: (e) => _handleMove(e, previewToCanvasScale),
             child: MouseRegion(
               cursor: SystemMouseCursors.grab,
               child: FittedBox(
                 fit: BoxFit.fill,
                 child: SizedBox(
-                  width: widget.pageSize.width,
-                  height: widget.pageSize.height,
+                  width: _canvasSize.width,
+                  height: _canvasSize.height,
                   child: Stack(
                     children: [
                       // Background + extended dot-grid layer, sized to
@@ -431,11 +477,16 @@ class _PageCropEditorState extends State<_PageCropEditor> {
                       // respected regardless of zoom - mirrors
                       // pdf_writer.dart's own (already-correct)
                       // Positioned+Transform.scale pattern exactly. The
-                      // outer Stack's default Clip.hardEdge still crops
-                      // this to pageSize, same as before.
+                      // outer Stack's default Clip.hardEdge now crops at
+                      // the canvas edge instead of the page edge - the
+                      // extra _pageOffsetInCanvas shift below moves the
+                      // content's origin from page-space into
+                      // canvas-space so it still lands exactly where it
+                      // used to relative to the page, just centered
+                      // within the bigger canvas.
                       Positioned(
-                        left: -_visibleLeft,
-                        top: -_visibleTop,
+                        left: _pageOffsetInCanvas.dx - _visibleLeft,
+                        top: _pageOffsetInCanvas.dy - _visibleTop,
                         child: Transform.scale(
                           scale: _scaleFactor,
                           alignment: Alignment.topLeft,
@@ -449,6 +500,15 @@ class _PageCropEditorState extends State<_PageCropEditor> {
                           ),
                         ),
                       ),
+                      // Always on top: dims everything outside the real
+                      // export boundary and marks it with a red
+                      // rectangle, so bleed is visible but clearly
+                      // distinguished from what survives the crop.
+                      _CropMarksOverlay(
+                        canvasSize: _canvasSize,
+                        pageOffset: _pageOffsetInCanvas,
+                        pageSize: widget.pageSize,
+                      ),
                     ],
                   ),
                 ),
@@ -457,6 +517,88 @@ class _PageCropEditorState extends State<_PageCropEditor> {
           ),
         );
       },
+    );
+  }
+}
+
+/// Always-visible overlay marking exactly the real export boundary
+/// inside the bigger bleed-margin canvas `_PageCropEditor` now renders -
+/// a red rectangle outline at the page rect, with everything outside it
+/// dimmed (not hidden) so bled-over content is still visible but
+/// clearly distinguished from what survives the crop. Purely a preview
+/// aid - `pdf_writer.dart` is unaffected and still crops exactly at the
+/// page boundary with no margin/marks baked into the exported file.
+class _CropMarksOverlay extends StatelessWidget {
+  final Size canvasSize;
+  final Offset pageOffset;
+  final Size pageSize;
+
+  const _CropMarksOverlay({
+    required this.canvasSize,
+    required this.pageOffset,
+    required this.pageSize,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scrim = Colors.black.withValues(alpha: 0.55);
+    final borderWidth = (pageSize.shortestSide * 0.004).clamp(
+      1.0,
+      double.infinity,
+    );
+    return IgnorePointer(
+      child: Stack(
+        children: [
+          // 4 dimming bands covering everything outside the page rect -
+          // darkens whatever the background/grid/content layers already
+          // painted there rather than hiding it. Left/right and
+          // top/bottom bands are each exactly `pageOffset`-sized since
+          // the page rect is always centered in the canvas (verified:
+          // canvasSize.width - pageOffset.dx - pageSize.width ==
+          // pageOffset.dx).
+          Positioned(
+            left: 0,
+            top: 0,
+            width: canvasSize.width,
+            height: pageOffset.dy,
+            child: ColoredBox(color: scrim),
+          ),
+          Positioned(
+            left: 0,
+            top: pageOffset.dy + pageSize.height,
+            width: canvasSize.width,
+            height: pageOffset.dy,
+            child: ColoredBox(color: scrim),
+          ),
+          Positioned(
+            left: 0,
+            top: pageOffset.dy,
+            width: pageOffset.dx,
+            height: pageSize.height,
+            child: ColoredBox(color: scrim),
+          ),
+          Positioned(
+            left: pageOffset.dx + pageSize.width,
+            top: pageOffset.dy,
+            width: pageOffset.dx,
+            height: pageSize.height,
+            child: ColoredBox(color: scrim),
+          ),
+          // The crop mark itself - drawn last, always crisp/undimmed,
+          // exactly at the real export boundary.
+          Positioned(
+            left: pageOffset.dx,
+            top: pageOffset.dy,
+            width: pageSize.width,
+            height: pageSize.height,
+            child: Container(
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.red, width: borderWidth),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
