@@ -95,6 +95,15 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
   bool _groupDragMoved = false;
   String? _pendingCollapseId;
 
+  // Set true only when the current group-drag session is dragging
+  // clips just created by Alt-drag-duplicate (see the clip-body
+  // hit-test branch) - the pointer-up commit branch still writes their
+  // final position/frame as usual, but skips _commitTransformUndo for
+  // them, since their undo is the creation-undo (pushAddClipsUndo)
+  // already pushed at pointer-down, not a position-undo (they never had
+  // a "before" position to restore).
+  bool _groupDragIsDuplicate = false;
+
   // Shared by handle-drag, group-drag and rotate: board-space pointer
   // position at gesture start.
   Offset? _gestureStartPointerBoard;
@@ -173,6 +182,15 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
   // FrameGeometry.scaleChildren can scale each child to match the frame's
   // new size. Null during a move or when the resized frame has no children.
   Map<String, BoardClip>? _frameResizeChildStart;
+
+  // Set true only when the current frame-drag session is dragging a
+  // frame + children just created by Alt-drag-duplicate (see the
+  // frame hit-test branch) - the pointer-up commit branch still writes
+  // the final frame/child positions as usual, but skips pushing the
+  // ordinary frame-move undo entry for this session, since its undo is
+  // the creation-undo (delete frame + bin children) already pushed at
+  // pointer-down.
+  bool _frameDragIsDuplicate = false;
 
   // Drag-to-arrange: dragging the ArrangeSelectionButton live-repacks the
   // selected images into whatever target rect the drag defines, anchored
@@ -369,6 +387,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     _groupScaleStartRect = null;
     _groupDragStartPositions = null;
     _groupDragMoved = false;
+    _groupDragIsDuplicate = false;
     _pendingCollapseId = null;
     _gestureStartPointerBoard = null;
     _marqueeStartBoard = null;
@@ -381,6 +400,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     _frameGestureStartPointerBoard = null;
     _frameChildStartPositions = null;
     _frameResizeChildStart = null;
+    _frameDragIsDuplicate = false;
     _arrangeAnchor = null;
     _arrangeStartCorner = null;
     _arrangeImages = null;
@@ -500,6 +520,80 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
         );
   }
 
+  /// Alt+drag on a frame: duplicates the frame and every clip nested
+  /// inside it (so the duplicate isn't a de-populated husk sitting next
+  /// to a still-full original), selects the new frame, pushes one
+  /// combined creation-undo covering the frame + all its duplicated
+  /// children, then seeds the same frame-drag state the plain frame-move
+  /// branch uses - so the rest of this gesture (pointer-move/pointer-up)
+  /// drives the duplicate through the exact same generic frame-drag
+  /// machinery as any other frame.
+  Future<void> _startFrameDuplicateDrag(
+    FrameRow source,
+    List<BoardClip> clips,
+    Offset boardPos,
+  ) async {
+    final framesRepo = ref.read(framesRepositoryProvider);
+    final clipsRepo = ref.read(clipsRepositoryProvider);
+    final newFrameId = _uuid.v4();
+    final newFrame = await framesRepo.duplicateFrame(source, newId: newFrameId);
+    if (!mounted) return;
+
+    final children = clips.where((c) => c.frameId == source.id).toList();
+    final newChildIds = <String>[];
+    final childDrag = <String, DraggingClip>{};
+    final childStartPositions = <String, Offset>{};
+    for (final child in children) {
+      final newChildId = _uuid.v4();
+      final duplicate = await clipsRepo.duplicateClip(
+        child,
+        newId: newChildId,
+        groupId: null,
+        frameId: newFrameId,
+      );
+      if (!mounted) return;
+      newChildIds.add(newChildId);
+      childStartPositions[newChildId] = Offset(duplicate.x, duplicate.y);
+      childDrag[newChildId] = DraggingClip(
+        id: newChildId,
+        x: duplicate.x,
+        y: duplicate.y,
+        width: duplicate.width,
+        height: duplicate.height,
+        rotation: duplicate.rotation,
+      );
+    }
+
+    ref.read(selectedFrameIdProvider.notifier).state = newFrameId;
+    ref.read(selectedClipIdsProvider.notifier).state = {};
+    ref
+        .read(undoManagerProvider.notifier)
+        .push(
+          UndoableAction(
+            undo: () => Future.wait([
+              framesRepo.deleteFrame(newFrameId),
+              for (final id in newChildIds) clipsRepo.binClip(id),
+            ]),
+            redo: () => Future.wait([
+              framesRepo.duplicateFrame(source, newId: newFrameId),
+              for (final id in newChildIds) clipsRepo.restoreClip(id),
+            ]),
+          ),
+        );
+
+    _frameDragId = newFrameId;
+    _frameDragStartRect = FrameGeometry.boardRect(newFrame);
+    _frameGestureStartPointerBoard = boardPos;
+    _frameDragIsDuplicate = true;
+    ref.read(frameDragRectProvider.notifier).state = _frameDragStartRect;
+    if (childStartPositions.isNotEmpty) {
+      _frameChildStartPositions = childStartPositions;
+      ref.read(groupDragProvider.notifier).state = childDrag;
+    } else {
+      _frameChildStartPositions = null;
+    }
+  }
+
   void _handlePointerCancel(PointerCancelEvent event) {
     _resetGestureState();
   }
@@ -590,7 +684,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     _postFocusView = ref.read(boardViewProvider);
   }
 
-  void _handlePointerDown(PointerDownEvent event) {
+  Future<void> _handlePointerDown(PointerDownEvent event) async {
     // A click landing on the text-edit toolbar must not steal focus away
     // from the TextField before the toolbar's own button gets a chance to
     // handle the tap - checked before anything else in this function
@@ -980,6 +1074,74 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
         return;
       }
 
+      // Alt+drag duplicates whatever would normally be dragged together
+      // (the whole group if grouped, the whole existing multi-selection
+      // if hit is already part of one, else just this one clip) - same
+      // 3-way "what moves together" decision the plain-drag branch below
+      // makes, just producing new clips instead of moving the existing
+      // ones. The duplicates start exactly where their sources sit (so
+      // they keep the source's frameId for now - the generic
+      // frame-containment check in the pointer-up commit branch
+      // reconciles it once the drag actually moves them), get selected,
+      // and get pushed onto _groupDragStartPositions/groupDragProvider
+      // so the rest of this gesture (pointer-move/pointer-up) drives them
+      // through the exact same generic drag machinery as any other clip.
+      if (HardwareKeyboard.instance.isAltPressed) {
+        final Set<String> sourceIds;
+        if (hit.groupId != null) {
+          sourceIds = clips
+              .where((c) => c.groupId == hit.groupId)
+              .map((c) => c.id)
+              .toSet();
+        } else if (selection.contains(hit.id) && selection.length > 1) {
+          sourceIds = selection;
+        } else {
+          sourceIds = {hit.id};
+        }
+        final sources = [
+          for (final id in sourceIds) ClipGeometry.findById(clips, id),
+        ].whereType<BoardClip>().toList();
+        if (sources.isEmpty) return;
+        final repo = ref.read(clipsRepositoryProvider);
+        final sourceGroupIds = sources.map((c) => c.groupId).toSet();
+        final duplicateGroupId =
+            sources.length > 1 &&
+                sourceGroupIds.length == 1 &&
+                sourceGroupIds.first != null
+            ? _uuid.v4()
+            : null;
+        final newIds = <String>[];
+        final startPositions = <String, Offset>{};
+        final dragMap = <String, DraggingClip>{};
+        for (final source in sources) {
+          final newId = _uuid.v4();
+          final duplicate = await repo.duplicateClip(
+            source,
+            newId: newId,
+            groupId: duplicateGroupId,
+            frameId: source.frameId,
+          );
+          newIds.add(newId);
+          startPositions[newId] = Offset(duplicate.x, duplicate.y);
+          dragMap[newId] = DraggingClip(
+            id: newId,
+            x: duplicate.x,
+            y: duplicate.y,
+            width: duplicate.width,
+            height: duplicate.height,
+            rotation: duplicate.rotation,
+          );
+        }
+        if (!mounted) return;
+        ref.read(selectedClipIdsProvider.notifier).state = newIds.toSet();
+        pushAddClipsUndo(ref, newIds);
+        _groupDragStartPositions = startPositions;
+        _groupDragIsDuplicate = true;
+        _gestureStartPointerBoard = boardPos;
+        ref.read(groupDragProvider.notifier).state = dragMap;
+        return;
+      }
+
       final Set<String> activeSelection;
       if (hit.groupId != null) {
         // A plain click on a grouped clip always selects the whole group -
@@ -1067,6 +1229,10 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     final hitFrame = _hitTestFrameForSelection(frames, boardPos);
     if (hitFrame != null) {
       _exitTextEditUnlessClip(null);
+      if (HardwareKeyboard.instance.isAltPressed) {
+        await _startFrameDuplicateDrag(hitFrame, clips, boardPos);
+        return;
+      }
       ref.read(selectedFrameIdProvider.notifier).state = hitFrame.id;
       _frameDragId = hitFrame.id;
       _frameDragStartRect = FrameGeometry.boardRect(hitFrame);
@@ -1800,11 +1966,18 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
         }
         await Future.wait(writes);
         if (!mounted) return;
-        _commitTransformUndo(
-          dragMap,
-          frameIdBefore: frameIdBefore.isEmpty ? null : frameIdBefore,
-          frameIdAfter: frameIdAfter.isEmpty ? null : frameIdAfter,
-        );
+        // A duplicate-drag session's undo is the creation-undo already
+        // pushed at pointer-down (pushAddClipsUndo, bin the duplicates) -
+        // pushing a transform-undo too would be wrong, since these clips
+        // never had a "before" position to restore (undoing would move
+        // the duplicate back instead of removing it).
+        if (!_groupDragIsDuplicate) {
+          _commitTransformUndo(
+            dragMap,
+            frameIdBefore: frameIdBefore.isEmpty ? null : frameIdBefore,
+            frameIdAfter: frameIdAfter.isEmpty ? null : frameIdAfter,
+          );
+        }
       } else if (!_groupDragMoved && _pendingCollapseId != null) {
         ref.read(selectedClipIdsProvider.notifier).state = {
           _pendingCollapseId!,
@@ -1816,6 +1989,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       ref.read(groupDragProvider.notifier).state = null;
       ref.read(snapGuidesProvider.notifier).state = (x: null, y: null);
       _groupDragStartPositions = null;
+      _groupDragIsDuplicate = false;
       _pendingCollapseId = null;
       _groupDragMoved = false;
       _gestureStartPointerBoard = null;
@@ -1904,7 +2078,14 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
         }
         ref.read(groupDragProvider.notifier).state = null;
       }
-      if (beforeRect != null && rect != null && beforeRect != rect) {
+      // A duplicate-drag session's undo is the creation-undo already
+      // pushed at pointer-down (delete the frame + bin its duplicated
+      // children) - pushing a move-undo too would be wrong, since this
+      // frame/its children never had a "before" state to restore.
+      if (!_frameDragIsDuplicate &&
+          beforeRect != null &&
+          rect != null &&
+          beforeRect != rect) {
         final afterRect = rect;
         final afterChildrenSnapshot = afterChildren;
         ref
@@ -1964,6 +2145,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       _frameGestureStartPointerBoard = null;
       _frameChildStartPositions = null;
       _frameResizeChildStart = null;
+      _frameDragIsDuplicate = false;
       return;
     }
 

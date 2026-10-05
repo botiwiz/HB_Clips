@@ -3,7 +3,8 @@ import 'dart:math' as math;
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../data/models/clip.dart' show ShapeKind;
+import '../../../data/local/database.dart' show FrameRow;
+import '../../../data/models/clip.dart' show BoardClip, ShapeKind;
 import '../../../data/models/connector.dart';
 
 /// Camera transform for the infinite board: screenPoint = boardPoint *
@@ -284,3 +285,23 @@ final connectorDraftProvider = StateProvider<ConnectorDraft?>((ref) => null);
 /// draggable endpoint handle, and Backspace/Delete deleting it instead of
 /// binning a clip selection (see `board_screen.dart`'s `_binSelected`).
 final selectedConnectorIdProvider = StateProvider<String?>((ref) => null);
+
+/// A frozen, by-value snapshot of whatever was selected at Ctrl+C time -
+/// either a frame (plus its children's clip rows) or a set of clips.
+/// Independent of any live provider state, so a later move/delete/bin of
+/// the originals can't corrupt a pending paste - `board_screen.dart`'s
+/// `_copySelection`/`_pasteSelection` are the only read/write sites.
+class CopiedSelection {
+  final FrameRow? frame;
+
+  /// The frame's children if [frame] is non-null, otherwise the copied
+  /// clip selection itself.
+  final List<BoardClip> clips;
+
+  const CopiedSelection({this.frame, required this.clips});
+}
+
+/// The in-app Ctrl+C/Ctrl+V clipboard - null means nothing's been
+/// internally copied yet, in which case Ctrl+V falls back to the
+/// existing OS-clipboard image paste (`clipboard_paste_service.dart`).
+final copiedSelectionProvider = StateProvider<CopiedSelection?>((ref) => null);

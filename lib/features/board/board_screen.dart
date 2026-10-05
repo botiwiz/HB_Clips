@@ -24,7 +24,7 @@ import 'controllers/undo_controller.dart';
 import 'geometry/frame_geometry.dart';
 import 'geometry/frame_presets.dart';
 import 'geometry/selection_geometry.dart';
-import 'services/add_image_service.dart' show pushAddClipUndo;
+import 'services/add_image_service.dart' show pushAddClipUndo, pushAddClipsUndo;
 import 'services/clipboard_paste_service.dart';
 import 'services/image_size_service.dart';
 import 'services/pureref_import_service.dart';
@@ -359,19 +359,187 @@ class BoardScreen extends ConsumerWidget {
         );
   }
 
-  /// Handles bare/shift Backspace, Delete, and the 4 arrow keys as a
-  /// `Focus.onKeyEvent` (not a `CallbackShortcuts` binding) specifically
-  /// so it can conditionally ignore the event - a plain `CallbackShortcuts`
-  /// binding always marks a match "handled" and stops it there, which
-  /// would permanently block these keys from ever reaching Flutter's
-  /// `DefaultTextEditingShortcuts` (mounted once at the app root - see
-  /// `text_clip_edit_overlay.dart`'s doc comment on why its own
-  /// `CallbackShortcuts` deliberately does NOT bind these keys either).
-  /// While a text note is being edited, these keys are for the TextField
-  /// itself (delete a character, move the caret) - ignored here so they
-  /// keep bubbling up to that root-level handling. Outside of editing,
-  /// they bin the selection / nudge it, exactly as before.
-  KeyEventResult _handleEditAwareShortcut(WidgetRef ref, KeyEvent event) {
+  /// Board-space point a Ctrl+V paste should land at - the last-clicked
+  /// board position, or the viewport center if nothing's been clicked
+  /// yet. Same fallback `clipboard_paste_service.dart`'s image paste
+  /// already uses, kept in sync with it deliberately (not extracted into
+  /// a shared service for 6 lines, but should stay identical if either
+  /// changes).
+  Offset _pasteAnchor(BuildContext context, WidgetRef ref) {
+    final lastClick = ref.read(lastClickBoardPositionProvider);
+    if (lastClick != null) return lastClick;
+    return _viewportCenterBoardPoint(ref, MediaQuery.sizeOf(context));
+  }
+
+  /// Snapshots whichever is currently selected - a frame (+ its
+  /// children) takes priority over a clip selection, since
+  /// `selectedFrameIdProvider`/`selectedClipIdsProvider` aren't strictly
+  /// enforced mutually-exclusive by every click path - into
+  /// [copiedSelectionProvider], ready for [_pasteSelection]. A no-op if
+  /// nothing is selected.
+  void _copySelection(WidgetRef ref) {
+    final frameId = ref.read(selectedFrameIdProvider);
+    if (frameId != null) {
+      final frames = ref.read(boardFramesProvider).valueOrNull ?? [];
+      FrameRow? frame;
+      for (final f in frames) {
+        if (f.id == frameId) {
+          frame = f;
+          break;
+        }
+      }
+      if (frame == null) return;
+      final clips = ref.read(activeClipsProvider).valueOrNull ?? [];
+      final children = clips.where((c) => c.frameId == frameId).toList();
+      ref.read(copiedSelectionProvider.notifier).state = CopiedSelection(
+        frame: frame,
+        clips: children,
+      );
+      return;
+    }
+
+    final selection = ref.read(selectedClipIdsProvider);
+    if (selection.isEmpty) return;
+    final clips = ref.read(activeClipsProvider).valueOrNull ?? [];
+    final copied = [
+      for (final id in selection) ClipGeometry.findById(clips, id),
+    ].whereType<BoardClip>().toList();
+    if (copied.isEmpty) return;
+    ref.read(copiedSelectionProvider.notifier).state = CopiedSelection(
+      clips: copied,
+    );
+  }
+
+  /// Pastes whatever [copiedSelectionProvider] holds, anchored at
+  /// [_pasteAnchor] (preserving relative layout between multiple pasted
+  /// clips, or between a pasted frame and its children). Falls back to
+  /// the existing OS-clipboard image paste when nothing's been
+  /// internally copied yet - this is the only remaining call site for
+  /// [pasteImageFromClipboard].
+  Future<void> _pasteSelection(BuildContext context, WidgetRef ref) async {
+    final copied = ref.read(copiedSelectionProvider);
+    if (copied == null) {
+      await pasteImageFromClipboard(context, ref);
+      return;
+    }
+
+    final anchor = _pasteAnchor(context, ref);
+    final framesRepo = ref.read(framesRepositoryProvider);
+    final clipsRepo = ref.read(clipsRepositoryProvider);
+
+    final frame = copied.frame;
+    if (frame != null) {
+      final dx = anchor.dx - (frame.x + frame.width / 2);
+      final dy = anchor.dy - (frame.y + frame.height / 2);
+      final newFrameId = _uuid.v4();
+      await framesRepo.duplicateFrame(
+        frame,
+        newId: newFrameId,
+        x: frame.x + dx,
+        y: frame.y + dy,
+      );
+      if (!context.mounted) return;
+      final newChildIds = <String>[];
+      for (final child in copied.clips) {
+        final newChildId = _uuid.v4();
+        await clipsRepo.duplicateClip(
+          child,
+          newId: newChildId,
+          x: child.x + dx,
+          y: child.y + dy,
+          groupId: null,
+          frameId: newFrameId,
+        );
+        if (!context.mounted) return;
+        newChildIds.add(newChildId);
+      }
+      ref.read(selectedFrameIdProvider.notifier).state = newFrameId;
+      ref.read(selectedClipIdsProvider.notifier).state = {};
+      ref
+          .read(undoManagerProvider.notifier)
+          .push(
+            UndoableAction(
+              undo: () => Future.wait([
+                framesRepo.deleteFrame(newFrameId),
+                for (final id in newChildIds) clipsRepo.binClip(id),
+              ]),
+              redo: () => Future.wait([
+                framesRepo.duplicateFrame(
+                  frame,
+                  newId: newFrameId,
+                  x: frame.x + dx,
+                  y: frame.y + dy,
+                ),
+                for (final id in newChildIds) clipsRepo.restoreClip(id),
+              ]),
+            ),
+          );
+      return;
+    }
+
+    final clips = copied.clips;
+    if (clips.isEmpty) return;
+    final minX = clips.map((c) => c.x).reduce((a, b) => a < b ? a : b);
+    final minY = clips.map((c) => c.y).reduce((a, b) => a < b ? a : b);
+    final maxX = clips
+        .map((c) => c.x + c.width)
+        .reduce((a, b) => a > b ? a : b);
+    final maxY = clips
+        .map((c) => c.y + c.height)
+        .reduce((a, b) => a > b ? a : b);
+    final dx = anchor.dx - (minX + maxX) / 2;
+    final dy = anchor.dy - (minY + maxY) / 2;
+
+    // Pasted clips always start ungrouped and unparented (frameId: null)
+    // - simplest, matches the existing OS-clipboard image paste, which
+    // never auto-parents into whatever frame it lands in either. Several
+    // clips that all shared one group get one new shared group, so a
+    // grouped selection pastes as a group too, just a different one from
+    // the source.
+    final sourceGroupIds = clips.map((c) => c.groupId).toSet();
+    final pasteGroupId =
+        clips.length > 1 &&
+            sourceGroupIds.length == 1 &&
+            sourceGroupIds.first != null
+        ? _uuid.v4()
+        : null;
+
+    final newIds = <String>[];
+    for (final clip in clips) {
+      final newId = _uuid.v4();
+      await clipsRepo.duplicateClip(
+        clip,
+        newId: newId,
+        x: clip.x + dx,
+        y: clip.y + dy,
+        groupId: pasteGroupId,
+        frameId: null,
+      );
+      if (!context.mounted) return;
+      newIds.add(newId);
+    }
+    ref.read(selectedClipIdsProvider.notifier).state = newIds.toSet();
+    pushAddClipsUndo(ref, newIds);
+  }
+
+  /// Handles bare/shift Backspace, Delete, the 4 arrow keys, and
+  /// Ctrl/Cmd+C/+V as a `Focus.onKeyEvent` (not a `CallbackShortcuts`
+  /// binding) specifically so it can conditionally ignore the event - a
+  /// plain `CallbackShortcuts` binding always marks a match "handled" and
+  /// stops it there, which would permanently block these keys from ever
+  /// reaching Flutter's `DefaultTextEditingShortcuts` (mounted once at
+  /// the app root - see `text_clip_edit_overlay.dart`'s doc comment on
+  /// why its own `CallbackShortcuts` deliberately does NOT bind these
+  /// keys either). While a text note is being edited, these keys are for
+  /// the TextField itself (delete a character, move the caret, native
+  /// text copy/paste) - ignored here so they keep bubbling up to that
+  /// root-level handling. Outside of editing, they bin the selection /
+  /// nudge it / copy-paste a clip or frame, exactly as before.
+  KeyEventResult _handleEditAwareShortcut(
+    BuildContext context,
+    WidgetRef ref,
+    KeyEvent event,
+  ) {
     if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
       return KeyEventResult.ignored;
     }
@@ -383,12 +551,27 @@ class BoardScreen extends ConsumerWidget {
         key == LogicalKeyboardKey.arrowRight ||
         key == LogicalKeyboardKey.arrowUp ||
         key == LogicalKeyboardKey.arrowDown;
-    if (!isBinKey && !isArrowKey) return KeyEventResult.ignored;
+    final modifierHeld =
+        HardwareKeyboard.instance.isControlPressed ||
+        HardwareKeyboard.instance.isMetaPressed;
+    final isCopyKey = modifierHeld && key == LogicalKeyboardKey.keyC;
+    final isPasteKey = modifierHeld && key == LogicalKeyboardKey.keyV;
+    if (!isBinKey && !isArrowKey && !isCopyKey && !isPasteKey) {
+      return KeyEventResult.ignored;
+    }
     if (ref.read(editingTextClipIdProvider) != null) {
       return KeyEventResult.ignored;
     }
     if (isBinKey) {
       _binSelected(ref);
+      return KeyEventResult.handled;
+    }
+    if (isCopyKey) {
+      _copySelection(ref);
+      return KeyEventResult.handled;
+    }
+    if (isPasteKey) {
+      _pasteSelection(context, ref);
       return KeyEventResult.handled;
     }
     final shift = HardwareKeyboard.instance.isShiftPressed;
@@ -870,7 +1053,8 @@ class BoardScreen extends ConsumerWidget {
 
     return Scaffold(
       body: Focus(
-        onKeyEvent: (node, event) => _handleEditAwareShortcut(ref, event),
+        onKeyEvent: (node, event) =>
+            _handleEditAwareShortcut(context, ref, event),
         child: CallbackShortcuts(
           bindings: {
             const SingleActivator(LogicalKeyboardKey.keyZ, control: true): () =>
@@ -896,10 +1080,12 @@ class BoardScreen extends ConsumerWidget {
                 _selectAll(ref),
             const SingleActivator(LogicalKeyboardKey.keyA, meta: true): () =>
                 _selectAll(ref),
-            const SingleActivator(LogicalKeyboardKey.keyV, control: true): () =>
-                pasteImageFromClipboard(context, ref),
-            const SingleActivator(LogicalKeyboardKey.keyV, meta: true): () =>
-                pasteImageFromClipboard(context, ref),
+            // Ctrl/Cmd+C and +V are handled by _handleEditAwareShortcut
+            // instead (above) - not as plain bindings here - since they
+            // need to stay out of the way of native text copy/paste
+            // while a note is being edited (see that method's doc
+            // comment for why a CallbackShortcuts binding can't do that
+            // conditionally).
           },
           child: Stack(
             children: [

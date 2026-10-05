@@ -120,6 +120,61 @@ class ClipsRepository {
     );
   }
 
+  /// Inserts a full duplicate of [source] under [newId], copying every
+  /// field (position unless [x]/[y] override it, size, rotation,
+  /// opacity, every type-specific style field, text content/formatting/
+  /// highlight, image pan/zoom/aspect ratio) - the one place that can
+  /// clone an existing clip wholesale, since `BoardClip.copyWith` can't
+  /// change `id` and doesn't expose several fields as overridable
+  /// params. Shared by Alt-drag-duplicate and internal copy/paste - the
+  /// two gestures that clone a clip rather than placing a fresh empty
+  /// one via [addImageClip]/[addTextNote]/[addShapeClip]. Callers always
+  /// pass [groupId]/[frameId] explicitly (even as null) since there's no
+  /// sensible shared default between "duplicate in place" (keep the
+  /// source's own group/frame) and "paste elsewhere" (start ungrouped
+  /// and unparented).
+  Future<BoardClip> duplicateClip(
+    BoardClip source, {
+    required String newId,
+    double? x,
+    double? y,
+    required String? groupId,
+    required String? frameId,
+  }) async {
+    final zIndex = await _nextZIndex(source.boardId);
+    return _insertClip(
+      ClipsCompanion.insert(
+        id: newId,
+        boardId: source.boardId,
+        type: source.type.storageValue,
+        x: Value(x ?? source.x),
+        y: Value(y ?? source.y),
+        width: Value(source.width),
+        height: Value(source.height),
+        rotation: Value(source.rotation),
+        zIndex: Value(zIndex),
+        opacity: Value(source.opacity),
+        textContent: Value(source.textContent),
+        backgroundColorHex: Value(source.backgroundColorHex),
+        groupId: Value(groupId),
+        frameId: Value(frameId),
+        localFilePath: Value(source.localFilePath),
+        imagePanX: Value(source.imagePanX),
+        imagePanY: Value(source.imagePanY),
+        imageZoom: Value(source.imageZoom),
+        imageAspectRatio: Value(source.imageAspectRatio),
+        textFormattingJson: Value(source.textFormatting.toJson()),
+        fontSize: Value(source.fontSize),
+        sizeLockScale: Value(source.sizeLockScale),
+        shapeKind: Value(source.shapeKind?.storageValue),
+        shapeFillColorHex: Value(source.shapeFillColorHex),
+        shapeStrokeColorHex: Value(source.shapeStrokeColorHex),
+        shapeStrokeWidth: Value(source.shapeStrokeWidth),
+        highlightColorHex: Value(source.highlightColorHex),
+      ),
+    );
+  }
+
   Future<BoardClip> _insertClip(ClipsCompanion companion) async {
     await _db.into(_db.clips).insert(companion);
     final row = await (_db.select(

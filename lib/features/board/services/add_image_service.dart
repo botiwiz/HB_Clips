@@ -11,7 +11,11 @@ import 'image_size_service.dart';
 
 const _uuid = Uuid();
 
-void showBoardSnack(BuildContext context, String message, {bool isError = false}) {
+void showBoardSnack(
+  BuildContext context,
+  String message, {
+  bool isError = false,
+}) {
   ScaffoldMessenger.of(context).showSnackBar(
     SnackBar(
       content: Text(message),
@@ -20,21 +24,30 @@ void showBoardSnack(BuildContext context, String message, {bool isError = false}
   );
 }
 
-/// Pushes the "undo = bin this clip, redo = restore it" entry every simple
-/// single-clip "add" flow shares (the add-image-clip/add-text-note
+/// Pushes the "undo = bin these clips, redo = restore them" entry every
+/// "add one or more clips" flow shares - reuses the app's existing
+/// bin/restore soft-delete as the undo/redo mechanism, so each newly-added
+/// clip's full data survives an undo/redo round-trip exactly like any
+/// other binned-then-restored clip. [pushAddClipUndo] is the single-id
+/// case every pre-existing "add" flow (the add-image-clip/add-text-note
 /// buttons, clipboard paste, drag-and-drop, the text tool, extracting a
-/// GIF frame) - reuses the app's existing bin/restore soft-delete as the
-/// undo/redo mechanism, so a newly-added clip's full data survives an
-/// undo/redo round-trip exactly like any other binned-then-restored clip.
-void pushAddClipUndo(WidgetRef ref, String clipId) {
+/// GIF frame) already uses; Alt-drag-duplicate and internal copy/paste
+/// can duplicate several clips in one gesture, so they push one combined
+/// entry via this instead of one entry per clip.
+void pushAddClipsUndo(WidgetRef ref, List<String> clipIds) {
   final repo = ref.read(clipsRepositoryProvider);
-  ref.read(undoManagerProvider.notifier).push(
-    UndoableAction(
-      undo: () => repo.binClip(clipId),
-      redo: () => repo.restoreClip(clipId),
-    ),
-  );
+  ref
+      .read(undoManagerProvider.notifier)
+      .push(
+        UndoableAction(
+          undo: () => Future.wait(clipIds.map(repo.binClip)),
+          redo: () => Future.wait(clipIds.map(repo.restoreClip)),
+        ),
+      );
 }
+
+void pushAddClipUndo(WidgetRef ref, String clipId) =>
+    pushAddClipsUndo(ref, [clipId]);
 
 /// Writes [bytes] to local blob storage and adds an image clip centered at
 /// [boardCenter], sized to preserve the image's own aspect ratio. Shared by

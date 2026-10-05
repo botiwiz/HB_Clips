@@ -40,6 +40,40 @@ class FramesRepository {
         );
   }
 
+  /// Inserts a full duplicate of [source] under [newId] (name, size,
+  /// color, and position unless [x]/[y] override it) - [createFrame]
+  /// can't be reused here since it has no way to carry over
+  /// [backgroundColorHex] at creation time. Shared by Alt-drag-duplicate
+  /// and internal copy/paste, same role [ClipsRepository.duplicateClip]
+  /// plays for clips. Returns the inserted row (mirroring
+  /// [ClipsRepository.duplicateClip]'s own return) so a caller that just
+  /// duplicated a frame can immediately seed drag state from its real
+  /// persisted values without a second read.
+  Future<FrameRow> duplicateFrame(
+    FrameRow source, {
+    required String newId,
+    double? x,
+    double? y,
+  }) async {
+    await _db
+        .into(_db.frames)
+        .insert(
+          FramesCompanion.insert(
+            id: newId,
+            boardId: source.boardId,
+            name: Value(source.name),
+            x: Value(x ?? source.x),
+            y: Value(y ?? source.y),
+            width: Value(source.width),
+            height: Value(source.height),
+            backgroundColorHex: Value(source.backgroundColorHex),
+          ),
+        );
+    return (_db.select(
+      _db.frames,
+    )..where((f) => f.id.equals(newId))).getSingle();
+  }
+
   Future<void> renameFrame(String id, String name) {
     return (_db.update(_db.frames)..where((f) => f.id.equals(id))).write(
       FramesCompanion(name: Value(name), updatedAt: Value(DateTime.now())),
@@ -82,13 +116,14 @@ class FramesRepository {
         _db.clips,
       )..where((c) => c.frameId.equals(id))).get();
       for (final child in children) {
-        await (_db.update(_db.clips)..where((c) => c.id.equals(child.id)))
-            .write(
-              ClipsCompanion(
-                frameId: const Value(null),
-                updatedAt: Value(DateTime.now()),
-              ),
-            );
+        await (_db.update(
+          _db.clips,
+        )..where((c) => c.id.equals(child.id))).write(
+          ClipsCompanion(
+            frameId: const Value(null),
+            updatedAt: Value(DateTime.now()),
+          ),
+        );
       }
 
       await (_db.delete(_db.frames)..where((f) => f.id.equals(id))).go();
