@@ -268,9 +268,11 @@ class _PageCropEditorState extends State<_PageCropEditor> {
     _r,
   );
 
+  // No min/max clamp here, unlike per-image crop - see
+  // clampPageCropZoom's own doc comment.
   Size get _scaled => ImagePanZoomGeometry.scaledSize(
     _cover,
-    ImagePanZoomGeometry.clampZoom(widget.crop.zoom),
+    clampPageCropZoom(widget.crop.zoom),
   );
 
   Offset get _overflow => ImagePanZoomGeometry.overflow(
@@ -279,12 +281,38 @@ class _PageCropEditorState extends State<_PageCropEditor> {
     _scaled,
   );
 
+  // The page-space scale factor the content block is actually rendered
+  // at - same role as pdf_writer.dart's own `scale` local in the
+  // `needsFit` branch.
+  double get _scaleFactor => _scaled.width / widget.contentSize.width;
+
+  // Raw, possibly-negative overflow (not the floored _overflow above,
+  // which is correct for OverflowBox's own alignment math but would be
+  // wrong for computing the visible board-space window once zoom can
+  // shrink content below the page's own size) - mirrors pdf_writer
+  // .dart's own visibleLeft/visibleTop exactly.
+  double get _visibleLeft =>
+      ((_scaled.width - widget.pageSize.width) / 2) * (1 + widget.crop.panX);
+  double get _visibleTop =>
+      ((_scaled.height - widget.pageSize.height) / 2) * (1 + widget.crop.panY);
+
+  // The full board-space window actually visible on the page - the
+  // inverse of the transform positioning the content below. Lets the
+  // dot-grid background layer continue past the content's own extent
+  // once zoomed out below cover-fit, mirroring pdf_writer.dart's
+  // `visibleBoardRect` exactly so the live preview and the final export
+  // always agree.
+  Rect get _visibleBoardRect => Rect.fromLTWH(
+    widget.contentOrigin.dx + _visibleLeft / _scaleFactor,
+    widget.contentOrigin.dy + _visibleTop / _scaleFactor,
+    widget.pageSize.width / _scaleFactor,
+    widget.pageSize.height / _scaleFactor,
+  );
+
   void _handleScroll(PointerScrollEvent event) {
     final factor = event.scrollDelta.dy > 0 ? 0.9 : 1.1;
     widget.onChanged(
-      widget.crop.copyWith(
-        zoom: ImagePanZoomGeometry.clampZoom(widget.crop.zoom * factor),
-      ),
+      widget.crop.copyWith(zoom: clampPageCropZoom(widget.crop.zoom * factor)),
     );
   }
 
@@ -313,7 +341,22 @@ class _PageCropEditorState extends State<_PageCropEditor> {
         return ClipRect(
           child: Listener(
             onPointerSignal: (e) {
-              if (e is PointerScrollEvent) _handleScroll(e);
+              // Registers through the same PointerSignalResolver every
+              // Scrollable (including the wizard's own ListView, an
+              // ancestor of this editor) uses for its own scroll
+              // handling - "first registered callback wins," and
+              // pointer-signal dispatch visits the deepest hit-test
+              // target first, so this editor wins the resolution and the
+              // ListView's own, later registration for the same event is
+              // dropped entirely. Calling _handleScroll directly (as
+              // before) sidesteps this arbitration, which is why scroll
+              // used to also bleed into the list.
+              if (e is PointerScrollEvent) {
+                GestureBinding.instance.pointerSignalResolver.register(
+                  e,
+                  (event) => _handleScroll(event as PointerScrollEvent),
+                );
+              }
             },
             onPointerDown: _handleDown,
             onPointerMove: (e) => _handleMove(e, previewToPageScale),
@@ -324,28 +367,58 @@ class _PageCropEditorState extends State<_PageCropEditor> {
                 child: SizedBox(
                   width: widget.pageSize.width,
                   height: widget.pageSize.height,
-                  child: ClipRect(
-                    child: OverflowBox(
-                      alignment: Alignment(widget.crop.panX, widget.crop.panY),
-                      minWidth: _scaled.width,
-                      maxWidth: _scaled.width,
-                      minHeight: _scaled.height,
-                      maxHeight: _scaled.height,
-                      child: SizedBox(
-                        width: widget.contentSize.width,
-                        height: widget.contentSize.height,
-                        child: Transform.scale(
-                          scale: _scaled.width / widget.contentSize.width,
-                          alignment: Alignment.topLeft,
-                          child: _PageContent(
-                            contentSize: widget.contentSize,
-                            contentOrigin: widget.contentOrigin,
-                            clips: widget.clips,
-                            backgroundColorHex: widget.backgroundColorHex,
+                  child: Stack(
+                    children: [
+                      // Background + extended dot-grid layer, sized to
+                      // the full page and sitting BEHIND the content
+                      // composition below - continues the board's own
+                      // dot-grid pattern into any margin revealed once
+                      // zoomed out past the content's own extent, rather
+                      // than showing a blank void. A custom frame color
+                      // still just shows that solid color in the margin
+                      // (no grid), matching pdf_writer.dart's behavior.
+                      Positioned.fill(
+                        child: Container(
+                          color: widget.backgroundColorHex != null
+                              ? hexToColor(widget.backgroundColorHex!)
+                              : AppTheme.canvasBackground,
+                        ),
+                      ),
+                      if (widget.backgroundColorHex == null)
+                        Positioned.fill(
+                          child: CustomPaint(
+                            painter: _ExportDotGridPainter(
+                              _visibleBoardRect.topLeft,
+                              _visibleBoardRect.size,
+                              scale: _scaleFactor,
+                            ),
+                          ),
+                        ),
+                      ClipRect(
+                        child: OverflowBox(
+                          alignment: Alignment(
+                            widget.crop.panX,
+                            widget.crop.panY,
+                          ),
+                          minWidth: _scaled.width,
+                          maxWidth: _scaled.width,
+                          minHeight: _scaled.height,
+                          maxHeight: _scaled.height,
+                          child: SizedBox(
+                            width: widget.contentSize.width,
+                            height: widget.contentSize.height,
+                            child: Transform.scale(
+                              scale: _scaleFactor,
+                              alignment: Alignment.topLeft,
+                              child: _PageContent(
+                                contentOrigin: widget.contentOrigin,
+                                clips: widget.clips,
+                              ),
+                            ),
                           ),
                         ),
                       ),
-                    ),
+                    ],
                   ),
                 ),
               ),
@@ -357,42 +430,25 @@ class _PageCropEditorState extends State<_PageCropEditor> {
   }
 }
 
-/// Mirrors `pdf_writer.dart`'s `_buildPage` Stack order (background fill
-/// → dot grid if no custom frame color → positioned/rotated clips) so
-/// the preview can never visually diverge from the real export.
-/// Deliberately excludes `FrameWidget`'s chrome (border/title) - the
-/// real export never draws that either.
+/// The positioned/rotated clips loop from `pdf_writer.dart`'s
+/// `_buildPage` Stack - background fill and the dot grid now live in
+/// `_PageCropEditor.build()`'s own outer layer instead (so that layer
+/// can extend the grid past this content block's own extent once
+/// zoomed out below cover-fit; drawing a second background/grid here
+/// would just double-paint underneath it). Deliberately excludes
+/// `FrameWidget`'s chrome (border/title) - the real export never draws
+/// that either.
 class _PageContent extends StatelessWidget {
-  final Size contentSize;
   final Offset contentOrigin;
   final List<BoardClip> clips;
-  final String? backgroundColorHex;
 
-  const _PageContent({
-    required this.contentSize,
-    required this.contentOrigin,
-    required this.clips,
-    required this.backgroundColorHex,
-  });
+  const _PageContent({required this.contentOrigin, required this.clips});
 
   @override
   Widget build(BuildContext context) {
     return Stack(
       clipBehavior: Clip.hardEdge,
       children: [
-        Positioned.fill(
-          child: Container(
-            color: backgroundColorHex != null
-                ? hexToColor(backgroundColorHex!)
-                : AppTheme.canvasBackground,
-          ),
-        ),
-        if (backgroundColorHex == null)
-          Positioned.fill(
-            child: CustomPaint(
-              painter: _ExportDotGridPainter(contentOrigin, contentSize),
-            ),
-          ),
         for (final clip in clips)
           Positioned(
             left: clip.x - contentOrigin.dx,
@@ -414,16 +470,26 @@ class _PageContent extends StatelessWidget {
 /// Mirrors `pdf_writer.dart`'s `_drawDotGrid` (fixed board-space density,
 /// not the live board's zoom-dependent `DotGridPainter`) so the preview's
 /// grid matches the exported page's grid exactly - same spacing/radius/
-/// color/opacity constants.
+/// color/opacity constants. [scale] (default 1.0, matching this
+/// painter's pre-Part-57 behavior byte-for-byte) scales both dot radius
+/// and position, mirroring `_drawDotGrid`'s own generalization - used by
+/// `_PageCropEditor` to draw the grid at the page's own fit scale across
+/// [contentSize] (now the full visible board-space window, not just the
+/// content block's own rect).
 class _ExportDotGridPainter extends CustomPainter {
   final Offset origin;
   final Size contentSize;
-  const _ExportDotGridPainter(this.origin, this.contentSize);
+  final double scale;
+  const _ExportDotGridPainter(
+    this.origin,
+    this.contentSize, {
+    this.scale = 1.0,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
     const spacing = kBoardGridSpacing;
-    const radius = 1.5;
+    final radius = 1.5 * scale;
     final startCol = (origin.dx / spacing).floor();
     final endCol = ((origin.dx + contentSize.width) / spacing).ceil();
     final startRow = (origin.dy / spacing).floor();
@@ -431,9 +497,9 @@ class _ExportDotGridPainter extends CustomPainter {
 
     final paint = Paint()..color = AppTheme.gridDot.withValues(alpha: 0.5);
     for (var col = startCol; col <= endCol; col++) {
-      final x = col * spacing - origin.dx;
+      final x = (col * spacing - origin.dx) * scale;
       for (var row = startRow; row <= endRow; row++) {
-        final y = row * spacing - origin.dy;
+        final y = (row * spacing - origin.dy) * scale;
         canvas.drawCircle(Offset(x, y), radius, paint);
       }
     }
@@ -441,5 +507,7 @@ class _ExportDotGridPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _ExportDotGridPainter oldDelegate) =>
-      origin != oldDelegate.origin || contentSize != oldDelegate.contentSize;
+      origin != oldDelegate.origin ||
+      contentSize != oldDelegate.contentSize ||
+      scale != oldDelegate.scale;
 }

@@ -181,6 +181,11 @@ Future<_PageResult> _buildPage({
     return s.points.any(pageRect.contains);
   }).toList();
 
+  // Hoisted up front (only depends on the two parameters) so the dot-grid
+  // gating below can know whether the extended, page-space grid layer
+  // further down will take over - see that layer's own comment.
+  final needsFit = pageSize != size;
+
   // Always fill the page - the app's own canvas color (+ dot grid) by
   // default, WYSIWYG with what's actually on screen, or the frame's own
   // custom color when it has one (in which case no grid is drawn over it,
@@ -193,7 +198,7 @@ Future<_PageResult> _buildPage({
       ),
     ),
   ];
-  if (backgroundColorHex == null) {
+  if (backgroundColorHex == null && !needsFit) {
     pageChildren.add(
       pw.Positioned.fill(
         child: pw.CustomPaint(
@@ -310,7 +315,6 @@ Future<_PageResult> _buildPage({
   // frame". When pageSize == size (no pageFormat was requested, or it
   // happens to already match), skip the wrapper entirely so output
   // stays byte-identical to before this feature existed.
-  final needsFit = pageSize != size;
   final pw.Widget pageContent;
   if (!needsFit) {
     pageContent = pw.Stack(children: pageChildren);
@@ -321,18 +325,38 @@ Future<_PageResult> _buildPage({
       pageSize.height,
       contentAspect,
     );
-    final zoom = ImagePanZoomGeometry.clampZoom(crop.zoom);
+    // No min/max clamp here, unlike per-image crop - a page's content
+    // block is free to shrink below cover-fit (showing margin) or zoom
+    // in arbitrarily far; see clampPageCropZoom's own doc comment.
+    final zoom = clampPageCropZoom(crop.zoom);
     final scaled = ImagePanZoomGeometry.scaledSize(cover, zoom);
     final scale = scaled.width / size.width; // == scaled.height / size.height
 
-    final overflow = ImagePanZoomGeometry.overflow(
-      pageSize.width,
-      pageSize.height,
-      scaled,
+    // Raw, possibly-negative difference rather than ImagePanZoomGeometry
+    // .overflow (which floors at 0 per axis - correct for per-image crop,
+    // where zoom never goes below 1.0, but wrong here: once content can
+    // be smaller than the page, flooring this would silently force it to
+    // always render centered regardless of crop.panX/panY). Identical to
+    // the old overflow-based result whenever the raw difference is
+    // already >= 0, i.e. every previously-reachable case.
+    final rawOverflowX = scaled.width - pageSize.width;
+    final rawOverflowY = scaled.height - pageSize.height;
+    final visibleLeft = (rawOverflowX / 2) * (1 + crop.panX);
+    final visibleTop = (rawOverflowY / 2) * (1 + crop.panY);
+
+    // The full board-space window actually visible on the page - the
+    // inverse of the transform positioning the content above. Once zoom
+    // can shrink content below the page's own size, the page shows more
+    // than just the content's own rect; the dot grid (when no custom
+    // frame color is set) is drawn across this whole window instead of
+    // just the content rect, so it continues seamlessly into whatever
+    // margin is revealed, matching the live board's own infinite grid.
+    final visibleBoardRect = Rect.fromLTWH(
+      origin.dx + visibleLeft / scale,
+      origin.dy + visibleTop / scale,
+      pageSize.width / scale,
+      pageSize.height / scale,
     );
-    // Same formula _buildImageWidget already uses for per-image crop.
-    final visibleLeft = (overflow.dx / 2) * (1 + crop.panX);
-    final visibleTop = (overflow.dy / 2) * (1 + crop.panY);
 
     pageContent = pw.Stack(
       children: [
@@ -343,6 +367,19 @@ Future<_PageResult> _buildPage({
             ),
           ),
         ),
+        if (backgroundColorHex == null)
+          pw.Positioned.fill(
+            child: pw.CustomPaint(
+              size: PdfPoint(pageSize.width, pageSize.height),
+              painter: (PdfGraphics canvas, PdfPoint canvasSize) =>
+                  _drawDotGrid(
+                    canvas,
+                    visibleBoardRect.topLeft,
+                    visibleBoardRect.size,
+                    scale: scale,
+                  ),
+            ),
+          ),
         pw.Positioned(
           left: -visibleLeft,
           top: -visibleTop,
@@ -477,13 +514,22 @@ Future<Uint8List> rasterizeTextClip(
 /// Replicates `DotGridPainter`'s board-space dot grid (fixed spacing,
 /// 1.5pt base radius, 0.5 alpha) onto a PDF page - unlike the live board,
 /// there's no zoom to fade/thin it for, so it's always drawn at the base
-/// density. [origin]/[size] are the page's board-space rect (same values
-/// `_buildPage` already uses to position clips), used to find which
-/// board-space grid points fall within this page and translate them into
-/// page-local coordinates.
-void _drawDotGrid(PdfGraphics canvas, Offset origin, Size size) {
+/// density. [origin]/[size] are the board-space rect to cover (same
+/// values `_buildPage` already uses to position clips when [scale] is
+/// the default 1.0; the `needsFit` branch instead passes the full
+/// visible board-space window at that page's own fit scale). [scale]
+/// defaults to 1.0 (board unit == PDF point, byte-identical to this
+/// function's pre-Part-57 behavior) and otherwise scales both dot radius
+/// and position, so a page drawn at some zoom still gets a
+/// correctly-sized grid.
+void _drawDotGrid(
+  PdfGraphics canvas,
+  Offset origin,
+  Size size, {
+  double scale = 1.0,
+}) {
   const spacing = kBoardGridSpacing;
-  const radius = 1.5;
+  final radius = 1.5 * scale;
   final startCol = (origin.dx / spacing).floor();
   final endCol = ((origin.dx + size.width) / spacing).ceil();
   final startRow = (origin.dy / spacing).floor();
@@ -494,9 +540,9 @@ void _drawDotGrid(PdfGraphics canvas, Offset origin, Size size) {
     ..setGraphicState(const PdfGraphicState(opacity: 0.5))
     ..setFillColor(PdfColor.fromHex(_kGridDotHex));
   for (var col = startCol; col <= endCol; col++) {
-    final x = col * spacing - origin.dx;
+    final x = (col * spacing - origin.dx) * scale;
     for (var row = startRow; row <= endRow; row++) {
-      final y = row * spacing - origin.dy;
+      final y = (row * spacing - origin.dy) * scale;
       canvas
         ..drawEllipse(x, y, radius, radius)
         ..fillPath();

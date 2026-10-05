@@ -28,3 +28,12 @@ class PageCropSettings {
 /// `Map<String, PageCropSettings>` keyed by frame id everywhere else -
 /// safe since frame ids (uuid-generated) never collide with this literal.
 const String kOverviewPageCropKey = '__overview__';
+
+/// Page-crop zoom has no minimum or maximum, unlike per-image crop
+/// (`ImagePanZoomGeometry.clampZoom`, floored at 1.0 so an image always
+/// covers its frame) - a page's content block should be free to shrink
+/// below cover-fit (showing empty margin so nothing gets cropped off,
+/// entirely the user's own choice) or zoom in arbitrarily far. The only
+/// floor here is a tiny positive epsilon, purely to keep the
+/// cover/scale math well-defined - not a UX-chosen limit.
+double clampPageCropZoom(double zoom) => zoom < 0.001 ? 0.001 : zoom;
