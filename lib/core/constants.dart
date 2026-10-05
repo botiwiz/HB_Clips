@@ -27,6 +27,11 @@ const double kMaxImageZoom = 8.0;
 /// board-space positions.
 const double kEdgeSnapThresholdPx = 8;
 
+/// Fixed angle increment (degrees) that every clip's rotate-handle drag
+/// snaps to - see `ClipGeometry.rotate`. 15 degrees matches the common
+/// design-tool default (Figma, Miro) for this exact gesture.
+const double kRotationSnapIncrementDegrees = 15;
+
 /// Board-space (world) font size for text-note clips, converted to screen
 /// pixels via `* view.scale` at render time - the same "world unit ->
 /// screen pixels" pattern already used for stroke width, so text visually

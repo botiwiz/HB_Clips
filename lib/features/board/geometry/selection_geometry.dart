@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/rendering.dart';
 
+import '../../../core/constants.dart';
 import '../../../data/models/clip.dart';
 import '../controllers/board_controller.dart';
 
@@ -121,7 +122,8 @@ class ClipGeometry {
 
   static Map<HandleKind, Offset> _resizeCornersBoard(BoardClip clip) {
     final center = clipCenter(clip);
-    Offset at(double x, double y) => rotatePoint(Offset(x, y), center, clip.rotation);
+    Offset at(double x, double y) =>
+        rotatePoint(Offset(x, y), center, clip.rotation);
     return {
       HandleKind.resizeTL: at(clip.x, clip.y),
       HandleKind.resizeTR: at(clip.x + clip.width, clip.y),
@@ -134,7 +136,10 @@ class ClipGeometry {
   /// screen pixels beyond the clip's (rotated) top-center edge, along the
   /// direction from the clip's center through that edge - so it visually
   /// orbits with the clip as it rotates.
-  static Offset rotateHandleScreenPosition(BoardClip clip, BoardViewState view) {
+  static Offset rotateHandleScreenPosition(
+    BoardClip clip,
+    BoardViewState view,
+  ) {
     final center = clipCenter(clip);
     final topCenterBoard = rotatePoint(
       Offset(clip.x + clip.width / 2, clip.y),
@@ -144,7 +149,9 @@ class ClipGeometry {
     final centerScreen = _boardToScreen(center, view);
     final topCenterScreen = _boardToScreen(topCenterBoard, view);
     final dir = topCenterScreen - centerScreen;
-    final normalized = dir.distance == 0 ? const Offset(0, -1) : dir / dir.distance;
+    final normalized = dir.distance == 0
+        ? const Offset(0, -1)
+        : dir / dir.distance;
     return topCenterScreen + normalized * rotateHandleOffset;
   }
 
@@ -191,17 +198,26 @@ class ClipGeometry {
   }) {
     assert(corner != HandleKind.rotate);
     final center0 = clipCenter(startClip);
-    final localPointer = rotatePoint(pointerBoard, center0, -startClip.rotation);
+    final localPointer = rotatePoint(
+      pointerBoard,
+      center0,
+      -startClip.rotation,
+    );
 
     final anchor = switch (corner) {
       HandleKind.resizeTL => Offset(
         startClip.x + startClip.width,
         startClip.y + startClip.height,
       ),
-      HandleKind.resizeTR => Offset(startClip.x, startClip.y + startClip.height),
+      HandleKind.resizeTR => Offset(
+        startClip.x,
+        startClip.y + startClip.height,
+      ),
       HandleKind.resizeBR => Offset(startClip.x, startClip.y),
       HandleKind.resizeBL => Offset(startClip.x + startClip.width, startClip.y),
-      HandleKind.rotate => throw ArgumentError('resize() called with rotate handle'),
+      HandleKind.rotate => throw ArgumentError(
+        'resize() called with rotate handle',
+      ),
     };
 
     final rawRect = Rect.fromPoints(anchor, localPointer);
@@ -219,6 +235,8 @@ class ClipGeometry {
   /// clip's rotation at gesture-start, [center] its (fixed, gesture-start)
   /// center, and the delta is the change in angle from the pointer's
   /// start position to its current position, both measured from [center].
+  /// Snapped to the nearest [kRotationSnapIncrementDegrees] so every
+  /// clip's rotate handle moves in fixed steps rather than free-form.
   ///
   /// Known limitation: because this is delta-based via atan2, a single
   /// pointer-move frame whose angle crosses the +-pi seam can jump instead
@@ -237,7 +255,9 @@ class ClipGeometry {
       currentPointerBoard.dy - center.dy,
       currentPointerBoard.dx - center.dx,
     );
-    return rotation0 + (angleNow - angle0);
+    final raw = rotation0 + (angleNow - angle0);
+    final stepRadians = kRotationSnapIncrementDegrees * math.pi / 180;
+    return (raw / stepRadians).round() * stepRadians;
   }
 
   /// Applies the same board-space [delta] to every clip's gesture-start
@@ -310,8 +330,9 @@ class ClipGeometry {
       HandleKind.resizeTR => startGroupRect.bottomLeft,
       HandleKind.resizeBR => startGroupRect.topLeft,
       HandleKind.resizeBL => startGroupRect.topRight,
-      HandleKind.rotate =>
-        throw ArgumentError('scaleGroup() called with rotate handle'),
+      HandleKind.rotate => throw ArgumentError(
+        'scaleGroup() called with rotate handle',
+      ),
     };
 
     final rawWidth = (pointerBoard.dx - anchor.dx).abs();

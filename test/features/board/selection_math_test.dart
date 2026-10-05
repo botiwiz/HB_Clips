@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:hb_clips/core/constants.dart';
 import 'package:hb_clips/data/models/clip.dart';
 import 'package:hb_clips/features/board/controllers/board_controller.dart';
 import 'package:hb_clips/features/board/geometry/selection_geometry.dart';
@@ -71,7 +72,13 @@ void main() {
       // (inside the unrotated rect) should now be OUTSIDE the rotated clip,
       // while a point above center (outside the unrotated rect) should now
       // be INSIDE it.
-      final clip = _clip(x: 0, y: 20, width: 100, height: 20, rotation: math.pi / 2);
+      final clip = _clip(
+        x: 0,
+        y: 20,
+        width: 100,
+        height: 20,
+        rotation: math.pi / 2,
+      );
       // Center is (50, 30). Unrotated rect spans x:[0,100], y:[20,40].
       expect(ClipGeometry.pointInClip(const Offset(90, 30), clip), isFalse);
       expect(ClipGeometry.pointInClip(const Offset(50, 5), clip), isTrue);
@@ -89,8 +96,14 @@ void main() {
         const Offset(80, 80),
         const Offset(40, 40),
       );
-      expect(ClipGeometry.marqueeIntersects(topLeftToBottomRight, clip), isTrue);
-      expect(ClipGeometry.marqueeIntersects(bottomRightToTopLeft, clip), isTrue);
+      expect(
+        ClipGeometry.marqueeIntersects(topLeftToBottomRight, clip),
+        isTrue,
+      );
+      expect(
+        ClipGeometry.marqueeIntersects(bottomRightToTopLeft, clip),
+        isTrue,
+      );
     });
 
     test('non-overlapping rect does not intersect', () {
@@ -141,7 +154,13 @@ void main() {
     });
 
     test('corner hit-testing accounts for rotation', () {
-      final clip = _clip(x: 0, y: 0, width: 100, height: 60, rotation: math.pi / 2);
+      final clip = _clip(
+        x: 0,
+        y: 0,
+        width: 100,
+        height: 60,
+        rotation: math.pi / 2,
+      );
       final corners = ClipGeometry.handleScreenPositions(clip, view);
       expect(
         ClipGeometry.hitTestHandle(clip, view, corners[HandleKind.resizeTL]!),
@@ -194,28 +213,69 @@ void main() {
         startPointerBoard: const Offset(100, 50), // due east of center
         currentPointerBoard: const Offset(50, 100), // due south of center
       );
+      // 90 degrees is itself an exact multiple of
+      // kRotationSnapIncrementDegrees, so this also verifies the raw
+      // (pre-snap) delta math is correct.
       expect(rotation, closeTo(math.pi / 2, 1e-9));
     });
 
     test('full loop back to the start returns to the original rotation', () {
       const center = Offset(0, 0);
       const start = Offset(10, 0);
+      // rotation0 is itself a multiple of the snap increment, so a
+      // zero-delta gesture (pointer ends where it started) should snap
+      // right back to the same value, not drift to a neighboring step.
+      final rotation0 = kRotationSnapIncrementDegrees * 2 * math.pi / 180;
       final rotation = ClipGeometry.rotate(
-        rotation0: 0.4,
+        rotation0: rotation0,
         center: center,
         startPointerBoard: start,
         currentPointerBoard: start,
       );
-      expect(rotation, closeTo(0.4, 1e-9));
+      expect(rotation, closeTo(rotation0, 1e-9));
+    });
+
+    test('snaps to the nearest fixed angle increment', () {
+      const center = Offset(0, 0);
+      // Pointer moves from due east to 20 degrees around the circle -
+      // closer to the 15-degree step than to 30.
+      final rotation = ClipGeometry.rotate(
+        rotation0: 0,
+        center: center,
+        startPointerBoard: const Offset(10, 0),
+        currentPointerBoard: Offset(
+          10 * math.cos(20 * math.pi / 180),
+          10 * math.sin(20 * math.pi / 180),
+        ),
+      );
+      expect(
+        rotation,
+        closeTo(kRotationSnapIncrementDegrees * math.pi / 180, 1e-9),
+      );
+    });
+
+    test('rounds to the nearer step rather than always flooring', () {
+      const center = Offset(0, 0);
+      // 40 degrees is closer to the 45-degree step than to 30.
+      final rotation = ClipGeometry.rotate(
+        rotation0: 0,
+        center: center,
+        startPointerBoard: const Offset(10, 0),
+        currentPointerBoard: Offset(
+          10 * math.cos(40 * math.pi / 180),
+          10 * math.sin(40 * math.pi / 180),
+        ),
+      );
+      expect(rotation, closeTo(45 * math.pi / 180, 1e-9));
     });
   });
 
   group('applyGroupDelta', () {
     test('applies the same delta to every clip start position', () {
-      final result = ClipGeometry.applyGroupDelta(
-        {'a': const Offset(0, 0), 'b': const Offset(10, 20)},
-        const Offset(5, -5),
-      );
+      final result = ClipGeometry.applyGroupDelta({
+        'a': const Offset(0, 0),
+        'b': const Offset(10, 20),
+      }, const Offset(5, -5));
       expect(result['a'], const Offset(5, -5));
       expect(result['b'], const Offset(15, 15));
     });
@@ -231,19 +291,22 @@ void main() {
   });
 
   group('textToolPlacementRect', () {
-    test('a plain click (not moved) returns the default size centered on start', () {
-      final rect = ClipGeometry.textToolPlacementRect(
-        start: const Offset(100, 200),
-        end: const Offset(101, 200),
-        moved: false,
-        defaultWidth: 220,
-        defaultHeight: 140,
-      );
+    test(
+      'a plain click (not moved) returns the default size centered on start',
+      () {
+        final rect = ClipGeometry.textToolPlacementRect(
+          start: const Offset(100, 200),
+          end: const Offset(101, 200),
+          moved: false,
+          defaultWidth: 220,
+          defaultHeight: 140,
+        );
 
-      expect(rect.width, 220);
-      expect(rect.height, 140);
-      expect(rect.center, const Offset(100, 200));
-    });
+        expect(rect.width, 220);
+        expect(rect.height, 140);
+        expect(rect.center, const Offset(100, 200));
+      },
+    );
 
     test('a drag down-right returns the normalized dragged rect', () {
       final rect = ClipGeometry.textToolPlacementRect(
