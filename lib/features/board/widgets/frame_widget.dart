@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/constants.dart' show kCornerRadius;
 import '../../../core/theme/app_theme.dart';
 import '../../../data/local/database.dart' show FrameRow;
 import '../../annotation/stroke_painter.dart' show hexToColor;
@@ -55,7 +56,7 @@ class FrameWidget extends StatelessWidget {
                       : (customColor ?? AppTheme.border),
                   width: selected ? 2 : 1.5,
                 ),
-                borderRadius: BorderRadius.circular(4),
+                borderRadius: BorderRadius.circular(kCornerRadius),
               ),
             ),
           ),

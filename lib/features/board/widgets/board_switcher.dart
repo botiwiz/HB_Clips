@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../../core/constants.dart' show kCornerRadius;
 import '../../../core/theme/app_theme.dart';
 import '../../../data/local/database.dart';
 import '../../../data/providers.dart';
@@ -69,7 +70,7 @@ class BoardSwitcher extends ConsumerWidget {
 
     return Material(
       color: AppTheme.surfaceElevated,
-      borderRadius: BorderRadius.circular(999),
+      borderRadius: BorderRadius.circular(kCornerRadius),
       elevation: 6,
       shadowColor: Colors.black54,
       child: PopupMenuButton<String>(

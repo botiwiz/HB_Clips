@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../constants.dart' show kCornerRadius;
+
 /// HB_Clips theme: Miro-style dark grayscale canvas with a single pure-red
 /// accent reserved for selection/highlight/critical states. Every other
 /// surface, border, and text color is a shade of gray - deliberately, so
@@ -70,7 +72,22 @@ class AppTheme {
         elevation: 4,
         shadowColor: Colors.black87,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.all(Radius.circular(14)),
+          borderRadius: BorderRadius.all(Radius.circular(kCornerRadius)),
+        ),
+      ),
+      // Material 3's AlertDialog/PopupMenuButton default to a built-in
+      // 28px-radius shape with no override anywhere in this app - these
+      // two are the one place that needs to change to make every
+      // existing/future dialog and popup menu sharp, without touching
+      // each individual showDialog/PopupMenuButton call site.
+      dialogTheme: const DialogThemeData(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.all(Radius.circular(kCornerRadius)),
+        ),
+      ),
+      popupMenuTheme: const PopupMenuThemeData(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.all(Radius.circular(kCornerRadius)),
         ),
       ),
       sliderTheme: base.sliderTheme.copyWith(

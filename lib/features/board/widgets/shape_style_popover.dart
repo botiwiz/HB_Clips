@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/constants.dart' show kCornerRadius;
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/hsv_color_picker.dart';
 import '../../../data/models/clip.dart';
@@ -267,7 +268,7 @@ class _ShapeStylePopoverState extends ConsumerState<ShapeStylePopover> {
               top: pickerRect.top,
               child: Material(
                 color: AppTheme.surfaceElevated,
-                borderRadius: BorderRadius.circular(999),
+                borderRadius: BorderRadius.circular(kCornerRadius),
                 elevation: 6,
                 shadowColor: Colors.black54,
                 child: Padding(
@@ -316,7 +317,7 @@ class _ShapeStylePopoverState extends ConsumerState<ShapeStylePopover> {
             top: rect.top,
             child: Material(
               color: AppTheme.surfaceElevated,
-              borderRadius: BorderRadius.circular(999),
+              borderRadius: BorderRadius.circular(kCornerRadius),
               elevation: 6,
               shadowColor: Colors.black54,
               child: SizedBox(

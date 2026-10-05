@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
+import 'package:pdf/pdf.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../core/theme/app_theme.dart';
@@ -23,6 +24,7 @@ import 'controllers/board_controller.dart';
 import 'controllers/undo_controller.dart';
 import 'geometry/frame_geometry.dart';
 import 'geometry/frame_presets.dart';
+import 'geometry/pdf_export_selection.dart';
 import 'geometry/selection_geometry.dart';
 import 'services/add_image_service.dart' show pushAddClipUndo, pushAddClipsUndo;
 import 'services/clipboard_paste_service.dart';
@@ -179,15 +181,42 @@ class BoardScreen extends ConsumerWidget {
   }
 
   Future<void> _exportPdfFile(BuildContext context, WidgetRef ref) async {
-    final clips = ref.read(activeClipsProvider).valueOrNull ?? [];
-    final frames = ref.read(boardFramesProvider).valueOrNull ?? [];
-    final strokes = ref.read(boardStrokesProvider).valueOrNull ?? [];
+    final selectedFrameIds = ref.read(selectedFrameIdsProvider);
+    final selectedClipIds = ref.read(selectedClipIdsProvider);
+    if (selectedFrameIds.isEmpty && selectedClipIds.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Select something to export first.')),
+      );
+      return;
+    }
+
+    final selection = resolveExportSelection(
+      selectedFrameIds: selectedFrameIds,
+      selectedClipIds: selectedClipIds,
+      frames: ref.read(boardFramesProvider).valueOrNull ?? [],
+      clips: ref.read(activeClipsProvider).valueOrNull ?? [],
+      strokes: ref.read(boardStrokesProvider).valueOrNull ?? [],
+    );
+    if (selection.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Nothing to export.')));
+      return;
+    }
+
+    final settings = await _pickExportSettings(context);
+    if (settings == null || !context.mounted) return;
+
     final blobStore = ref.read(localBlobStoreProvider);
     final result = await writePdfFile(
-      frames: frames,
-      clips: clips,
-      strokes: strokes,
+      frames: selection.frames,
+      clips: selection.clips,
+      strokes: selection.strokes,
       readBytes: blobStore.readBytes,
+      pageFormat: PdfPageFormat(
+        settings.landscape ? settings.preset.height : settings.preset.width,
+        settings.landscape ? settings.preset.width : settings.preset.height,
+      ),
     );
     if (!context.mounted) return;
 
@@ -252,6 +281,56 @@ class BoardScreen extends ConsumerWidget {
             child: const Text('OK'),
           ),
         ],
+      ),
+    );
+  }
+
+  /// The resolution/orientation chosen by [_pickExportSettings], applied
+  /// uniformly to every page of one export.
+  Future<ExportSettings?> _pickExportSettings(BuildContext context) {
+    var selected = kFramePresets.first;
+    var landscape = false;
+    return showDialog<ExportSettings>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: const Text('Export settings'),
+          content: SizedBox(
+            width: 320,
+            child: RadioGroup<FramePreset>(
+              groupValue: selected,
+              onChanged: (value) => setState(() => selected = value!),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  for (final preset in kFramePresets)
+                    RadioListTile<FramePreset>(
+                      title: Text(preset.label),
+                      value: preset,
+                    ),
+                  const Divider(),
+                  SwitchListTile(
+                    title: const Text('Landscape'),
+                    value: landscape,
+                    onChanged: (value) => setState(() => landscape = value),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(
+                context,
+              ).pop(ExportSettings(preset: selected, landscape: landscape)),
+              child: const Text('Export'),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1443,4 +1522,14 @@ class BoardScreen extends ConsumerWidget {
       ),
     );
   }
+}
+
+/// Result of `_pickExportSettings` - the resolution preset and
+/// portrait/landscape choice to apply uniformly to every page of this
+/// one export. `null` (returned by the dialog itself, not this class)
+/// means the user cancelled.
+class ExportSettings {
+  final FramePreset preset;
+  final bool landscape;
+  const ExportSettings({required this.preset, required this.landscape});
 }

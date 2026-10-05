@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../constants.dart' show kCornerRadius;
 import '../theme/app_theme.dart';
 
 /// A solid-color circular swatch button that toggles an external
@@ -59,20 +60,6 @@ class GradientBar extends StatelessWidget {
   final double value;
   final ValueChanged<double> onChanged;
   static const double _height = 32;
-  // Deliberately decoupled from _height - a full stadium/pill
-  // (borderRadius = _height / 2) leaves less usable width for the
-  // indicator to travel across than a lightly-rounded rect does, so this
-  // is kept modest instead of tracking the bar's own height.
-  static const double _cornerRadius = 8;
-  // The bar's flat, draggable middle section only starts/ends this many
-  // pixels in from each edge - letting the indicator travel all the way
-  // to 0/width would let it slide out into the rounded corner, where a
-  // straight vertical bar reads as visually wrong (not following the
-  // curve). Clamping the indicator's travel range to [capRadius, width -
-  // capRadius] keeps it within the corner's own curve at the extremes
-  // instead - tied to _cornerRadius itself, not a separate magic number,
-  // so the clamp always matches whatever the actual corner shape is.
-  static const double _capRadius = _cornerRadius;
 
   const GradientBar({
     super.key,
@@ -86,9 +73,8 @@ class GradientBar extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final width = constraints.maxWidth;
-        final travel = (width - 2 * _capRadius).clamp(0.0, width);
         void handle(Offset localPosition) {
-          final t = ((localPosition.dx - _capRadius) / travel).clamp(0.0, 1.0);
+          final t = (localPosition.dx / width).clamp(0.0, 1.0);
           onChanged(t);
         }
 
@@ -97,22 +83,19 @@ class GradientBar extends StatelessWidget {
           onPanUpdate: (details) => handle(details.localPosition),
           child: Container(
             height: _height,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(_cornerRadius),
-              gradient: LinearGradient(colors: colors),
-            ),
+            decoration: BoxDecoration(gradient: LinearGradient(colors: colors)),
             child: Stack(
               clipBehavior: Clip.none,
               children: [
                 Positioned(
-                  left: _capRadius + value.clamp(0.0, 1.0) * travel - 1.5,
+                  left: value.clamp(0.0, 1.0) * width - 1.5,
                   top: 4,
                   bottom: 4,
                   child: Container(
                     width: 3,
                     decoration: BoxDecoration(
                       color: Colors.white,
-                      borderRadius: BorderRadius.circular(2),
+                      borderRadius: BorderRadius.circular(kCornerRadius),
                       boxShadow: const [
                         BoxShadow(color: Colors.black45, blurRadius: 2),
                       ],

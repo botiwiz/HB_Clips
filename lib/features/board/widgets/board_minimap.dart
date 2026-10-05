@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/constants.dart' show kCornerRadius;
 import '../../../core/theme/app_theme.dart';
 import '../../../data/models/clip.dart';
 import '../../../data/providers.dart';
@@ -36,17 +37,23 @@ class BoardMinimap extends ConsumerWidget {
     );
 
     return GestureDetector(
-      onTapDown: (details) => _jumpTo(ref, transform, details.localPosition, screenSize),
-      onPanUpdate: (details) => _jumpTo(ref, transform, details.localPosition, screenSize),
+      onTapDown: (details) =>
+          _jumpTo(ref, transform, details.localPosition, screenSize),
+      onPanUpdate: (details) =>
+          _jumpTo(ref, transform, details.localPosition, screenSize),
       child: Container(
         width: panelWidth,
         height: panelHeight,
         decoration: BoxDecoration(
           color: AppTheme.surfaceElevated.withValues(alpha: 0.9),
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(kCornerRadius),
           border: Border.all(color: AppTheme.border),
           boxShadow: const [
-            BoxShadow(color: Colors.black54, blurRadius: 6, offset: Offset(0, 2)),
+            BoxShadow(
+              color: Colors.black54,
+              blurRadius: 6,
+              offset: Offset(0, 2),
+            ),
           ],
         ),
         clipBehavior: Clip.antiAlias,
@@ -64,7 +71,8 @@ class BoardMinimap extends ConsumerWidget {
   static Rect _viewportBoardRect(BoardViewState view, Size screenSize) {
     final topLeft = -view.panOffset / view.scale;
     final bottomRight =
-        (Offset(screenSize.width, screenSize.height) - view.panOffset) / view.scale;
+        (Offset(screenSize.width, screenSize.height) - view.panOffset) /
+        view.scale;
     return Rect.fromPoints(topLeft, bottomRight);
   }
 
@@ -96,7 +104,8 @@ class BoardMinimap extends ConsumerWidget {
     final boardPoint = transform.panelToBoard(localPosition);
     final view = ref.read(boardViewProvider);
     final newPan =
-        Offset(screenSize.width / 2, screenSize.height / 2) - boardPoint * view.scale;
+        Offset(screenSize.width / 2, screenSize.height / 2) -
+        boardPoint * view.scale;
     ref.read(boardViewProvider.notifier).setPan(newPan);
   }
 }
@@ -121,7 +130,10 @@ class _MinimapTransform {
 
   // Centers the (likely non-matching-aspect-ratio) content within the
   // panel rather than stretching it, so clip proportions stay true.
-  factory _MinimapTransform({required Rect contentRect, required Size panelSize}) {
+  factory _MinimapTransform({
+    required Rect contentRect,
+    required Size panelSize,
+  }) {
     final scale = min(
       panelSize.width / contentRect.width,
       panelSize.height / contentRect.height,
@@ -159,7 +171,8 @@ class _MinimapPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final clipPaint = Paint()..color = AppTheme.textSecondary.withValues(alpha: 0.7);
+    final clipPaint = Paint()
+      ..color = AppTheme.textSecondary.withValues(alpha: 0.7);
     for (final clip in clips) {
       final topLeft = transform.boardToPanel(Offset(clip.x, clip.y));
       final bottomRight = transform.boardToPanel(

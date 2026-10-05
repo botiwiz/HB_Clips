@@ -704,7 +704,7 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
               child: Container(
                 key: _boxKey,
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(kCornerRadius),
                   border: Border.all(color: AppTheme.red, width: 2.5),
                   // Opaque even when the note has no custom background
                   // color - AppTheme.textNoteSurface (the static, non-
@@ -836,7 +836,7 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
               height: TextClipEditOverlay.highlightPickerHeight,
               child: Material(
                 color: AppTheme.surfaceElevated,
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(kCornerRadius),
                 elevation: 6,
                 shadowColor: Colors.black54,
                 child: Padding(
@@ -861,7 +861,7 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
             height: TextClipEditOverlay.toolbarHeight,
             child: Material(
               color: AppTheme.surfaceElevated,
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(kCornerRadius),
               elevation: 6,
               shadowColor: Colors.black54,
               child: Padding(

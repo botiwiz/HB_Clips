@@ -6,6 +6,7 @@ import 'package:hb_clips/data/models/clip.dart';
 import 'package:hb_clips/data/models/stroke.dart';
 import 'package:hb_clips/data/pdf/pdf_writer.dart';
 import 'package:image/image.dart' as img;
+import 'package:pdf/pdf.dart';
 
 FrameRow _frame({
   required String id,
@@ -297,4 +298,59 @@ void main() {
       expect(_mediaBoxes(result.bytes).length, 1);
     },
   );
+
+  test('a pageFormat matching the frame\'s own aspect ratio sizes the page '
+      'to that pageFormat, not the frame', () async {
+    final frames = [_frame(id: 'f1', x: 0, y: 0, width: 400, height: 200)];
+
+    final result = await writePdfFile(
+      frames: frames,
+      clips: const [],
+      strokes: const [],
+      readBytes: _fakeReadBytes,
+      pageFormat: const PdfPageFormat(800, 400),
+    );
+
+    expect(result, isNotNull);
+    expect(_mediaBoxes(result!.bytes), ['0 0 800 400']);
+  });
+
+  test(
+    'a pageFormat with a different aspect ratio than the content still '
+    'sizes the page to the pageFormat exactly (letterboxed, not cropped)',
+    () async {
+      final frames = [_frame(id: 'f1', x: 0, y: 0, width: 400, height: 200)];
+
+      final result = await writePdfFile(
+        frames: frames,
+        clips: const [],
+        strokes: const [],
+        readBytes: _fakeReadBytes,
+        pageFormat: const PdfPageFormat(500, 500),
+      );
+
+      expect(result, isNotNull);
+      expect(_mediaBoxes(result!.bytes), ['0 0 500 500']);
+    },
+  );
+
+  test('pageFormat applies uniformly across an overview page and a frame '
+      'page with different native content sizes', () async {
+    final frames = [_frame(id: 'f1', x: 1000, y: 0, width: 400, height: 200)];
+    final clips = [_textClip(id: 't1', text: 'loose note', x: 0, y: 0)];
+
+    final result = await writePdfFile(
+      frames: frames,
+      clips: clips,
+      strokes: const [],
+      readBytes: _fakeReadBytes,
+      pageFormat: const PdfPageFormat(600, 300),
+    );
+
+    expect(result, isNotNull);
+    final boxes = _mediaBoxes(result!.bytes);
+    expect(boxes.length, 2);
+    expect(boxes[0], '0 0 600 300');
+    expect(boxes[1], '0 0 600 300');
+  });
 }

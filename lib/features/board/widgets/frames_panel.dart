@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/constants.dart' show kCornerRadius;
 import '../../../core/theme/app_theme.dart';
 import '../../../data/local/database.dart' show FrameRow;
 import '../../../data/providers.dart';
@@ -36,7 +37,7 @@ class FramesPanel extends ConsumerWidget {
       constraints: const BoxConstraints(maxHeight: _maxPanelHeight),
       decoration: BoxDecoration(
         color: AppTheme.surfaceElevated.withValues(alpha: 0.95),
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(kCornerRadius),
         border: Border.all(color: AppTheme.border),
         boxShadow: const [
           BoxShadow(color: Colors.black54, blurRadius: 6, offset: Offset(0, 2)),

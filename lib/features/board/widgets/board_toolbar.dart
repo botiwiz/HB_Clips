@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/constants.dart' show kCornerRadius;
 import '../../../core/theme/app_theme.dart';
 
 /// A floating rounded-pill cluster of icon buttons - the Miro-style
@@ -14,7 +15,7 @@ class PillGroup extends StatelessWidget {
   Widget build(BuildContext context) {
     return Material(
       color: AppTheme.surfaceElevated,
-      borderRadius: BorderRadius.circular(999),
+      borderRadius: BorderRadius.circular(kCornerRadius),
       elevation: 6,
       shadowColor: Colors.black54,
       child: Padding(

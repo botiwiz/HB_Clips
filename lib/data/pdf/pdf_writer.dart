@@ -7,7 +7,7 @@ import 'package:image/image.dart' as img;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
-import '../../core/constants.dart' show kBoardGridSpacing;
+import '../../core/constants.dart' show kBoardGridSpacing, kCornerRadius;
 import '../../features/annotation/controllers/annotation_controller.dart'
     show kDefaultStrokeWidth;
 import '../../features/board/geometry/frame_geometry.dart';
@@ -75,6 +75,7 @@ Future<PdfWriteResult?> writePdfFile({
   required List<BoardClip> clips,
   required List<Stroke> strokes,
   required Future<Uint8List?> Function(String key) readBytes,
+  PdfPageFormat? pageFormat,
 }) async {
   if (frames.isEmpty && clips.isEmpty) return null;
 
@@ -93,6 +94,9 @@ Future<PdfWriteResult?> writePdfFile({
       doc: doc,
       origin: rect.topLeft,
       size: rect.size,
+      pageSize: pageFormat == null
+          ? rect.size
+          : Size(pageFormat.width, pageFormat.height),
       backgroundColorHex: null,
       clips: looseClips,
       strokes: strokes,
@@ -111,6 +115,9 @@ Future<PdfWriteResult?> writePdfFile({
       doc: doc,
       origin: frameRect.topLeft,
       size: frameRect.size,
+      pageSize: pageFormat == null
+          ? frameRect.size
+          : Size(pageFormat.width, pageFormat.height),
       backgroundColorHex: frame.backgroundColorHex,
       clips: children,
       strokes: strokes,
@@ -137,6 +144,7 @@ Future<_PageResult> _buildPage({
   required pw.Document doc,
   required Offset origin,
   required Size size,
+  required Size pageSize,
   required String? backgroundColorHex,
   required List<BoardClip> clips,
   required List<Stroke> strokes,
@@ -261,12 +269,47 @@ Future<_PageResult> _buildPage({
     );
   }
 
+  // When a uniform pageSize was requested (the export-settings dialog's
+  // chosen resolution/orientation) and it doesn't match this page's own
+  // content rect, scale the content to fit entirely inside pageSize
+  // (never cropping) and center it, letterboxing any leftover margin
+  // with the same background color as the content itself so there's no
+  // visible seam. When pageSize == size (no pageFormat was requested,
+  // or it happens to already match), skip the wrapper entirely so
+  // output stays byte-identical to before this feature existed.
+  final needsFit = pageSize != size;
+  final scale = needsFit
+      ? min(pageSize.width / size.width, pageSize.height / size.height)
+      : 1.0;
+
   doc.addPage(
     pw.Page(
-      pageFormat: PdfPageFormat(size.width, size.height),
+      pageFormat: PdfPageFormat(pageSize.width, pageSize.height),
       margin: pw.EdgeInsets.zero,
       clip: true,
-      build: (context) => pw.Stack(children: pageChildren),
+      build: (context) => !needsFit
+          ? pw.Stack(children: pageChildren)
+          : pw.Stack(
+              children: [
+                pw.Positioned.fill(
+                  child: pw.Container(
+                    color: PdfColor.fromHex(
+                      backgroundColorHex ?? _kCanvasBackgroundHex,
+                    ),
+                  ),
+                ),
+                pw.Center(
+                  child: pw.Transform.scale(
+                    scale: scale,
+                    child: pw.SizedBox(
+                      width: size.width,
+                      height: size.height,
+                      child: pw.Stack(children: pageChildren),
+                    ),
+                  ),
+                ),
+              ],
+            ),
     ),
   );
 
@@ -279,7 +322,7 @@ pw.Widget _buildTextWidget(BoardClip clip) => pw.Container(
         ? PdfColor.fromHex(clip.backgroundColorHex!)
         : null,
     border: pw.Border.all(color: PdfColor.fromHex(_kGridDotHex), width: 1),
-    borderRadius: pw.BorderRadius.all(pw.Radius.circular(10)),
+    borderRadius: pw.BorderRadius.all(pw.Radius.circular(kCornerRadius)),
   ),
   padding: const pw.EdgeInsets.all(10),
   child: pw.Text(

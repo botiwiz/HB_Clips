@@ -60,10 +60,12 @@ class ClipWidget extends StatelessWidget {
       opacity: clip.opacity,
       child: Container(
         decoration: BoxDecoration(
-          borderRadius: isShape ? BorderRadius.zero : BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(kCornerRadius),
           border: selected
               ? Border.all(color: AppTheme.red, width: 2.5)
-              : (isShape ? null : Border.all(color: AppTheme.border, width: 1)),
+              : (isShape || clip.type == ClipType.text
+                    ? null
+                    : Border.all(color: AppTheme.border, width: 1)),
           boxShadow: (isShape || clip.type == ClipType.text)
               ? null
               : const [
@@ -83,12 +85,12 @@ class ClipWidget extends StatelessWidget {
         ),
         child: switch (clip.type) {
           ClipType.image => ClipRRect(
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(kCornerRadius),
             clipBehavior: Clip.antiAlias,
             child: _buildImage(),
           ),
           ClipType.text => ClipRRect(
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(kCornerRadius),
             clipBehavior: Clip.antiAlias,
             child: _buildText(),
           ),

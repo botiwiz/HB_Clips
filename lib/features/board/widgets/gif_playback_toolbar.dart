@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../../core/constants.dart' show kCornerRadius;
 import '../../../core/theme/app_theme.dart';
 import '../../../data/models/clip.dart';
 import '../../../data/providers.dart';
@@ -63,7 +64,7 @@ class GifPlaybackToolbar extends ConsumerWidget {
 
     return Material(
       color: AppTheme.surfaceElevated,
-      borderRadius: BorderRadius.circular(999),
+      borderRadius: BorderRadius.circular(kCornerRadius),
       elevation: 6,
       shadowColor: Colors.black54,
       child: Container(
@@ -98,9 +99,7 @@ class GifPlaybackToolbar extends ConsumerWidget {
               value: speed,
               underline: const SizedBox.shrink(),
               items: const [0.25, 0.5, 1.0, 2.0, 4.0]
-                  .map(
-                    (s) => DropdownMenuItem(value: s, child: Text('${s}x')),
-                  )
+                  .map((s) => DropdownMenuItem(value: s, child: Text('${s}x')))
                   .toList(),
               onChanged: isThisClip
                   ? (value) {

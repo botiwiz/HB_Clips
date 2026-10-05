@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/constants.dart' show kCornerRadius;
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/hsv_color_picker.dart';
 import '../../data/providers.dart';
@@ -64,7 +65,7 @@ class DrawToolbar extends ConsumerWidget {
       children: [
         Material(
           color: AppTheme.surfaceElevated,
-          borderRadius: BorderRadius.circular(999),
+          borderRadius: BorderRadius.circular(kCornerRadius),
           elevation: 6,
           shadowColor: Colors.black54,
           child: Container(
@@ -156,7 +157,7 @@ class DrawToolbar extends ConsumerWidget {
           const SizedBox(height: _pickerGap),
           Material(
             color: AppTheme.surfaceElevated,
-            borderRadius: BorderRadius.circular(999),
+            borderRadius: BorderRadius.circular(kCornerRadius),
             elevation: 6,
             shadowColor: Colors.black54,
             child: SizedBox(
