@@ -1,17 +1,30 @@
 import 'dart:math';
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:flutter/rendering.dart';
 import 'package:image/image.dart' as img;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
+import '../../core/constants.dart' show kBoardGridSpacing;
+import '../../features/annotation/controllers/annotation_controller.dart'
+    show kDefaultStrokeWidth;
 import '../../features/board/geometry/frame_geometry.dart';
 import '../../features/board/geometry/image_pan_zoom_geometry.dart';
 import '../../features/board/geometry/selection_geometry.dart';
+import '../../features/board/geometry/shape_geometry.dart';
 import '../local/database.dart' show FrameRow;
 import '../models/clip.dart';
 import '../models/stroke.dart';
+
+/// The app's own dark-grey canvas background (`AppTheme.canvasBackground`)
+/// and dot-grid color (`AppTheme.gridDot`, same value as `AppTheme.border`)
+/// - duplicated here as hex literals rather than importing `core/theme`,
+/// matching this file's existing convention (`_buildTextWidget`'s border
+/// color below is the same literal, already hardcoded this way).
+const String _kCanvasBackgroundHex = '#18181A';
+const String _kGridDotHex = '#3A3A40';
 
 /// How many pages/images made it into the exported PDF.
 class PdfExportSummary {
@@ -19,12 +32,14 @@ class PdfExportSummary {
   final bool hasOverviewPage;
   final int imagesDrawn;
   final int imagesSkipped;
+  final List<String> skippedFileNames;
 
   const PdfExportSummary({
     required this.framePages,
     required this.hasOverviewPage,
     required this.imagesDrawn,
     required this.imagesSkipped,
+    this.skippedFileNames = const [],
   });
 }
 
@@ -37,7 +52,8 @@ class PdfWriteResult {
 class _PageResult {
   final int drawn;
   final int skipped;
-  const _PageResult(this.drawn, this.skipped);
+  final List<String> skippedFileNames;
+  const _PageResult(this.drawn, this.skipped, this.skippedFileNames);
 }
 
 /// Writes the board out as a multi-page PDF - one page per frame, plus a
@@ -65,6 +81,7 @@ Future<PdfWriteResult?> writePdfFile({
   final doc = pw.Document();
   var imagesDrawn = 0;
   var imagesSkipped = 0;
+  final skippedFileNames = <String>[];
 
   final looseClips = clips.where((c) => c.frameId == null).toList()
     ..sort((a, b) => a.zIndex.compareTo(b.zIndex));
@@ -83,6 +100,7 @@ Future<PdfWriteResult?> writePdfFile({
     );
     imagesDrawn += result.drawn;
     imagesSkipped += result.skipped;
+    skippedFileNames.addAll(result.skippedFileNames);
   }
 
   for (final frame in frames) {
@@ -100,6 +118,7 @@ Future<PdfWriteResult?> writePdfFile({
     );
     imagesDrawn += result.drawn;
     imagesSkipped += result.skipped;
+    skippedFileNames.addAll(result.skippedFileNames);
   }
 
   return PdfWriteResult(
@@ -109,6 +128,7 @@ Future<PdfWriteResult?> writePdfFile({
       hasOverviewPage: hasOverview,
       imagesDrawn: imagesDrawn,
       imagesSkipped: imagesSkipped,
+      skippedFileNames: skippedFileNames,
     ),
   );
 }
@@ -124,6 +144,7 @@ Future<_PageResult> _buildPage({
 }) async {
   var drawn = 0;
   var skipped = 0;
+  final skippedFileNames = <String>[];
 
   final pageRect = Rect.fromLTWH(origin.dx, origin.dy, size.width, size.height);
   final clipIds = clips.map((c) => c.id).toSet();
@@ -132,11 +153,26 @@ Future<_PageResult> _buildPage({
     return s.points.any(pageRect.contains);
   }).toList();
 
-  final pageChildren = <pw.Widget>[];
-  if (backgroundColorHex != null) {
+  // Always fill the page - the app's own canvas color (+ dot grid) by
+  // default, WYSIWYG with what's actually on screen, or the frame's own
+  // custom color when it has one (in which case no grid is drawn over it,
+  // matching the board's own "a custom frame color replaces the grid
+  // visually" behavior).
+  final pageChildren = <pw.Widget>[
+    pw.Positioned.fill(
+      child: pw.Container(
+        color: PdfColor.fromHex(backgroundColorHex ?? _kCanvasBackgroundHex),
+      ),
+    ),
+  ];
+  if (backgroundColorHex == null) {
     pageChildren.add(
       pw.Positioned.fill(
-        child: pw.Container(color: PdfColor.fromHex(backgroundColorHex)),
+        child: pw.CustomPaint(
+          size: PdfPoint(size.width, size.height),
+          painter: (PdfGraphics canvas, PdfPoint canvasSize) =>
+              _drawDotGrid(canvas, origin, size),
+        ),
       ),
     );
   }
@@ -145,10 +181,14 @@ Future<_PageResult> _buildPage({
     pw.Widget? content;
     if (clip.type == ClipType.text) {
       content = _buildTextWidget(clip);
+    } else if (clip.type == ClipType.shape) {
+      content = _buildShapeWidget(clip);
     } else {
       content = await _buildImageWidget(clip, readBytes);
       if (content == null) {
         skipped++;
+        final path = clip.localFilePath;
+        if (path != null) skippedFileNames.add(_basename(path));
         continue;
       }
       drawn++;
@@ -230,7 +270,7 @@ Future<_PageResult> _buildPage({
     ),
   );
 
-  return _PageResult(drawn, skipped);
+  return _PageResult(drawn, skipped, skippedFileNames);
 }
 
 pw.Widget _buildTextWidget(BoardClip clip) => pw.Container(
@@ -238,7 +278,7 @@ pw.Widget _buildTextWidget(BoardClip clip) => pw.Container(
     color: clip.backgroundColorHex != null
         ? PdfColor.fromHex(clip.backgroundColorHex!)
         : null,
-    border: pw.Border.all(color: PdfColor.fromHex('#3A3A40'), width: 1),
+    border: pw.Border.all(color: PdfColor.fromHex(_kGridDotHex), width: 1),
     borderRadius: pw.BorderRadius.all(pw.Radius.circular(10)),
   ),
   padding: const pw.EdgeInsets.all(10),
@@ -247,6 +287,121 @@ pw.Widget _buildTextWidget(BoardClip clip) => pw.Container(
     style: pw.TextStyle(color: PdfColors.white, fontSize: 14),
   ),
 );
+
+/// Replicates `DotGridPainter`'s board-space dot grid (fixed spacing,
+/// 1.5pt base radius, 0.5 alpha) onto a PDF page - unlike the live board,
+/// there's no zoom to fade/thin it for, so it's always drawn at the base
+/// density. [origin]/[size] are the page's board-space rect (same values
+/// `_buildPage` already uses to position clips), used to find which
+/// board-space grid points fall within this page and translate them into
+/// page-local coordinates.
+void _drawDotGrid(PdfGraphics canvas, Offset origin, Size size) {
+  const spacing = kBoardGridSpacing;
+  const radius = 1.5;
+  final startCol = (origin.dx / spacing).floor();
+  final endCol = ((origin.dx + size.width) / spacing).ceil();
+  final startRow = (origin.dy / spacing).floor();
+  final endRow = ((origin.dy + size.height) / spacing).ceil();
+
+  canvas
+    ..saveContext()
+    ..setGraphicState(const PdfGraphicState(opacity: 0.5))
+    ..setFillColor(PdfColor.fromHex(_kGridDotHex));
+  for (var col = startCol; col <= endCol; col++) {
+    final x = col * spacing - origin.dx;
+    for (var row = startRow; row <= endRow; row++) {
+      final y = row * spacing - origin.dy;
+      canvas
+        ..drawEllipse(x, y, radius, radius)
+        ..fillPath();
+    }
+  }
+  canvas.restoreContext();
+}
+
+/// Draws a shape clip's fill/stroke from its [ShapeKind] and box size -
+/// mirrors `ShapePainter`'s exact rendering rules (fill only if set,
+/// stroke only if a color AND a positive width are both present) so the
+/// exported page matches the on-board clip.
+pw.Widget _buildShapeWidget(BoardClip clip) {
+  final kind = clip.shapeKind ?? ShapeKind.rectangle;
+  final fillHex = clip.shapeFillColorHex;
+  final strokeHex = clip.shapeStrokeColorHex ?? _kGridDotHex;
+  final strokeWidth = clip.shapeStrokeWidth ?? kDefaultStrokeWidth;
+
+  return pw.CustomPaint(
+    size: PdfPoint(clip.width, clip.height),
+    painter: (PdfGraphics canvas, PdfPoint size) {
+      void tracePath() {
+        if (ShapeGeometry.isEllipse(kind)) {
+          canvas.drawEllipse(
+            clip.width / 2,
+            clip.height / 2,
+            clip.width / 2,
+            clip.height / 2,
+          );
+        } else {
+          final vertices = ShapeGeometry.polygonVertices(
+            kind,
+            Size(clip.width, clip.height),
+          );
+          canvas.moveTo(vertices.first.dx, vertices.first.dy);
+          for (final v in vertices.skip(1)) {
+            canvas.lineTo(v.dx, v.dy);
+          }
+          canvas.closePath();
+        }
+      }
+
+      if (fillHex != null) {
+        tracePath();
+        canvas
+          ..setFillColor(PdfColor.fromHex(fillHex))
+          ..fillPath();
+      }
+      if (strokeWidth > 0) {
+        tracePath();
+        canvas
+          ..setStrokeColor(PdfColor.fromHex(strokeHex))
+          ..setLineWidth(strokeWidth)
+          ..strokePath();
+      }
+    },
+  );
+}
+
+/// The filename portion of a (possibly OS-specific) file path, for the
+/// export-complete summary - handles both `/`- and `\`-separated paths.
+String _basename(String path) {
+  final i = path.lastIndexOf(RegExp(r'[/\\]'));
+  return i < 0 ? path : path.substring(i + 1);
+}
+
+/// Fallback decoder for image bytes `package:image`'s own `decodeImage`
+/// couldn't parse (e.g. a format only the platform's codec supports) -
+/// uses Flutter's own `dart:ui` codec instead, then converts the decoded
+/// frame's raw RGBA pixels into a `package:image` `Image` so it can feed
+/// into the same crop/encode pipeline below. Returns null if this also
+/// fails (genuinely undecodable bytes).
+Future<img.Image?> _decodeViaFlutterCodec(Uint8List bytes) async {
+  try {
+    final codec = await ui.instantiateImageCodec(bytes);
+    final frame = await codec.getNextFrame();
+    final byteData = await frame.image.toByteData(
+      format: ui.ImageByteFormat.rawRgba,
+    );
+    if (byteData == null) return null;
+    return img.Image.fromBytes(
+      width: frame.image.width,
+      height: frame.image.height,
+      bytes: byteData.buffer,
+      numChannels: 4,
+      order: img.ChannelOrder.rgba,
+    );
+  } catch (_) {
+    return null;
+  }
+}
 
 /// Inverts `ImagePanZoomFrame`'s on-screen `OverflowBox`/`Alignment`
 /// composition into an actual source-pixel crop, since a PDF needs real
@@ -268,7 +423,7 @@ Future<pw.Widget?> _buildImageWidget(
   }
   if (bytes == null) return null;
 
-  final decoded = img.decodeImage(bytes);
+  final decoded = img.decodeImage(bytes) ?? await _decodeViaFlutterCodec(bytes);
   if (decoded == null) return null;
 
   final nativeW = decoded.width.toDouble();

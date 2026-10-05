@@ -234,8 +234,10 @@ class BoardScreen extends ConsumerWidget {
       '${summary.imagesDrawn} image${summary.imagesDrawn == 1 ? '' : 's'}',
     ];
     if (summary.imagesSkipped > 0) {
+      final names = summary.skippedFileNames;
+      final detail = names.isNotEmpty ? ': ${names.join(', ')}' : '';
       parts.add(
-        '${summary.imagesSkipped} image${summary.imagesSkipped == 1 ? '' : 's'} skipped (unreadable file)',
+        '${summary.imagesSkipped} image${summary.imagesSkipped == 1 ? '' : 's'} skipped (unreadable file)$detail',
       );
     }
 

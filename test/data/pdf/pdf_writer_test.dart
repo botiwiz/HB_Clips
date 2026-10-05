@@ -78,6 +78,29 @@ BoardClip _textClip({
   );
 }
 
+BoardClip _shapeClip({
+  required String id,
+  String? frameId,
+  required double x,
+  required double y,
+}) {
+  final now = DateTime.now();
+  return BoardClip(
+    id: id,
+    boardId: 'board-1',
+    type: ClipType.shape,
+    frameId: frameId,
+    x: x,
+    y: y,
+    width: 100,
+    height: 80,
+    shapeKind: ShapeKind.rectangle,
+    shapeFillColorHex: '#FF0000',
+    createdAt: now,
+    updatedAt: now,
+  );
+}
+
 /// Small in-memory PNG bytes, keyed by clip localFilePath - a fake
 /// `readBytes` never touches real disk or needs a temp directory.
 Future<Uint8List?> _fakeReadBytes(String key) async {
@@ -223,6 +246,55 @@ void main() {
       expect(result, isNotNull);
       // Doesn't throw, and the frame's page is still produced.
       expect(_mediaBoxes(result!.bytes).length, 1);
+    },
+  );
+
+  test(
+    'an unreadable image reports its filename in skippedFileNames',
+    () async {
+      final frames = [_frame(id: 'f1', x: 0, y: 0, width: 200, height: 200)];
+      final clips = [
+        _imageClip(
+          id: 'missing',
+          frameId: 'f1',
+          localFilePath: '/some/dir/photo.heic',
+          x: 0,
+          y: 0,
+          width: 50,
+          height: 50,
+        ),
+      ];
+
+      final result = await writePdfFile(
+        frames: frames,
+        clips: clips,
+        strokes: const [],
+        readBytes: (key) async => null,
+      );
+
+      expect(result, isNotNull);
+      expect(result!.summary.skippedFileNames, ['photo.heic']);
+    },
+  );
+
+  test(
+    'a shape clip is drawn directly, not miscounted as a skipped image',
+    () async {
+      final frames = [_frame(id: 'f1', x: 0, y: 0, width: 200, height: 200)];
+      final clips = [_shapeClip(id: 'shape1', frameId: 'f1', x: 10, y: 10)];
+
+      final result = await writePdfFile(
+        frames: frames,
+        clips: clips,
+        strokes: const [],
+        readBytes: _fakeReadBytes,
+      );
+
+      expect(result, isNotNull);
+      expect(result!.summary.imagesDrawn, 0);
+      expect(result.summary.imagesSkipped, 0);
+      expect(result.summary.skippedFileNames, isEmpty);
+      expect(_mediaBoxes(result.bytes).length, 1);
     },
   );
 }
