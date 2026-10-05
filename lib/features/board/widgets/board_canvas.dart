@@ -76,6 +76,14 @@ const _uuid = Uuid();
 class BoardCanvas extends ConsumerStatefulWidget {
   const BoardCanvas({super.key});
 
+  /// Key on the Listener's own `Container` (the board's main render box,
+  /// the same coordinate space `event.localPosition` is already expressed
+  /// in everywhere in this file) - exposed so a widget OUTSIDE this file
+  /// (e.g. ShapeStylePopover's swatch drag-and-drop) can convert a global
+  /// drop point into board-canvas-local coordinates via
+  /// `canvasBoxKey.currentContext.findRenderObject()`.
+  static final GlobalKey canvasBoxKey = GlobalKey(debugLabel: 'BoardCanvasBox');
+
   @override
   ConsumerState<BoardCanvas> createState() => _BoardCanvasState();
 }
@@ -3328,6 +3336,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
                 onPointerCancel: _handlePointerCancel,
                 onPointerSignal: _handlePointerSignal,
                 child: Container(
+                  key: BoardCanvas.canvasBoxKey,
                   color: AppTheme.canvasBackground,
                   width: double.infinity,
                   height: double.infinity,

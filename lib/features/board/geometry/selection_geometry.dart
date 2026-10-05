@@ -34,6 +34,16 @@ class ClipGeometry {
     return boardPoint * view.scale + view.panOffset;
   }
 
+  /// Inverse of [_boardToScreen] - converts a screen-local point (relative
+  /// to the board canvas's own render box) back to board space. Exposed
+  /// publicly (unlike [_boardToScreen]) so a caller outside
+  /// `board_canvas.dart` - e.g. a drag-and-drop gesture ending elsewhere
+  /// in the widget tree - can convert a drop point without duplicating
+  /// this one-line formula; `board_canvas.dart` keeps its own private
+  /// `_screenToBoard` untouched.
+  static Offset screenToBoard(Offset screenPoint, BoardViewState view) =>
+      (screenPoint - view.panOffset) / view.scale;
+
   /// Board-space rect for a text-tool placement: a plain click ([moved]
   /// false) gets a rect of [defaultWidth]x[defaultHeight] centered on
   /// [start]; a click-drag gets the dragged rect verbatim, normalized from
@@ -110,6 +120,27 @@ class ClipGeometry {
     final local = rotatePoint(point, center, -clip.rotation);
     final rect = Rect.fromLTWH(clip.x, clip.y, clip.width, clip.height);
     return rect.contains(local);
+  }
+
+  /// The topmost (highest zIndex) clip among [clips] whose body contains
+  /// [boardPoint] (rotation-aware, via [pointInClip]), optionally
+  /// restricted by [where]. A small standalone helper for drag-and-drop
+  /// style features that need their own hit-testing outside
+  /// `board_canvas.dart`'s own gesture handling - NOT a replacement for
+  /// that file's private `_hitTestClip` (left untouched to avoid any risk
+  /// to already-working click/drag gestures).
+  static BoardClip? topmostAt(
+    List<BoardClip> clips,
+    Offset boardPoint, {
+    bool Function(BoardClip clip)? where,
+  }) {
+    BoardClip? best;
+    for (final c in clips) {
+      if (where != null && !where(c)) continue;
+      if (!pointInClip(boardPoint, c)) continue;
+      if (best == null || c.zIndex > best.zIndex) best = c;
+    }
+    return best;
   }
 
   /// Whether a board-space marquee rect overlaps [clip]. Deliberately an

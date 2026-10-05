@@ -290,6 +290,57 @@ void main() {
     });
   });
 
+  group('screenToBoard', () {
+    test('is the exact inverse of the board-to-screen formula', () {
+      const view = BoardViewState(panOffset: Offset(50, -20), scale: 2);
+      const boardPoint = Offset(30, 40);
+      final screenPoint = boardPoint * view.scale + view.panOffset;
+      final result = ClipGeometry.screenToBoard(screenPoint, view);
+      expect(result.dx, closeTo(boardPoint.dx, 1e-9));
+      expect(result.dy, closeTo(boardPoint.dy, 1e-9));
+    });
+  });
+
+  group('topmostAt', () {
+    test('picks the higher-zIndex of two overlapping clips', () {
+      final back = _clip(
+        id: 'back',
+        x: 0,
+        y: 0,
+        width: 100,
+        height: 100,
+      ).copyWith(zIndex: 1);
+      final front = _clip(
+        id: 'front',
+        x: 0,
+        y: 0,
+        width: 100,
+        height: 100,
+      ).copyWith(zIndex: 5);
+      final result = ClipGeometry.topmostAt([
+        back,
+        front,
+      ], const Offset(50, 50));
+      expect(result?.id, 'front');
+    });
+
+    test('respects the where filter', () {
+      final shape = _clip(id: 'a', x: 0, y: 0, width: 100, height: 100);
+      final result = ClipGeometry.topmostAt(
+        [shape],
+        const Offset(50, 50),
+        where: (c) => c.id == 'nonexistent',
+      );
+      expect(result, isNull);
+    });
+
+    test('returns null for a point outside every clip', () {
+      final clip = _clip(id: 'a', x: 0, y: 0, width: 100, height: 100);
+      final result = ClipGeometry.topmostAt([clip], const Offset(500, 500));
+      expect(result, isNull);
+    });
+  });
+
   group('textToolPlacementRect', () {
     test(
       'a plain click (not moved) returns the default size centered on start',

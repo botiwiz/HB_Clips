@@ -9,7 +9,9 @@ import '../../annotation/controllers/annotation_controller.dart';
 import '../../annotation/stroke_painter.dart' show colorToHex, hexToColor;
 import '../controllers/board_controller.dart';
 import '../controllers/undo_controller.dart';
+import '../geometry/frame_geometry.dart';
 import '../geometry/selection_geometry.dart';
+import 'board_canvas.dart';
 
 /// Floating style pill for the sole selected shape clip - fill color (+ a
 /// "no fill" option), stroke color, and stroke width. Same "floating pill
@@ -138,6 +140,68 @@ class _ShapeStylePopoverState extends ConsumerState<ShapeStylePopover> {
     if (ref.read(shapeFillPickerOpenProvider)) _closePickers(clip.id);
     _strokeColorBeforePicker = clip.shapeStrokeColorHex;
     ref.read(shapeStrokePickerOpenProvider.notifier).state = true;
+  }
+
+  /// Drop handler for dragging either swatch onto a shape (sets its fill)
+  /// or a frame (sets its background) - always the target's dominant
+  /// color, regardless of whether the dragged swatch was fill or stroke.
+  /// A no-op if dropped on empty canvas, a non-shape clip, or nothing at
+  /// all - same "invalid drop does nothing" convention every other drag
+  /// in this app already uses (connector creation/retarget, etc.).
+  void _handleSwatchDrop(String? colorHex, Offset globalOffset) {
+    if (colorHex == null) return;
+    final box =
+        BoardCanvas.canvasBoxKey.currentContext?.findRenderObject()
+            as RenderBox?;
+    if (box == null) return;
+    final view = ref.read(boardViewProvider);
+    final boardPoint = ClipGeometry.screenToBoard(
+      box.globalToLocal(globalOffset),
+      view,
+    );
+
+    final clips = ref.read(activeClipsProvider).valueOrNull ?? [];
+    final shapeHit = ClipGeometry.topmostAt(
+      clips,
+      boardPoint,
+      where: (c) => c.type == ClipType.shape,
+    );
+    if (shapeHit != null) {
+      final before = shapeHit.shapeFillColorHex;
+      if (before != colorHex) {
+        final repo = ref.read(clipsRepositoryProvider);
+        repo.updateShapeFillColor(shapeHit.id, colorHex);
+        ref.read(lastShapeFillColorHexProvider.notifier).state = colorHex;
+        ref
+            .read(undoManagerProvider.notifier)
+            .push(
+              UndoableAction(
+                undo: () => repo.updateShapeFillColor(shapeHit.id, before),
+                redo: () => repo.updateShapeFillColor(shapeHit.id, colorHex),
+              ),
+            );
+      }
+      return;
+    }
+
+    final frames = ref.read(boardFramesProvider).valueOrNull ?? [];
+    for (final f in frames) {
+      if (!FrameGeometry.pointInFrame(boardPoint, f)) continue;
+      final before = f.backgroundColorHex;
+      if (before != colorHex) {
+        final repo = ref.read(framesRepositoryProvider);
+        repo.updateColor(f.id, colorHex);
+        ref
+            .read(undoManagerProvider.notifier)
+            .push(
+              UndoableAction(
+                undo: () => repo.updateColor(f.id, before),
+                redo: () => repo.updateColor(f.id, colorHex),
+              ),
+            );
+      }
+      return;
+    }
   }
 
   @override
@@ -287,20 +351,64 @@ class _ShapeStylePopoverState extends ConsumerState<ShapeStylePopover> {
                           pushFillUndo(before, null);
                         },
                       ),
-                      InlineColorPickerSwatch(
-                        color: boundClip.shapeFillColorHex != null
-                            ? hexToColor(boundClip.shapeFillColorHex!)
-                            : AppTheme.surfaceCard,
-                        open: fillOpen,
-                        onTap: () => _toggleFillPicker(boundClip),
+                      Draggable<Object>(
+                        dragAnchorStrategy: pointerDragAnchorStrategy,
+                        feedback: _SwatchDragFeedback(
+                          color: boundClip.shapeFillColorHex != null
+                              ? hexToColor(boundClip.shapeFillColorHex!)
+                              : AppTheme.surfaceCard,
+                        ),
+                        childWhenDragging: Opacity(
+                          opacity: 0.3,
+                          child: InlineColorPickerSwatch(
+                            color: boundClip.shapeFillColorHex != null
+                                ? hexToColor(boundClip.shapeFillColorHex!)
+                                : AppTheme.surfaceCard,
+                            open: fillOpen,
+                            onTap: () {},
+                          ),
+                        ),
+                        onDragEnd: (details) => _handleSwatchDrop(
+                          boundClip.shapeFillColorHex,
+                          details.offset,
+                        ),
+                        child: InlineColorPickerSwatch(
+                          color: boundClip.shapeFillColorHex != null
+                              ? hexToColor(boundClip.shapeFillColorHex!)
+                              : AppTheme.surfaceCard,
+                          open: fillOpen,
+                          onTap: () => _toggleFillPicker(boundClip),
+                        ),
                       ),
                       const _Divider(),
-                      InlineColorPickerSwatch(
-                        color: boundClip.shapeStrokeColorHex != null
-                            ? hexToColor(boundClip.shapeStrokeColorHex!)
-                            : AppTheme.border,
-                        open: strokeOpen,
-                        onTap: () => _toggleStrokePicker(boundClip),
+                      Draggable<Object>(
+                        dragAnchorStrategy: pointerDragAnchorStrategy,
+                        feedback: _SwatchDragFeedback(
+                          color: boundClip.shapeStrokeColorHex != null
+                              ? hexToColor(boundClip.shapeStrokeColorHex!)
+                              : AppTheme.border,
+                        ),
+                        childWhenDragging: Opacity(
+                          opacity: 0.3,
+                          child: InlineColorPickerSwatch(
+                            color: boundClip.shapeStrokeColorHex != null
+                                ? hexToColor(boundClip.shapeStrokeColorHex!)
+                                : AppTheme.border,
+                            open: strokeOpen,
+                            onTap: () {},
+                          ),
+                        ),
+                        onDragEnd: (details) => _handleSwatchDrop(
+                          boundClip.shapeStrokeColorHex,
+                          details.offset,
+                        ),
+                        child: InlineColorPickerSwatch(
+                          color: boundClip.shapeStrokeColorHex != null
+                              ? hexToColor(boundClip.shapeStrokeColorHex!)
+                              : AppTheme.border,
+                          open: strokeOpen,
+                          onTap: () => _toggleStrokePicker(boundClip),
+                        ),
                       ),
                       const _Divider(),
                       SizedBox(
@@ -335,6 +443,32 @@ class _Divider extends StatelessWidget {
       height: 24,
       margin: const EdgeInsets.symmetric(horizontal: 4),
       color: AppTheme.border,
+    );
+  }
+}
+
+/// Purely cosmetic "something is being carried" cue shown while dragging
+/// a fill/stroke swatch onto a shape or frame - wrapped in a transparent
+/// [Material] so it doesn't pick up an ambient Material background from
+/// wherever `Draggable` paints it (the root [Overlay]).
+class _SwatchDragFeedback extends StatelessWidget {
+  final Color color;
+
+  const _SwatchDragFeedback({required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      type: MaterialType.transparency,
+      child: Container(
+        width: 32,
+        height: 32,
+        decoration: BoxDecoration(
+          color: color,
+          shape: BoxShape.circle,
+          border: Border.all(color: Colors.white, width: 2),
+        ),
+      ),
     );
   }
 }
