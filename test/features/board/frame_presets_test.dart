@@ -29,4 +29,59 @@ void main() {
       expect(_byLabel('4K (3840×2160)').height, 2160);
     });
   });
+
+  group('kFrameAspectRatioGroups', () {
+    test('every group has at least one preset', () {
+      for (final group in kFrameAspectRatioGroups) {
+        expect(group.presets, isNotEmpty, reason: group.label);
+      }
+    });
+
+    test('every preset has strictly positive width and height', () {
+      for (final group in kFrameAspectRatioGroups) {
+        for (final preset in group.presets) {
+          expect(preset.width, greaterThan(0), reason: preset.label);
+          expect(preset.height, greaterThan(0), reason: preset.label);
+        }
+      }
+    });
+
+    test('every landscape/portrait pair swaps width and height exactly', () {
+      final byLabel = <String, FramePreset>{
+        for (final group in kFrameAspectRatioGroups)
+          for (final preset in group.presets) preset.label: preset,
+      };
+      const pairs = [
+        ('Mobile portrait (9:16)', 'Mobile landscape (16:9)'),
+        ('Tablet portrait (3:4)', 'Tablet landscape (4:3)'),
+        ('21:9 portrait', '21:9 landscape'),
+        ('32:9 portrait', '32:9 landscape'),
+        ('16:9 portrait', '16:9 landscape'),
+        ('16:10 portrait', '16:10 landscape'),
+        ('A4 portrait', 'A4 landscape'),
+      ];
+      for (final (portraitLabel, landscapeLabel) in pairs) {
+        final portrait = byLabel[portraitLabel]!;
+        final landscape = byLabel[landscapeLabel]!;
+        expect(
+          portrait.width,
+          landscape.height,
+          reason: '$portraitLabel vs $landscapeLabel',
+        );
+        expect(
+          portrait.height,
+          landscape.width,
+          reason: '$portraitLabel vs $landscapeLabel',
+        );
+      }
+    });
+
+    test('Square has an equal width and height', () {
+      final square = kFrameAspectRatioGroups
+          .firstWhere((g) => g.label == 'Square')
+          .presets
+          .single;
+      expect(square.width, square.height);
+    });
+  });
 }

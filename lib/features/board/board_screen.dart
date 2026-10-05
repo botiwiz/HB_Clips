@@ -27,6 +27,7 @@ import 'geometry/frame_presets.dart';
 import 'geometry/pdf_export_selection.dart';
 import 'geometry/selection_geometry.dart';
 import 'services/add_image_service.dart' show pushAddClipUndo, pushAddClipsUndo;
+import 'services/apply_frame_preset.dart' show applyFramePreset;
 import 'services/clipboard_paste_service.dart';
 import 'services/image_size_service.dart';
 import 'services/pureref_import_service.dart';
@@ -1055,83 +1056,6 @@ class BoardScreen extends ConsumerWidget {
     }
   }
 
-  Future<void> _applyFramePreset(
-    WidgetRef ref,
-    FrameRow frame,
-    FramePreset preset,
-  ) async {
-    final startRect = FrameGeometry.boardRect(frame);
-    final newRect = Rect.fromLTWH(
-      startRect.left,
-      startRect.top,
-      preset.width,
-      preset.height,
-    );
-    final clips = ref.read(activeClipsProvider).valueOrNull ?? [];
-    final children = {
-      for (final c in clips)
-        if (c.frameId == frame.id) c.id: c,
-    };
-    final scaled = FrameGeometry.scaleChildren(
-      startClips: children,
-      startRect: startRect,
-      newRect: newRect,
-    );
-
-    final framesRepo = ref.read(framesRepositoryProvider);
-    final clipsRepo = ref.read(clipsRepositoryProvider);
-    await framesRepo.updateTransform(
-      frame.id,
-      width: preset.width,
-      height: preset.height,
-    );
-    for (final entry in scaled.entries) {
-      await clipsRepo.updateTransform(
-        entry.key,
-        x: entry.value.x,
-        y: entry.value.y,
-        width: entry.value.width,
-        height: entry.value.height,
-      );
-    }
-    ref
-        .read(undoManagerProvider.notifier)
-        .push(
-          UndoableAction(
-            undo: () => Future.wait([
-              framesRepo.updateTransform(
-                frame.id,
-                width: startRect.width,
-                height: startRect.height,
-              ),
-              for (final entry in children.entries)
-                clipsRepo.updateTransform(
-                  entry.key,
-                  x: entry.value.x,
-                  y: entry.value.y,
-                  width: entry.value.width,
-                  height: entry.value.height,
-                ),
-            ]),
-            redo: () => Future.wait([
-              framesRepo.updateTransform(
-                frame.id,
-                width: preset.width,
-                height: preset.height,
-              ),
-              for (final entry in scaled.entries)
-                clipsRepo.updateTransform(
-                  entry.key,
-                  x: entry.value.x,
-                  y: entry.value.y,
-                  width: entry.value.width,
-                  height: entry.value.height,
-                ),
-            ]),
-          ),
-        );
-  }
-
   Future<void> _pickFramePreset(
     BuildContext context,
     WidgetRef ref,
@@ -1148,7 +1072,7 @@ class BoardScreen extends ConsumerWidget {
               ListTile(
                 title: Text(preset.label),
                 onTap: () {
-                  _applyFramePreset(ref, frame, preset);
+                  applyFramePreset(ref, frame, preset);
                   Navigator.of(context).pop();
                 },
               ),

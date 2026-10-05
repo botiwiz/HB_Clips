@@ -28,3 +28,54 @@ const List<FramePreset> kFramePresets = [
   FramePreset('A4 portrait', _a4WidthPt, _a4HeightPt),
   FramePreset('A4 landscape', _a4HeightPt, _a4WidthPt),
 ];
+
+/// One labeled category of presets inside [kFrameAspectRatioGroups] - a
+/// dropdown section header (e.g. "Mobile") plus the presets under it.
+class FramePresetGroup {
+  final String label;
+  final List<FramePreset> presets;
+
+  const FramePresetGroup(this.label, this.presets);
+}
+
+/// A much bigger, categorized catalog of frame sizes/aspect ratios for
+/// `FrameOptionsMenu`'s inline dropdown - common device classes, screen
+/// resolutions, monitor/ultrawide ratios, and paper, each (except Square)
+/// offered in both landscape and portrait. Deliberately a separate list
+/// from [kFramePresets] (which stays a short, flat catalog used by the
+/// PDF export wizard and the toolbar's own "Frame size preset" dialog) -
+/// this one is scoped to "pick an aspect ratio for this frame," not "pick
+/// an export page size," so it can grow independently without disturbing
+/// either of those.
+const List<FramePresetGroup> kFrameAspectRatioGroups = [
+  FramePresetGroup('Square', [FramePreset('Square (1:1)', 1080, 1080)]),
+  FramePresetGroup('Mobile', [
+    FramePreset('Mobile portrait (9:16)', 1080, 1920),
+    FramePreset('Mobile landscape (16:9)', 1920, 1080),
+  ]),
+  FramePresetGroup('Tablet', [
+    FramePreset('Tablet portrait (3:4)', 1536, 2048),
+    FramePreset('Tablet landscape (4:3)', 2048, 1536),
+  ]),
+  FramePresetGroup('Screen resolutions', [
+    FramePreset('1080p (1920×1080)', 1920, 1080),
+    FramePreset('1440p (2560×1440)', 2560, 1440),
+    FramePreset('4K (3840×2160)', 3840, 2160),
+  ]),
+  FramePresetGroup('Ultrawide', [
+    FramePreset('21:9 landscape', 2560, 1080),
+    FramePreset('21:9 portrait', 1080, 2560),
+    FramePreset('32:9 landscape', 3840, 1080),
+    FramePreset('32:9 portrait', 1080, 3840),
+  ]),
+  FramePresetGroup('Common ratios', [
+    FramePreset('16:9 landscape', 1600, 900),
+    FramePreset('16:9 portrait', 900, 1600),
+    FramePreset('16:10 landscape', 1920, 1200),
+    FramePreset('16:10 portrait', 1200, 1920),
+  ]),
+  FramePresetGroup('Paper', [
+    FramePreset('A4 portrait', _a4WidthPt, _a4HeightPt),
+    FramePreset('A4 landscape', _a4HeightPt, _a4WidthPt),
+  ]),
+];

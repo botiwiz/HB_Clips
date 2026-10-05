@@ -39,6 +39,7 @@ import 'connector_handles.dart';
 import 'connectors_overlay.dart';
 import 'define_frame_overlay.dart';
 import 'dot_grid_background.dart';
+import 'frame_options_menu.dart';
 import 'frame_rename_overlay.dart';
 import 'frame_group_scale_handles.dart';
 import 'frame_widget.dart';
@@ -806,6 +807,28 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       if (renamingFrame != null &&
           FrameRenameOverlay.screenRectFor(
             renamingFrame,
+            ref.read(boardViewProvider),
+          ).contains(event.localPosition)) {
+        return;
+      }
+    }
+
+    // A click landing on the frame options menu's trigger button (shown
+    // next to a sole selected frame's name) must not fall through to
+    // this canvas's own frame-selection/drag logic either - same
+    // click-through-guard role as every other per-selection floating
+    // control above. The menu's own dropdown, once open, needs no such
+    // guard - PopupMenuButton routes it through the root Navigator's
+    // Overlay, entirely outside this Listener's hit-test subtree.
+    final selectedFrameIdsForMenu = ref.read(selectedFrameIdsProvider);
+    if (selectedFrameIdsForMenu.length == 1) {
+      final menuFrame = _findFrameById(
+        ref.read(boardFramesProvider).valueOrNull ?? [],
+        selectedFrameIdsForMenu.first,
+      );
+      if (menuFrame != null &&
+          FrameOptionsMenu.screenRectFor(
+            menuFrame,
             ref.read(boardViewProvider),
           ).contains(event.localPosition)) {
         return;
@@ -3396,6 +3419,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
                       const SnapGuidesOverlay(),
                       const TextClipEditOverlay(),
                       const FrameRenameOverlay(),
+                      const FrameOptionsMenu(),
                       if (panZoomClipId == null &&
                           !isDrawMode &&
                           !isTextToolActive) ...[
