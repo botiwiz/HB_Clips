@@ -10,7 +10,7 @@ import '../../core/constants.dart' show kBoardBackupExtension;
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/color_swatch_button.dart';
 import '../../core/widgets/hsv_color_picker.dart';
-import '../../data/local/database.dart' show FrameRow;
+import '../../data/local/database.dart' show BoardRow, FrameRow;
 import '../../data/models/clip.dart';
 import '../../data/models/connector.dart';
 import '../../data/pdf/pdf_writer.dart';
@@ -296,18 +296,63 @@ class BoardScreen extends ConsumerWidget {
     );
   }
 
-  Future<void> _exportBoardBackup(BuildContext context, WidgetRef ref) async {
-    final bytes = await exportBoardBackup(
-      ref,
-      ref.read(currentBoardIdProvider),
-    );
+  /// Looks up [boardId]'s current row from the already-loaded
+  /// [boardsProvider] snapshot, or null if it isn't there (e.g. the
+  /// stream hasn't emitted yet).
+  BoardRow? _findBoard(WidgetRef ref, String boardId) {
+    for (final board in ref.read(boardsProvider).valueOrNull ?? []) {
+      if (board.id == boardId) return board;
+    }
+    return null;
+  }
+
+  /// Plain "Save" - writes the current board's backup straight back to
+  /// whichever file it was last opened from/saved to, with no dialog at
+  /// all. Falls back to [_saveBoardBackupAs] (which always shows the
+  /// dialog) when no file is known yet, or when writing to the known
+  /// path fails (e.g. it was moved/deleted since) - same "first save
+  /// behaves like Save As" convention every document editor uses.
+  Future<void> _saveBoardBackup(BuildContext context, WidgetRef ref) async {
+    final boardId = ref.read(currentBoardIdProvider);
+    final knownPath = _findBoard(ref, boardId)?.backupFilePath;
+    if (knownPath == null) {
+      await _saveBoardBackupAs(context, ref);
+      return;
+    }
+
+    final bytes = await exportBoardBackup(ref, boardId);
     if (!context.mounted) return;
+    try {
+      await writeBytesToPath(knownPath, bytes);
+    } catch (error) {
+      if (!context.mounted) return;
+      await _saveBoardBackupAs(context, ref);
+      return;
+    }
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('Saved to $knownPath')));
+  }
+
+  /// "Save backup as..." - always shows the save dialog, then records
+  /// the chosen file on the board so a later plain [_saveBoardBackup]
+  /// targets it directly.
+  Future<void> _saveBoardBackupAs(BuildContext context, WidgetRef ref) async {
+    final boardId = ref.read(currentBoardIdProvider);
+    final bytes = await exportBoardBackup(ref, boardId);
+    if (!context.mounted) return;
+
+    final board = _findBoard(ref, boardId);
+    final suggestedName = board?.backupFilePath != null
+        ? p.basename(board!.backupFilePath!)
+        : 'board.$kBoardBackupExtension';
 
     String? savePath;
     try {
       savePath = await FilePicker.platform.saveFile(
-        dialogTitle: 'Export board backup',
-        fileName: 'board.$kBoardBackupExtension',
+        dialogTitle: 'Save board backup as',
+        fileName: suggestedName,
         type: FileType.custom,
         allowedExtensions: [kBoardBackupExtension],
         bytes: bytes,
@@ -330,6 +375,9 @@ class BoardScreen extends ConsumerWidget {
       savePath = '$savePath.$kBoardBackupExtension';
     }
     await writeBytesToPath(savePath, bytes);
+    await ref
+        .read(boardsRepositoryProvider)
+        .updateBackupFilePath(boardId, savePath);
   }
 
   Future<void> _importBoardBackup(BuildContext context, WidgetRef ref) async {
@@ -353,7 +401,8 @@ class BoardScreen extends ConsumerWidget {
       );
       return;
     }
-    final pickedBytes = result?.files.single.bytes;
+    final pickedFile = result?.files.single;
+    final pickedBytes = pickedFile?.bytes;
     if (pickedBytes == null) return;
     if (!context.mounted) return;
 
@@ -372,6 +421,13 @@ class BoardScreen extends ConsumerWidget {
     }
     if (!context.mounted) return;
     ref.read(currentBoardIdProvider.notifier).state = summary.newBoardId;
+    // pickedFile.path is the real filesystem path on native platforms
+    // (null on web, where there's no ambient filesystem to write back
+    // to) - recording it is what lets a plain Save on this freshly
+    // opened board write straight back to this exact file.
+    await ref
+        .read(boardsRepositoryProvider)
+        .updateBackupFilePath(summary.newBoardId, pickedFile?.path);
 
     final parts = <String>[
       '${summary.framesImported} frame${summary.framesImported == 1 ? '' : 's'}',
@@ -1282,6 +1338,17 @@ class BoardScreen extends ConsumerWidget {
             // Windows' other common redo convention, alongside Ctrl+Shift+Z.
             const SingleActivator(LogicalKeyboardKey.keyY, control: true): () =>
                 ref.read(undoManagerProvider.notifier).redo(),
+            // Plain Ctrl/Cmd+S saves the current board's .hbbackup file.
+            // This never fights with TextClipEditOverlay's own Ctrl+S
+            // binding (which toggles strikethrough while editing a text
+            // note) - that overlay's CallbackShortcuts sits CLOSER to the
+            // focused TextField in the Focus-node ancestry and so always
+            // gets first chance at the event; this outer binding only
+            // ever fires once no note is being edited.
+            const SingleActivator(LogicalKeyboardKey.keyS, control: true): () =>
+                _saveBoardBackup(context, ref),
+            const SingleActivator(LogicalKeyboardKey.keyS, meta: true): () =>
+                _saveBoardBackup(context, ref),
             // Ctrl/Cmd+A, +C and +V are handled by _handleEditAwareShortcut
             // instead (above) - not as plain bindings here - since they
             // need to stay out of the way of native text select-all/copy/
@@ -1471,14 +1538,19 @@ class BoardScreen extends ConsumerWidget {
                             onPressed: () => _exportPdfFile(context, ref),
                           ),
                           PillIconButton(
-                            tooltip: 'Export board backup',
-                            icon: Icons.backup_outlined,
-                            onPressed: () => _exportBoardBackup(context, ref),
+                            tooltip: 'Open board backup...',
+                            icon: Icons.folder_open,
+                            onPressed: () => _importBoardBackup(context, ref),
                           ),
                           PillIconButton(
-                            tooltip: 'Import board backup',
-                            icon: Icons.restore_outlined,
-                            onPressed: () => _importBoardBackup(context, ref),
+                            tooltip: 'Save',
+                            icon: Icons.save_outlined,
+                            onPressed: () => _saveBoardBackup(context, ref),
+                          ),
+                          PillIconButton(
+                            tooltip: 'Save backup as...',
+                            icon: Icons.save_as_outlined,
+                            onPressed: () => _saveBoardBackupAs(context, ref),
                           ),
                         ],
                       ),

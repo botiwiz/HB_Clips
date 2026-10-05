@@ -36,11 +36,28 @@ class BoardsRepository {
     );
   }
 
+  /// Records which `.hbbackup` file this board was last opened from or
+  /// saved to, so a later plain "Save" can write straight back to it
+  /// with no dialog - see `board_backup_service.dart`. `path: null`
+  /// clears the association (a board with no known file always behaves
+  /// like "Save As" on its next Save).
+  Future<void> updateBackupFilePath(String id, String? path) {
+    return (_db.update(_db.boards)..where((b) => b.id.equals(id))).write(
+      BoardsCompanion(
+        backupFilePath: Value(path),
+        updatedAt: Value(DateTime.now()),
+      ),
+    );
+  }
+
   /// Deletes [id] along with every clip on it and their strokes/connectors.
   /// Throws [LastBoardException] instead of deleting the only remaining
   /// board.
   Future<void> deleteBoard(String id) async {
-    final count = await _db.select(_db.boards).get().then((rows) => rows.length);
+    final count = await _db
+        .select(_db.boards)
+        .get()
+        .then((rows) => rows.length);
     if (count <= 1) throw const LastBoardException();
 
     await _db.transaction(() async {

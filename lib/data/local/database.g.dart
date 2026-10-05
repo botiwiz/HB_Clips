@@ -2368,6 +2368,17 @@ class $BoardsTable extends Boards with TableInfo<$BoardsTable, BoardRow> {
     requiredDuringInsert: false,
     defaultValue: const Constant('My Board'),
   );
+  static const VerificationMeta _backupFilePathMeta = const VerificationMeta(
+    'backupFilePath',
+  );
+  @override
+  late final GeneratedColumn<String> backupFilePath = GeneratedColumn<String>(
+    'backup_file_path',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -2393,7 +2404,13 @@ class $BoardsTable extends Boards with TableInfo<$BoardsTable, BoardRow> {
     defaultValue: currentDateAndTime,
   );
   @override
-  List<GeneratedColumn> get $columns => [id, name, createdAt, updatedAt];
+  List<GeneratedColumn> get $columns => [
+    id,
+    name,
+    backupFilePath,
+    createdAt,
+    updatedAt,
+  ];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -2415,6 +2432,15 @@ class $BoardsTable extends Boards with TableInfo<$BoardsTable, BoardRow> {
       context.handle(
         _nameMeta,
         name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    }
+    if (data.containsKey('backup_file_path')) {
+      context.handle(
+        _backupFilePathMeta,
+        backupFilePath.isAcceptableOrUnknown(
+          data['backup_file_path']!,
+          _backupFilePathMeta,
+        ),
       );
     }
     if (data.containsKey('created_at')) {
@@ -2446,6 +2472,10 @@ class $BoardsTable extends Boards with TableInfo<$BoardsTable, BoardRow> {
         DriftSqlType.string,
         data['${effectivePrefix}name'],
       )!,
+      backupFilePath: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}backup_file_path'],
+      ),
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
@@ -2466,11 +2496,20 @@ class $BoardsTable extends Boards with TableInfo<$BoardsTable, BoardRow> {
 class BoardRow extends DataClass implements Insertable<BoardRow> {
   final String id;
   final String name;
+
+  /// Filesystem path this board was last opened from or saved to as a
+  /// `.hbbackup` file, or null if it's never been associated with one
+  /// (e.g. the seeded default board, or one built from scratch). Lets
+  /// "Save" write back to this exact file with no dialog, instead of
+  /// always behaving like "Save As" - see `board_backup_service.dart`.
+  /// Always null on web (no ambient filesystem path exists there).
+  final String? backupFilePath;
   final DateTime createdAt;
   final DateTime updatedAt;
   const BoardRow({
     required this.id,
     required this.name,
+    this.backupFilePath,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -2479,6 +2518,9 @@ class BoardRow extends DataClass implements Insertable<BoardRow> {
     final map = <String, Expression>{};
     map['id'] = Variable<String>(id);
     map['name'] = Variable<String>(name);
+    if (!nullToAbsent || backupFilePath != null) {
+      map['backup_file_path'] = Variable<String>(backupFilePath);
+    }
     map['created_at'] = Variable<DateTime>(createdAt);
     map['updated_at'] = Variable<DateTime>(updatedAt);
     return map;
@@ -2488,6 +2530,9 @@ class BoardRow extends DataClass implements Insertable<BoardRow> {
     return BoardsCompanion(
       id: Value(id),
       name: Value(name),
+      backupFilePath: backupFilePath == null && nullToAbsent
+          ? const Value.absent()
+          : Value(backupFilePath),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
     );
@@ -2501,6 +2546,7 @@ class BoardRow extends DataClass implements Insertable<BoardRow> {
     return BoardRow(
       id: serializer.fromJson<String>(json['id']),
       name: serializer.fromJson<String>(json['name']),
+      backupFilePath: serializer.fromJson<String?>(json['backupFilePath']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
     );
@@ -2511,6 +2557,7 @@ class BoardRow extends DataClass implements Insertable<BoardRow> {
     return <String, dynamic>{
       'id': serializer.toJson<String>(id),
       'name': serializer.toJson<String>(name),
+      'backupFilePath': serializer.toJson<String?>(backupFilePath),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
     };
@@ -2519,11 +2566,15 @@ class BoardRow extends DataClass implements Insertable<BoardRow> {
   BoardRow copyWith({
     String? id,
     String? name,
+    Value<String?> backupFilePath = const Value.absent(),
     DateTime? createdAt,
     DateTime? updatedAt,
   }) => BoardRow(
     id: id ?? this.id,
     name: name ?? this.name,
+    backupFilePath: backupFilePath.present
+        ? backupFilePath.value
+        : this.backupFilePath,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
   );
@@ -2531,6 +2582,9 @@ class BoardRow extends DataClass implements Insertable<BoardRow> {
     return BoardRow(
       id: data.id.present ? data.id.value : this.id,
       name: data.name.present ? data.name.value : this.name,
+      backupFilePath: data.backupFilePath.present
+          ? data.backupFilePath.value
+          : this.backupFilePath,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
@@ -2541,6 +2595,7 @@ class BoardRow extends DataClass implements Insertable<BoardRow> {
     return (StringBuffer('BoardRow(')
           ..write('id: $id, ')
           ..write('name: $name, ')
+          ..write('backupFilePath: $backupFilePath, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
@@ -2548,13 +2603,15 @@ class BoardRow extends DataClass implements Insertable<BoardRow> {
   }
 
   @override
-  int get hashCode => Object.hash(id, name, createdAt, updatedAt);
+  int get hashCode =>
+      Object.hash(id, name, backupFilePath, createdAt, updatedAt);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is BoardRow &&
           other.id == this.id &&
           other.name == this.name &&
+          other.backupFilePath == this.backupFilePath &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt);
 }
@@ -2562,12 +2619,14 @@ class BoardRow extends DataClass implements Insertable<BoardRow> {
 class BoardsCompanion extends UpdateCompanion<BoardRow> {
   final Value<String> id;
   final Value<String> name;
+  final Value<String?> backupFilePath;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
   final Value<int> rowid;
   const BoardsCompanion({
     this.id = const Value.absent(),
     this.name = const Value.absent(),
+    this.backupFilePath = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -2575,6 +2634,7 @@ class BoardsCompanion extends UpdateCompanion<BoardRow> {
   BoardsCompanion.insert({
     required String id,
     this.name = const Value.absent(),
+    this.backupFilePath = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -2582,6 +2642,7 @@ class BoardsCompanion extends UpdateCompanion<BoardRow> {
   static Insertable<BoardRow> custom({
     Expression<String>? id,
     Expression<String>? name,
+    Expression<String>? backupFilePath,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
     Expression<int>? rowid,
@@ -2589,6 +2650,7 @@ class BoardsCompanion extends UpdateCompanion<BoardRow> {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (name != null) 'name': name,
+      if (backupFilePath != null) 'backup_file_path': backupFilePath,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (rowid != null) 'rowid': rowid,
@@ -2598,6 +2660,7 @@ class BoardsCompanion extends UpdateCompanion<BoardRow> {
   BoardsCompanion copyWith({
     Value<String>? id,
     Value<String>? name,
+    Value<String?>? backupFilePath,
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
     Value<int>? rowid,
@@ -2605,6 +2668,7 @@ class BoardsCompanion extends UpdateCompanion<BoardRow> {
     return BoardsCompanion(
       id: id ?? this.id,
       name: name ?? this.name,
+      backupFilePath: backupFilePath ?? this.backupFilePath,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       rowid: rowid ?? this.rowid,
@@ -2619,6 +2683,9 @@ class BoardsCompanion extends UpdateCompanion<BoardRow> {
     }
     if (name.present) {
       map['name'] = Variable<String>(name.value);
+    }
+    if (backupFilePath.present) {
+      map['backup_file_path'] = Variable<String>(backupFilePath.value);
     }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
@@ -2637,6 +2704,7 @@ class BoardsCompanion extends UpdateCompanion<BoardRow> {
     return (StringBuffer('BoardsCompanion(')
           ..write('id: $id, ')
           ..write('name: $name, ')
+          ..write('backupFilePath: $backupFilePath, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('rowid: $rowid')
@@ -5132,6 +5200,7 @@ typedef $$BoardsTableCreateCompanionBuilder =
     BoardsCompanion Function({
       required String id,
       Value<String> name,
+      Value<String?> backupFilePath,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
       Value<int> rowid,
@@ -5140,6 +5209,7 @@ typedef $$BoardsTableUpdateCompanionBuilder =
     BoardsCompanion Function({
       Value<String> id,
       Value<String> name,
+      Value<String?> backupFilePath,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
       Value<int> rowid,
@@ -5161,6 +5231,11 @@ class $$BoardsTableFilterComposer
 
   ColumnFilters<String> get name => $composableBuilder(
     column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get backupFilePath => $composableBuilder(
+    column: $table.backupFilePath,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -5194,6 +5269,11 @@ class $$BoardsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get backupFilePath => $composableBuilder(
+    column: $table.backupFilePath,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
@@ -5219,6 +5299,11 @@ class $$BoardsTableAnnotationComposer
 
   GeneratedColumn<String> get name =>
       $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<String> get backupFilePath => $composableBuilder(
+    column: $table.backupFilePath,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
@@ -5257,12 +5342,14 @@ class $$BoardsTableTableManager
               ({
                 Value<String> id = const Value.absent(),
                 Value<String> name = const Value.absent(),
+                Value<String?> backupFilePath = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => BoardsCompanion(
                 id: id,
                 name: name,
+                backupFilePath: backupFilePath,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 rowid: rowid,
@@ -5271,12 +5358,14 @@ class $$BoardsTableTableManager
               ({
                 required String id,
                 Value<String> name = const Value.absent(),
+                Value<String?> backupFilePath = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => BoardsCompanion.insert(
                 id: id,
                 name: name,
+                backupFilePath: backupFilePath,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 rowid: rowid,

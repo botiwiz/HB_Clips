@@ -45,6 +45,21 @@ void main() {
     expect(renamed.name, 'Renamed');
   });
 
+  test("updateBackupFilePath records which file a board was opened from/"
+      'saved to, and null clears it back to "no known file"', () async {
+    await boards.createBoard('board-2', 'Second board');
+    await boards.updateBackupFilePath('board-2', '/tmp/my-board.hbbackup');
+    var rows = await boards.watchBoards().first;
+    expect(
+      rows.firstWhere((b) => b.id == 'board-2').backupFilePath,
+      '/tmp/my-board.hbbackup',
+    );
+
+    await boards.updateBackupFilePath('board-2', null);
+    rows = await boards.watchBoards().first;
+    expect(rows.firstWhere((b) => b.id == 'board-2').backupFilePath, isNull);
+  });
+
   test('deleteBoard refuses to delete the only remaining board', () async {
     expect(
       () => boards.deleteBoard(kLocalBoardId),
