@@ -53,6 +53,21 @@ class TextNoteGeometry {
     required double width,
   }) {
     final innerWidth = width - 2 * kTextNoteHorizontalPadding;
+    // Mirrors ClipWidget._buildText()/rasterizeTextClip's own correction
+    // (see kTextCaretReservedWidth's doc comment) - without it, this
+    // measurement wraps a line later than every real render path does,
+    // silently under-predicting height by a line in some cases. This
+    // was the actual root cause of a text note occasionally needing an
+    // extra edit (a space/Enter) before its full content became
+    // visible: the callers of this function (board_canvas.dart's
+    // resize-drag auto-fit, and this file's own undo/redo height
+    // predictions) only ever predict - they have no live TextField to
+    // measure - so an under-prediction here persisted directly as
+    // `clip.height`, clipping the last line until the next real edit
+    // re-measured and self-corrected it.
+    final contentWidth = innerWidth > kTextCaretReservedWidth
+        ? innerWidth - kTextCaretReservedWidth
+        : innerWidth;
     final painter = TextPainter(
       text: TextSpan(
         children: TextStyleRanges.buildSpans(
@@ -62,7 +77,7 @@ class TextNoteGeometry {
         ),
       ),
       textDirection: TextDirection.ltr,
-    )..layout(maxWidth: innerWidth < 1 ? 1 : innerWidth);
+    )..layout(maxWidth: contentWidth < 1 ? 1 : contentWidth);
     return painter.height + 2 * kTextNoteVerticalPadding;
   }
 }

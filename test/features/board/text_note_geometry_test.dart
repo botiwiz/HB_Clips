@@ -68,6 +68,44 @@ void main() {
       expect(narrow, greaterThan(wide));
     });
 
+    test('subtracts kTextCaretReservedWidth before wrapping, matching every '
+        'real render path (ClipWidget/rasterizeTextClip) - without this, '
+        'text that just barely fits on one line at the UNcorrected width '
+        'wraps onto a second line once the real, narrower render width is '
+        'used, and this measurement would have silently under-predicted '
+        'the height needed by a whole line', () {
+      const text = 'AAAAAAAAAA BBBBBBBBBB';
+      const fontSize = 14.0;
+      final style = TextNoteGeometry.baseStyle(fontSize: fontSize);
+      final naturalWidth = (TextPainter(
+        text: TextSpan(text: text, style: style),
+        textDirection: TextDirection.ltr,
+      )..layout()).width;
+
+      // Wide enough to fit both words on one line at the natural
+      // (uncorrected) width, but once kTextCaretReservedWidth (3.0)
+      // is subtracted, narrower than the text itself - forcing a wrap.
+      final boundaryWidth = naturalWidth + 2 * kTextNoteHorizontalPadding + 1.0;
+      // Comfortably wider still, so both correction and non-correction
+      // agree this fits on one line - the baseline to compare against.
+      final comfortableWidth = boundaryWidth + kTextCaretReservedWidth * 4;
+
+      final atBoundary = TextNoteGeometry.requiredHeight(
+        text: text,
+        formatting: TextFormatting.empty,
+        fontSize: fontSize,
+        width: boundaryWidth,
+      );
+      final comfortable = TextNoteGeometry.requiredHeight(
+        text: text,
+        formatting: TextFormatting.empty,
+        fontSize: fontSize,
+        width: comfortableWidth,
+      );
+
+      expect(atBoundary, greaterThan(comfortable));
+    });
+
     test('a bold range does not crash and is at least as tall', () {
       const text = 'hello world';
       final plain = TextNoteGeometry.requiredHeight(

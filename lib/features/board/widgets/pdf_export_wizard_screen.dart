@@ -4,8 +4,11 @@ import 'package:flutter/services.dart' show HardwareKeyboard;
 
 import '../../../core/constants.dart' show kBoardGridSpacing;
 import '../../../core/theme/app_theme.dart';
+import '../../../data/local/database.dart' show FrameRow;
 import '../../../data/models/clip.dart';
+import '../../../data/models/connector.dart';
 import '../../annotation/stroke_painter.dart' show hexToColor;
+import '../geometry/connector_geometry.dart';
 import '../geometry/frame_geometry.dart';
 import '../geometry/frame_presets.dart';
 import '../geometry/image_pan_zoom_geometry.dart';
@@ -13,6 +16,7 @@ import '../geometry/page_crop_settings.dart';
 import '../geometry/pdf_export_selection.dart';
 import '../geometry/selection_geometry.dart';
 import 'clip_widget.dart';
+import 'connector_painter.dart';
 
 /// Extra "bleed" margin shown around the page's own edges in the live
 /// crop preview, as a fraction of the page's own width/height per side
@@ -69,6 +73,34 @@ class _PdfExportWizardScreenState extends State<PdfExportWizardScreen> {
   void _setCrop(String key, PageCropSettings value) =>
       setState(() => _pageCrops[key] = value);
 
+  // The connectors among widget.selection.connectors whose BOTH endpoint
+  // clips are present in [pageClips] - mirrors pdf_writer.dart's own
+  // per-page relevantConnectors filter exactly, so the wizard's live
+  // preview always shows exactly what the final export will.
+  List<Connector> _connectorsFor(List<BoardClip> pageClips) {
+    final ids = pageClips.map((c) => c.id).toSet();
+    return widget.selection.connectors
+        .where((c) => ids.contains(c.fromClipId) && ids.contains(c.toClipId))
+        .toList();
+  }
+
+  _PageCropSection _frameSection(FrameRow frame, double previewMaxHeight) {
+    final frameClips =
+        widget.selection.clips.where((c) => c.frameId == frame.id).toList()
+          ..sort((a, b) => a.zIndex.compareTo(b.zIndex));
+    return _PageCropSection(
+      label: frame.name,
+      pageSize: _pageSize,
+      contentRect: FrameGeometry.boardRect(frame),
+      clips: frameClips,
+      connectors: _connectorsFor(frameClips),
+      backgroundColorHex: frame.backgroundColorHex,
+      crop: _cropFor(frame.id),
+      onChanged: (c) => _setCrop(frame.id, c),
+      previewMaxHeight: previewMaxHeight,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final looseClips = widget.selection.clips
@@ -102,26 +134,14 @@ class _PdfExportWizardScreenState extends State<PdfExportWizardScreen> {
                         pageSize: _pageSize,
                         contentRect: ClipGeometry.boardBoundingBox(looseClips),
                         clips: looseClips,
+                        connectors: _connectorsFor(looseClips),
                         backgroundColorHex: null,
                         crop: _cropFor(kOverviewPageCropKey),
                         onChanged: (c) => _setCrop(kOverviewPageCropKey, c),
                         previewMaxHeight: previewMaxHeight,
                       ),
                     for (final frame in widget.selection.frames)
-                      _PageCropSection(
-                        label: frame.name,
-                        pageSize: _pageSize,
-                        contentRect: FrameGeometry.boardRect(frame),
-                        clips:
-                            widget.selection.clips
-                                .where((c) => c.frameId == frame.id)
-                                .toList()
-                              ..sort((a, b) => a.zIndex.compareTo(b.zIndex)),
-                        backgroundColorHex: frame.backgroundColorHex,
-                        crop: _cropFor(frame.id),
-                        onChanged: (c) => _setCrop(frame.id, c),
-                        previewMaxHeight: previewMaxHeight,
-                      ),
+                      _frameSection(frame, previewMaxHeight),
                   ],
                 );
               },
@@ -217,6 +237,7 @@ class _PageCropSection extends StatelessWidget {
   final Size pageSize;
   final Rect contentRect;
   final List<BoardClip> clips;
+  final List<Connector> connectors;
   final String? backgroundColorHex;
   final PageCropSettings crop;
   final ValueChanged<PageCropSettings> onChanged;
@@ -227,6 +248,7 @@ class _PageCropSection extends StatelessWidget {
     required this.pageSize,
     required this.contentRect,
     required this.clips,
+    required this.connectors,
     required this.backgroundColorHex,
     required this.crop,
     required this.onChanged,
@@ -252,6 +274,7 @@ class _PageCropSection extends StatelessWidget {
                   contentSize: contentRect.size,
                   contentOrigin: contentRect.topLeft,
                   clips: clips,
+                  connectors: connectors,
                   backgroundColorHex: backgroundColorHex,
                   crop: crop,
                   onChanged: onChanged,
@@ -278,6 +301,7 @@ class _PageCropEditor extends StatefulWidget {
   final Size contentSize;
   final Offset contentOrigin;
   final List<BoardClip> clips;
+  final List<Connector> connectors;
   final String? backgroundColorHex;
   final PageCropSettings crop;
   final ValueChanged<PageCropSettings> onChanged;
@@ -287,6 +311,7 @@ class _PageCropEditor extends StatefulWidget {
     required this.contentSize,
     required this.contentOrigin,
     required this.clips,
+    required this.connectors,
     required this.backgroundColorHex,
     required this.crop,
     required this.onChanged,
@@ -572,6 +597,7 @@ class _PageCropEditorState extends State<_PageCropEditor> {
                             child: _PageContent(
                               contentOrigin: widget.contentOrigin,
                               clips: widget.clips,
+                              connectors: widget.connectors,
                             ),
                           ),
                         ),
@@ -687,8 +713,13 @@ class _CropMarksOverlay extends StatelessWidget {
 class _PageContent extends StatelessWidget {
   final Offset contentOrigin;
   final List<BoardClip> clips;
+  final List<Connector> connectors;
 
-  const _PageContent({required this.contentOrigin, required this.clips});
+  const _PageContent({
+    required this.contentOrigin,
+    required this.clips,
+    required this.connectors,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -708,9 +739,48 @@ class _PageContent extends StatelessWidget {
               ),
             ),
           ),
+        // Connectors painted on top of every clip above, matching the
+        // live board's own ConnectorsOverlay stacking - points are
+        // plain board-space-minus-contentOrigin coordinates, the same
+        // convention the clips loop above already uses; the ancestor
+        // Transform.scale in _PageCropEditor scales this whole
+        // subtree uniformly, so no extra scale factor is needed here.
+        if (connectors.isNotEmpty)
+          Positioned.fill(
+            child: CustomPaint(
+              painter: ConnectorPainter([
+                for (final connector in connectors)
+                  if (_connectorSpecFor(connector, clips, contentOrigin)
+                      case final spec?)
+                    spec,
+              ]),
+            ),
+          ),
       ],
     );
   }
+}
+
+ConnectorSpec? _connectorSpecFor(
+  Connector connector,
+  List<BoardClip> clips,
+  Offset contentOrigin,
+) {
+  final fromClip = ClipGeometry.findById(clips, connector.fromClipId);
+  final toClip = ClipGeometry.findById(clips, connector.toClipId);
+  if (fromClip == null || toClip == null) return null;
+  final route = ConnectorGeometry.routeBoard(
+    fromClip: fromClip,
+    fromSide: connector.fromSide,
+    toClip: toClip,
+    toRelX: connector.toRelX,
+    toRelY: connector.toRelY,
+  );
+  return ConnectorSpec(
+    points: [for (final p in route) p - contentOrigin],
+    color: hexToColor(connector.colorHex),
+    width: connector.strokeWidth,
+  );
 }
 
 /// Mirrors `pdf_writer.dart`'s `_drawDotGrid` (fixed board-space density,

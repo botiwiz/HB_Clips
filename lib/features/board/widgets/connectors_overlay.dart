@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/constants.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../data/providers.dart';
 import '../../annotation/stroke_painter.dart' show hexToColor;
@@ -82,7 +81,6 @@ class ConnectorsOverlay extends ConsumerWidget {
           points: [for (final point in route) toScreen(point)],
           color: selected ? AppTheme.red : hexToColor(connector.colorHex),
           width: connector.strokeWidth * view.scale,
-          cornerRadius: kConnectorCornerRadius * view.scale,
         ),
       );
     }

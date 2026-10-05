@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hb_clips/data/local/database.dart' show FrameRow;
 import 'package:hb_clips/data/models/clip.dart';
+import 'package:hb_clips/data/models/connector.dart';
 import 'package:hb_clips/data/models/stroke.dart';
 import 'package:hb_clips/data/pdf/pdf_writer.dart';
 import 'package:image/image.dart' as img;
@@ -97,6 +98,25 @@ BoardClip _shapeClip({
     height: 80,
     shapeKind: ShapeKind.rectangle,
     shapeFillColorHex: '#FF0000',
+    createdAt: now,
+    updatedAt: now,
+  );
+}
+
+Connector _connector({
+  required String id,
+  required String fromClipId,
+  required String toClipId,
+}) {
+  final now = DateTime.now();
+  return Connector(
+    id: id,
+    boardId: 'board-1',
+    fromClipId: fromClipId,
+    fromSide: ConnectorSide.right,
+    toClipId: toClipId,
+    colorHex: '#FFFFFF',
+    strokeWidth: 2,
     createdAt: now,
     updatedAt: now,
   );
@@ -384,4 +404,52 @@ void main() {
       expect(_mediaBoxes(result.bytes).length, 1);
     },
   );
+
+  test('a connector between two clips on the same page does not crash '
+      'writePdfFile and leaves the page count/dimensions unaffected - '
+      'actual connector line color/position is a live visual check, same '
+      'ceiling this file already documents for strokes/shapes (PDF '
+      'content streams are Flate-compressed, not parseable here)', () async {
+    final frames = [_frame(id: 'f1', x: 0, y: 0, width: 300, height: 200)];
+    final clips = [
+      _textClip(id: 't1', frameId: 'f1', text: 'hi', x: 10, y: 10),
+      _shapeClip(id: 's1', frameId: 'f1', x: 150, y: 100),
+    ];
+    final connectors = [_connector(id: 'c1', fromClipId: 't1', toClipId: 's1')];
+
+    final result = await writePdfFile(
+      frames: frames,
+      clips: clips,
+      strokes: const [],
+      connectors: connectors,
+      readBytes: _fakeReadBytes,
+    );
+
+    expect(result, isNotNull);
+    expect(_mediaBoxes(result!.bytes).length, 1);
+    expect(_mediaBoxes(result.bytes)[0], '0 0 300 200');
+  });
+
+  test('a connector whose endpoints are on DIFFERENT pages (one clip in a '
+      'frame, the other a loose overview clip) is silently dropped rather '
+      'than crashing, since it has nowhere sensible to render', () async {
+    final frames = [_frame(id: 'f1', x: 0, y: 0, width: 300, height: 200)];
+    final clips = [
+      _textClip(id: 't1', frameId: 'f1', text: 'hi', x: 10, y: 10),
+      _textClip(id: 't2', text: 'loose', x: 500, y: 500),
+    ];
+    final connectors = [_connector(id: 'c1', fromClipId: 't1', toClipId: 't2')];
+
+    final result = await writePdfFile(
+      frames: frames,
+      clips: clips,
+      strokes: const [],
+      connectors: connectors,
+      readBytes: _fakeReadBytes,
+    );
+
+    expect(result, isNotNull);
+    // 1 frame page + 1 overview page for the loose clip.
+    expect(_mediaBoxes(result!.bytes).length, 2);
+  });
 }

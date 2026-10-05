@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hb_clips/data/local/database.dart' show FrameRow;
 import 'package:hb_clips/data/models/clip.dart';
+import 'package:hb_clips/data/models/connector.dart';
 import 'package:hb_clips/data/models/stroke.dart';
 import 'package:hb_clips/features/board/geometry/pdf_export_selection.dart';
 
@@ -49,6 +50,21 @@ Stroke _stroke(String id, {String? clipId}) {
   );
 }
 
+Connector _connector(String id) {
+  final now = DateTime.now();
+  return Connector(
+    id: id,
+    boardId: 'board-1',
+    fromClipId: 'c1',
+    fromSide: ConnectorSide.right,
+    toClipId: 'c2',
+    colorHex: '#FFFFFF',
+    strokeWidth: 2,
+    createdAt: now,
+    updatedAt: now,
+  );
+}
+
 void main() {
   test(
     'a selected frame brings all its children, with nothing else selected',
@@ -64,6 +80,7 @@ void main() {
         frames: [frame],
         clips: [child1, child2],
         strokes: strokes,
+        connectors: const [],
       );
 
       expect(result.frames, [frame]);
@@ -84,6 +101,7 @@ void main() {
       frames: [selectedFrame, otherFrame],
       clips: [otherChild],
       strokes: const [],
+      connectors: const [],
     );
 
     expect(result.frames, [selectedFrame]);
@@ -99,6 +117,7 @@ void main() {
       frames: const [],
       clips: [loose],
       strokes: const [],
+      connectors: const [],
     );
 
     expect(result.frames, isEmpty);
@@ -117,6 +136,7 @@ void main() {
       frames: [frame],
       clips: [child],
       strokes: const [],
+      connectors: const [],
     );
 
     expect(result.frames, isEmpty);
@@ -131,6 +151,7 @@ void main() {
       frames: [_frame('f1')],
       clips: [_clip('c1', frameId: 'f1')],
       strokes: const [],
+      connectors: const [],
     );
 
     expect(result.isEmpty, isTrue);
@@ -145,8 +166,24 @@ void main() {
       frames: const [],
       clips: const [],
       strokes: strokes,
+      connectors: const [],
     );
 
     expect(result.strokes, same(strokes));
+  });
+
+  test('connectors always pass through unfiltered regardless of selection', () {
+    final connectors = [_connector('conn1'), _connector('conn2')];
+
+    final result = resolveExportSelection(
+      selectedFrameIds: {},
+      selectedClipIds: {},
+      frames: const [],
+      clips: const [],
+      strokes: const [],
+      connectors: connectors,
+    );
+
+    expect(result.connectors, same(connectors));
   });
 }

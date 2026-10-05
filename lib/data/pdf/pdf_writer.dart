@@ -20,6 +20,7 @@ import '../../core/theme/app_theme.dart' show AppTheme;
 import '../../features/annotation/controllers/annotation_controller.dart'
     show kDefaultStrokeWidth;
 import '../../features/annotation/stroke_painter.dart' show hexToColor;
+import '../../features/board/geometry/connector_geometry.dart';
 import '../../features/board/geometry/frame_geometry.dart';
 import '../../features/board/geometry/highlight_geometry.dart';
 import '../../features/board/geometry/image_pan_zoom_geometry.dart';
@@ -30,6 +31,7 @@ import '../../features/board/geometry/text_note_geometry.dart';
 import '../../features/board/geometry/text_style_ranges.dart';
 import '../local/database.dart' show FrameRow;
 import '../models/clip.dart';
+import '../models/connector.dart';
 import '../models/stroke.dart';
 
 /// The app's own dark-grey canvas background (`AppTheme.canvasBackground`)
@@ -93,6 +95,7 @@ Future<PdfWriteResult?> writePdfFile({
   required Future<Uint8List?> Function(String key) readBytes,
   PdfPageFormat? pageFormat,
   Map<String, PageCropSettings>? pageCrops,
+  List<Connector> connectors = const [],
 }) async {
   if (frames.isEmpty && clips.isEmpty) return null;
 
@@ -118,6 +121,7 @@ Future<PdfWriteResult?> writePdfFile({
       backgroundColorHex: null,
       clips: looseClips,
       strokes: strokes,
+      connectors: connectors,
       readBytes: readBytes,
     );
     imagesDrawn += result.drawn;
@@ -140,6 +144,7 @@ Future<PdfWriteResult?> writePdfFile({
       backgroundColorHex: frame.backgroundColorHex,
       clips: children,
       strokes: strokes,
+      connectors: connectors,
       readBytes: readBytes,
     );
     imagesDrawn += result.drawn;
@@ -168,6 +173,7 @@ Future<_PageResult> _buildPage({
   required String? backgroundColorHex,
   required List<BoardClip> clips,
   required List<Stroke> strokes,
+  required List<Connector> connectors,
   required Future<Uint8List?> Function(String key) readBytes,
 }) async {
   var drawn = 0;
@@ -297,6 +303,51 @@ Future<_PageResult> _buildPage({
                 canvas,
                 stroke,
                 stroke.points.map((p) => p - origin).toList(),
+              );
+            }
+          },
+        ),
+      ),
+    );
+  }
+
+  // Connectors painted on top of everything else above (clips,
+  // per-clip/freestanding strokes) - mirrors ConnectorsOverlay's own
+  // "always on top of every clip" stacking on the live board. Relevant
+  // to this page exactly when BOTH of a connector's endpoint clips are
+  // among this page's own clips - a connector whose endpoints span two
+  // different pages (different frames, or a frame and a loose clip) has
+  // nowhere sensible to render and is simply dropped, same "page-local
+  // relevance" idea relevantStrokes already applies per-clip above.
+  final relevantConnectors = connectors
+      .where(
+        (c) => clipIds.contains(c.fromClipId) && clipIds.contains(c.toClipId),
+      )
+      .toList();
+  if (relevantConnectors.isNotEmpty) {
+    pageChildren.add(
+      pw.Positioned.fill(
+        child: pw.CustomPaint(
+          size: PdfPoint(size.width, size.height),
+          painter: (PdfGraphics canvas, PdfPoint size) {
+            for (final connector in relevantConnectors) {
+              final fromClip = ClipGeometry.findById(
+                clips,
+                connector.fromClipId,
+              );
+              final toClip = ClipGeometry.findById(clips, connector.toClipId);
+              if (fromClip == null || toClip == null) continue;
+              final route = ConnectorGeometry.routeBoard(
+                fromClip: fromClip,
+                fromSide: connector.fromSide,
+                toClip: toClip,
+                toRelX: connector.toRelX,
+                toRelY: connector.toRelY,
+              );
+              _paintConnector(
+                canvas,
+                connector,
+                route.map((p) => p - origin).toList(),
               );
             }
           },
@@ -729,6 +780,32 @@ void _paintStroke(PdfGraphics canvas, Stroke stroke, List<Offset> points) {
   if (stroke.arrowEnd) {
     _drawArrowHead(canvas, points, stroke.strokeWidth);
   }
+}
+
+/// Draws one connector's orthogonal route as a plain sharp-cornered
+/// polyline (no dashing/arrowhead - connectors have neither) plus a
+/// small filled endpoint circle, mirroring `ConnectorPainter`'s own
+/// sharp-corner rendering and `_endpointRadius` (4) for visual parity
+/// between the live board and the exported PDF.
+void _paintConnector(
+  PdfGraphics canvas,
+  Connector connector,
+  List<Offset> points,
+) {
+  if (points.length < 2) return;
+  final color = PdfColor.fromHex(connector.colorHex);
+  canvas
+    ..setStrokeColor(color)
+    ..setLineWidth(connector.strokeWidth)
+    ..moveTo(points.first.dx, points.first.dy);
+  for (final p in points.skip(1)) {
+    canvas.lineTo(p.dx, p.dy);
+  }
+  canvas.strokePath();
+  canvas
+    ..setFillColor(color)
+    ..drawEllipse(points.last.dx, points.last.dy, 4, 4)
+    ..fillPath();
 }
 
 /// `StrokePainter`'s Flutter-`PathMetric`-based dashing has no `PdfGraphics`

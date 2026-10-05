@@ -59,21 +59,14 @@ const double kTextNoteLineHeight = 1.3;
 /// cards, toolbars/pills, dialogs, menus, panels, buttons. The single
 /// source of truth so no call site has to guess a number; set to 0.0 for
 /// the app's current sharp-corner design. Deliberately NOT shared with
-/// `kConnectorCornerRadius`/`kHighlightCornerRadius` below, which are
-/// board-space geometry constants in a different unit system
-/// (multiplied by `view.scale` at paint time) rather than screen-space
-/// pixel radii - they're independently zeroed for the same visual
-/// effect, not tied to this constant.
+/// `kHighlightCornerRadius` below, which is a board-space geometry
+/// constant in a different unit system (multiplied by `view.scale` at
+/// paint time) rather than a screen-space pixel radius - it's
+/// independently zeroed for the same visual effect, not tied to this
+/// constant. Connector corners are sharp by construction (a mitered
+/// stroke join in `ConnectorPainter`, not a radius), so there's no
+/// equivalent connector constant here.
 const double kCornerRadius = 0.0;
-
-/// Board-space (world) radius for rounding a connector's 90-degree turns,
-/// converted to screen pixels via `* view.scale` at paint time - same
-/// "world unit -> screen pixels" pattern as everything else about a
-/// connector's rendered size (`strokeWidth * view.scale`). Set to 0.0
-/// for the app's sharp-corner design - kept as its own constant rather
-/// than reusing `kCornerRadius` since it's a board-space geometry value,
-/// not a screen-space UI-chrome radius (see that constant's doc comment).
-const double kConnectorCornerRadius = 0.0;
 
 /// Starting highlight color (a standard highlighter yellow) for a text
 /// note before its color has ever been customized via the toolbar's
@@ -104,7 +97,7 @@ const double kTextCaretReservedWidth = 3.0;
 
 /// Board-space (world) radius for rounding a text highlight's corners,
 /// converted to screen pixels via `* viewScale` at paint time - same
-/// "world unit -> screen pixels" pattern as `kConnectorCornerRadius`.
-/// Set to 0.0 for the app's sharp-corner design, for the same reason
-/// `kConnectorCornerRadius` is - see `kCornerRadius`'s doc comment.
+/// "world unit -> screen pixels" pattern used elsewhere for board-space
+/// sizes (e.g. stroke width). Set to 0.0 for the app's sharp-corner
+/// design - see `kCornerRadius`'s doc comment.
 const double kHighlightCornerRadius = 0.0;

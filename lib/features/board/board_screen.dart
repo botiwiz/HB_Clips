@@ -198,6 +198,7 @@ class BoardScreen extends ConsumerWidget {
       frames: ref.read(boardFramesProvider).valueOrNull ?? [],
       clips: ref.read(activeClipsProvider).valueOrNull ?? [],
       strokes: ref.read(boardStrokesProvider).valueOrNull ?? [],
+      connectors: ref.read(activeConnectorsProvider).valueOrNull ?? [],
     );
     if (selection.isEmpty) {
       ScaffoldMessenger.of(
@@ -218,6 +219,7 @@ class BoardScreen extends ConsumerWidget {
       frames: selection.frames,
       clips: selection.clips,
       strokes: selection.strokes,
+      connectors: selection.connectors,
       readBytes: blobStore.readBytes,
       pageFormat: PdfPageFormat(
         result.landscape ? result.preset.height : result.preset.width,
