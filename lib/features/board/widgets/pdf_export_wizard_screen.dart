@@ -86,34 +86,45 @@ class _PdfExportWizardScreenState extends State<PdfExportWizardScreen> {
           ),
           const Divider(height: 1),
           Expanded(
-            child: ListView(
-              padding: const EdgeInsets.all(16),
-              children: [
-                if (looseClips.isNotEmpty)
-                  _PageCropSection(
-                    label: 'Overview',
-                    pageSize: _pageSize,
-                    contentRect: ClipGeometry.boardBoundingBox(looseClips),
-                    clips: looseClips,
-                    backgroundColorHex: null,
-                    crop: _cropFor(kOverviewPageCropKey),
-                    onChanged: (c) => _setCrop(kOverviewPageCropKey, c),
-                  ),
-                for (final frame in widget.selection.frames)
-                  _PageCropSection(
-                    label: frame.name,
-                    pageSize: _pageSize,
-                    contentRect: FrameGeometry.boardRect(frame),
-                    clips:
-                        widget.selection.clips
-                            .where((c) => c.frameId == frame.id)
-                            .toList()
-                          ..sort((a, b) => a.zIndex.compareTo(b.zIndex)),
-                    backgroundColorHex: frame.backgroundColorHex,
-                    crop: _cropFor(frame.id),
-                    onChanged: (c) => _setCrop(frame.id, c),
-                  ),
-              ],
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final previewMaxHeight =
+                    (constraints.maxHeight - _kPageCropChromeAllowance).clamp(
+                      200.0,
+                      double.infinity,
+                    );
+                return ListView(
+                  padding: const EdgeInsets.all(16),
+                  children: [
+                    if (looseClips.isNotEmpty)
+                      _PageCropSection(
+                        label: 'Overview',
+                        pageSize: _pageSize,
+                        contentRect: ClipGeometry.boardBoundingBox(looseClips),
+                        clips: looseClips,
+                        backgroundColorHex: null,
+                        crop: _cropFor(kOverviewPageCropKey),
+                        onChanged: (c) => _setCrop(kOverviewPageCropKey, c),
+                        previewMaxHeight: previewMaxHeight,
+                      ),
+                    for (final frame in widget.selection.frames)
+                      _PageCropSection(
+                        label: frame.name,
+                        pageSize: _pageSize,
+                        contentRect: FrameGeometry.boardRect(frame),
+                        clips:
+                            widget.selection.clips
+                                .where((c) => c.frameId == frame.id)
+                                .toList()
+                              ..sort((a, b) => a.zIndex.compareTo(b.zIndex)),
+                        backgroundColorHex: frame.backgroundColorHex,
+                        crop: _cropFor(frame.id),
+                        onChanged: (c) => _setCrop(frame.id, c),
+                        previewMaxHeight: previewMaxHeight,
+                      ),
+                  ],
+                );
+              },
             ),
           ),
         ],
@@ -157,49 +168,47 @@ class _PresetPicker extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: RadioGroup<FramePreset>(
-        groupValue: preset,
-        onChanged: (value) => onPresetChanged(value!),
-        child: Row(
-          children: [
-            Expanded(
-              child: Wrap(
-                spacing: 8,
-                children: [
-                  for (final p in kFramePresets)
-                    RadioListTile<FramePreset>(
-                      dense: true,
-                      contentPadding: EdgeInsets.zero,
-                      title: Text(p.label),
-                      value: p,
-                    ),
-                ],
-              ),
-            ),
-            Row(
-              mainAxisSize: MainAxisSize.min,
+      child: Row(
+        children: [
+          Expanded(
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                const Text('Landscape'),
-                Switch(value: landscape, onChanged: onLandscapeChanged),
+                for (final p in kFramePresets)
+                  ChoiceChip(
+                    label: Text(p.label),
+                    selected: p == preset,
+                    onSelected: (_) => onPresetChanged(p),
+                  ),
               ],
             ),
-          ],
-        ),
+          ),
+          const SizedBox(width: 12),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('Landscape'),
+              Switch(value: landscape, onChanged: onLandscapeChanged),
+            ],
+          ),
+        ],
       ),
     );
   }
 }
 
-/// Height budget given to a page's crop preview below its label - the
-/// editor is centered within this allocated box (via [ConstrainedBox] +
-/// [Center], not a tight [SizedBox], so the editor still shrinks to
-/// respect the available WIDTH too for an unusually wide-aspect preset
-/// in a narrow window) rather than letting `AspectRatio` grow to fill
-/// the full list-item width with unbounded height - which is what
-/// previously let a landscape preset's preview overflow past the
-/// bottom of the window with no way to see the rest of it. Tunable by
-/// eye once seen live.
-const double _kPageCropPreviewMaxHeight = 480.0;
+/// Chrome reserved around a page's crop preview that
+/// [_PdfExportWizardScreenState.build]'s `LayoutBuilder` must subtract
+/// from the available list height to compute each section's actual
+/// preview budget: the ListView's own top+bottom padding (16+16), a
+/// section's own label height (~24), the label-to-preview gap (8), and
+/// a section's own bottom padding (24) - everything `_PageCropSection`/
+/// the ListView already reserve around the preview itself, so
+/// `previewMaxHeight` uses exactly what's actually left over, not a
+/// guessed constant.
+const double _kPageCropChromeAllowance = 32 + 24 + 8 + 24;
 
 /// One scrollable list item: a page's label plus its fixed-aspect crop
 /// preview/editor box.
@@ -211,6 +220,7 @@ class _PageCropSection extends StatelessWidget {
   final String? backgroundColorHex;
   final PageCropSettings crop;
   final ValueChanged<PageCropSettings> onChanged;
+  final double previewMaxHeight;
 
   const _PageCropSection({
     required this.label,
@@ -220,6 +230,7 @@ class _PageCropSection extends StatelessWidget {
     required this.backgroundColorHex,
     required this.crop,
     required this.onChanged,
+    required this.previewMaxHeight,
   });
 
   @override
@@ -232,9 +243,7 @@ class _PageCropSection extends StatelessWidget {
           Text(label, style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
           ConstrainedBox(
-            constraints: const BoxConstraints(
-              maxHeight: _kPageCropPreviewMaxHeight,
-            ),
+            constraints: BoxConstraints(maxHeight: previewMaxHeight),
             child: Center(
               child: AspectRatio(
                 aspectRatio: pageSize.width / pageSize.height,
@@ -290,6 +299,7 @@ class _PageCropEditor extends StatefulWidget {
 class _PageCropEditorState extends State<_PageCropEditor> {
   Offset? _dragStartLocal;
   Offset? _dragStartPan;
+  bool _dragIsMiddleButton = false;
 
   double get _r => widget.contentSize.width / widget.contentSize.height;
 
@@ -368,16 +378,15 @@ class _PageCropEditorState extends State<_PageCropEditor> {
     _canvasSize.height / _scaleFactor,
   );
 
-  void _handleScroll(PointerScrollEvent event, double previewToCanvasScale) {
+  // Shared by both scroll gestures below - zooms by [factor] while
+  // keeping [pointerPageSpace] (page-space coordinates) fixed under
+  // that point. Plain scroll passes the live cursor position; Ctrl/Cmd+
+  // scroll passes the page's own fixed center instead (see
+  // _handleScaleFromMarqueeCenter), so both end up driving the exact
+  // same underlying zoom/pan state through one code path.
+  void _zoomBy(double factor, Offset pointerPageSpace) {
     final oldZoom = clampPageCropZoom(widget.crop.zoom);
-    final factor = event.scrollDelta.dy > 0 ? 0.9 : 1.1;
     final newZoom = clampPageCropZoom(widget.crop.zoom * factor);
-    // Shifts from canvas-space (the widget's own on-screen rendering,
-    // now bigger than the page by the bleed margin) into page-space
-    // (origin at the page's own top-left) - the coordinate system
-    // zoomPageCropTowardPoint/_visibleLeft/_visibleTop already use.
-    final pointerPageSpace =
-        event.localPosition * previewToCanvasScale - _pageOffsetInCanvas;
     final newPan = zoomPageCropTowardPoint(
       crop: widget.crop,
       oldZoom: oldZoom,
@@ -391,9 +400,37 @@ class _PageCropEditorState extends State<_PageCropEditor> {
     );
   }
 
+  // Plain scroll - always zooms toward the cursor, no modifier needed.
+  void _handleScroll(PointerScrollEvent event, double previewToCanvasScale) {
+    final factor = event.scrollDelta.dy > 0 ? 0.9 : 1.1;
+    // Shifts from canvas-space (the widget's own on-screen rendering,
+    // now bigger than the page by the bleed margin) into page-space
+    // (origin at the page's own top-left) - the coordinate system
+    // zoomPageCropTowardPoint/_visibleLeft/_visibleTop already use.
+    final pointerPageSpace =
+        event.localPosition * previewToCanvasScale - _pageOffsetInCanvas;
+    _zoomBy(factor, pointerPageSpace);
+  }
+
+  // Ctrl/Cmd+scroll - "scale the marquee": anchored at the fixed center
+  // of the page rect itself (not the cursor), so the crop grows/shrinks
+  // symmetrically regardless of where the mouse happens to be.
+  void _handleScaleFromMarqueeCenter(PointerScrollEvent event) {
+    final factor = event.scrollDelta.dy > 0 ? 0.9 : 1.1;
+    final pageCenter = Offset(
+      widget.pageSize.width / 2,
+      widget.pageSize.height / 2,
+    );
+    _zoomBy(factor, pageCenter);
+  }
+
   void _handleDown(PointerDownEvent event) {
     _dragStartLocal = event.localPosition;
     _dragStartPan = Offset(widget.crop.panX, widget.crop.panY);
+    // MMB ("pan the marquee") is the exact inverse of LMB ("pan the
+    // content") - detected here so _handleMove knows whether to negate
+    // the drag delta.
+    _dragIsMiddleButton = event.buttons & kMiddleMouseButton != 0;
   }
 
   void _handleMove(PointerMoveEvent event, double previewToCanvasScale) {
@@ -401,8 +438,12 @@ class _PageCropEditorState extends State<_PageCropEditor> {
     // A delta of two event.localPosition samples - the canvas/page
     // offset is a constant that cancels out in the subtraction, so
     // only the (renamed) scale factor itself needs to change here.
-    final localDelta =
+    final rawDelta =
         (event.localPosition - _dragStartLocal!) * previewToCanvasScale;
+    // MMB pans the marquee - the inverse of LMB panning the content -
+    // same math, negated input delta, so the red rectangle reads as
+    // the thing being dragged instead of the content under it.
+    final localDelta = _dragIsMiddleButton ? -rawDelta : rawDelta;
     final newPan = applyPageCropPanDelta(
       _dragStartPan!,
       localDelta,
@@ -422,41 +463,39 @@ class _PageCropEditorState extends State<_PageCropEditor> {
         return ClipRect(
           child: Listener(
             onPointerSignal: (e) {
-              // Only claims the scroll signal while Ctrl/Cmd is held -
-              // plain scroll is left completely alone (never registered
-              // through the resolver below), so it bubbles to the
-              // wizard's own ancestor ListView exactly like it would
-              // over any other list item, letting the page itself
-              // scroll. Without this gate, every page's crop editor
-              // would permanently claim 100% of the scroll wheel
-              // anywhere over its (now height-capped, but still
-              // sizable) box, making it impossible to scroll past a
-              // tall page with the mouse - this is the same modifier
-              // convention zoom-toward-cursor canvases elsewhere
-              // (Figma, Google Maps, VS Code) already use to avoid
-              // exactly this conflict.
-              final zoomModifierHeld =
+              if (e is! PointerScrollEvent) return;
+              // Ctrl/Cmd+scroll scales from the marquee's own center;
+              // plain scroll always zooms toward the cursor - both
+              // always claim the scroll signal (registered through the
+              // resolver below), reversing the previous Ctrl-gate on
+              // registering at all. Known tradeoff: with the preview
+              // now maximized too, scrolling the wizard's own page past
+              // multiple frame sections via the mouse wheel may need
+              // the cursor positioned outside any crop editor's own box
+              // (its label/padding/the preset row) - an explicit,
+              // accepted consequence of this choice, not a bug.
+              final scaleFromMarqueeCenter =
                   HardwareKeyboard.instance.isControlPressed ||
                   HardwareKeyboard.instance.isMetaPressed;
-              if (e is PointerScrollEvent && zoomModifierHeld) {
-                // Registers through the same PointerSignalResolver every
-                // Scrollable (including the wizard's own ListView, an
-                // ancestor of this editor) uses for its own scroll
-                // handling - "first registered callback wins," and
-                // pointer-signal dispatch visits the deepest hit-test
-                // target first, so this editor wins the resolution and
-                // the ListView's own, later registration for the same
-                // event is dropped entirely. Calling _handleScroll
-                // directly (as before) sidesteps this arbitration,
-                // which is why scroll used to also bleed into the list.
-                GestureBinding.instance.pointerSignalResolver.register(
-                  e,
-                  (event) => _handleScroll(
-                    event as PointerScrollEvent,
-                    previewToCanvasScale,
-                  ),
-                );
-              }
+              // Registers through the same PointerSignalResolver every
+              // Scrollable (including the wizard's own ListView, an
+              // ancestor of this editor) uses for its own scroll
+              // handling - "first registered callback wins," and
+              // pointer-signal dispatch visits the deepest hit-test
+              // target first, so this editor wins the resolution and
+              // the ListView's own, later registration for the same
+              // event is dropped entirely. Calling a handler directly
+              // would sidestep this arbitration, letting scroll also
+              // bleed into the list.
+              GestureBinding.instance.pointerSignalResolver.register(
+                e,
+                (event) => scaleFromMarqueeCenter
+                    ? _handleScaleFromMarqueeCenter(event as PointerScrollEvent)
+                    : _handleScroll(
+                        event as PointerScrollEvent,
+                        previewToCanvasScale,
+                      ),
+              );
             },
             onPointerDown: _handleDown,
             onPointerMove: (e) => _handleMove(e, previewToCanvasScale),
