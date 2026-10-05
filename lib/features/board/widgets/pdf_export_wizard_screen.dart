@@ -1,5 +1,6 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show HardwareKeyboard;
 
 import '../../../core/constants.dart' show kBoardGridSpacing;
 import '../../../core/theme/app_theme.dart';
@@ -189,6 +190,17 @@ class _PresetPicker extends StatelessWidget {
   }
 }
 
+/// Height budget given to a page's crop preview below its label - the
+/// editor is centered within this allocated box (via [ConstrainedBox] +
+/// [Center], not a tight [SizedBox], so the editor still shrinks to
+/// respect the available WIDTH too for an unusually wide-aspect preset
+/// in a narrow window) rather than letting `AspectRatio` grow to fill
+/// the full list-item width with unbounded height - which is what
+/// previously let a landscape preset's preview overflow past the
+/// bottom of the window with no way to see the rest of it. Tunable by
+/// eye once seen live.
+const double _kPageCropPreviewMaxHeight = 480.0;
+
 /// One scrollable list item: a page's label plus its fixed-aspect crop
 /// preview/editor box.
 class _PageCropSection extends StatelessWidget {
@@ -219,16 +231,23 @@ class _PageCropSection extends StatelessWidget {
         children: [
           Text(label, style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
-          AspectRatio(
-            aspectRatio: pageSize.width / pageSize.height,
-            child: _PageCropEditor(
-              pageSize: pageSize,
-              contentSize: contentRect.size,
-              contentOrigin: contentRect.topLeft,
-              clips: clips,
-              backgroundColorHex: backgroundColorHex,
-              crop: crop,
-              onChanged: onChanged,
+          ConstrainedBox(
+            constraints: const BoxConstraints(
+              maxHeight: _kPageCropPreviewMaxHeight,
+            ),
+            child: Center(
+              child: AspectRatio(
+                aspectRatio: pageSize.width / pageSize.height,
+                child: _PageCropEditor(
+                  pageSize: pageSize,
+                  contentSize: contentRect.size,
+                  contentOrigin: contentRect.topLeft,
+                  clips: clips,
+                  backgroundColorHex: backgroundColorHex,
+                  crop: crop,
+                  onChanged: onChanged,
+                ),
+              ),
             ),
           ),
         ],
@@ -241,7 +260,9 @@ class _PageCropSection extends StatelessWidget {
 /// page's content block into [pageSize] via [ImagePanZoomGeometry] (the
 /// same math/representation the existing per-image crop tool uses, just
 /// applied to a whole page's content instead of one image), with
-/// scroll-to-zoom and drag-to-pan mirroring `board_canvas.dart`'s
+/// Ctrl/Cmd+scroll-to-zoom (a plain scroll instead passes through to
+/// the wizard's own scrollable page, so a tall crop box never traps the
+/// mouse wheel) and drag-to-pan mirroring `board_canvas.dart`'s
 /// existing per-image pan/zoom gesture handling.
 class _PageCropEditor extends StatefulWidget {
   final Size pageSize;
@@ -401,17 +422,33 @@ class _PageCropEditorState extends State<_PageCropEditor> {
         return ClipRect(
           child: Listener(
             onPointerSignal: (e) {
-              // Registers through the same PointerSignalResolver every
-              // Scrollable (including the wizard's own ListView, an
-              // ancestor of this editor) uses for its own scroll
-              // handling - "first registered callback wins," and
-              // pointer-signal dispatch visits the deepest hit-test
-              // target first, so this editor wins the resolution and the
-              // ListView's own, later registration for the same event is
-              // dropped entirely. Calling _handleScroll directly (as
-              // before) sidesteps this arbitration, which is why scroll
-              // used to also bleed into the list.
-              if (e is PointerScrollEvent) {
+              // Only claims the scroll signal while Ctrl/Cmd is held -
+              // plain scroll is left completely alone (never registered
+              // through the resolver below), so it bubbles to the
+              // wizard's own ancestor ListView exactly like it would
+              // over any other list item, letting the page itself
+              // scroll. Without this gate, every page's crop editor
+              // would permanently claim 100% of the scroll wheel
+              // anywhere over its (now height-capped, but still
+              // sizable) box, making it impossible to scroll past a
+              // tall page with the mouse - this is the same modifier
+              // convention zoom-toward-cursor canvases elsewhere
+              // (Figma, Google Maps, VS Code) already use to avoid
+              // exactly this conflict.
+              final zoomModifierHeld =
+                  HardwareKeyboard.instance.isControlPressed ||
+                  HardwareKeyboard.instance.isMetaPressed;
+              if (e is PointerScrollEvent && zoomModifierHeld) {
+                // Registers through the same PointerSignalResolver every
+                // Scrollable (including the wizard's own ListView, an
+                // ancestor of this editor) uses for its own scroll
+                // handling - "first registered callback wins," and
+                // pointer-signal dispatch visits the deepest hit-test
+                // target first, so this editor wins the resolution and
+                // the ListView's own, later registration for the same
+                // event is dropped entirely. Calling _handleScroll
+                // directly (as before) sidesteps this arbitration,
+                // which is why scroll used to also bleed into the list.
                 GestureBinding.instance.pointerSignalResolver.register(
                   e,
                   (event) => _handleScroll(
@@ -542,10 +579,7 @@ class _CropMarksOverlay extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scrim = Colors.black.withValues(alpha: 0.55);
-    final borderWidth = (pageSize.shortestSide * 0.004).clamp(
-      1.0,
-      double.infinity,
-    );
+    const borderWidth = 1.0;
     return IgnorePointer(
       child: Stack(
         children: [
