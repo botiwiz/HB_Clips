@@ -52,11 +52,9 @@ void main() {
           for (final preset in group.presets) preset.label: preset,
       };
       const pairs = [
-        ('Mobile portrait (9:16)', 'Mobile landscape (16:9)'),
         ('Tablet portrait (3:4)', 'Tablet landscape (4:3)'),
         ('21:9 portrait', '21:9 landscape'),
         ('32:9 portrait', '32:9 landscape'),
-        ('16:9 portrait', '16:9 landscape'),
         ('16:10 portrait', '16:10 landscape'),
         ('A4 portrait', 'A4 landscape'),
       ];
@@ -82,6 +80,27 @@ void main() {
           .presets
           .single;
       expect(square.width, square.height);
+    });
+
+    test('no two entries share the exact same pixel dimensions - the '
+        'dropdown should never show two differently-labeled presets that '
+        'are actually identical (e.g. a "Mobile landscape" that was '
+        'pixel-for-pixel the same as "1080p")', () {
+      final seen = <(double, double), String>{};
+      for (final group in kFrameAspectRatioGroups) {
+        for (final preset in group.presets) {
+          final key = (preset.width, preset.height);
+          final existing = seen[key];
+          expect(
+            existing,
+            isNull,
+            reason:
+                '${preset.label} (${preset.width}x${preset.height}) '
+                'duplicates $existing',
+          );
+          seen[key] = preset.label;
+        }
+      }
     });
   });
 }
