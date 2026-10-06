@@ -1,14 +1,20 @@
 import 'dart:typed_data';
 
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:path/path.dart' as p;
 import 'package:uuid/uuid.dart';
 
-import '../../../core/constants.dart' show kBoardBackupFormatVersion;
+import '../../../core/constants.dart'
+    show kBoardBackupExtension, kBoardBackupFormatVersion;
+import '../../../core/theme/app_theme.dart';
 import '../../../data/backup/board_backup_manifest.dart';
-import '../../../data/local/database.dart' show FrameRow;
+import '../../../data/local/database.dart' show BoardRow, FrameRow;
 import '../../../data/models/clip.dart';
 import '../../../data/providers.dart';
+import 'save_file_service.dart';
 
 const _uuid = Uuid();
 
@@ -223,5 +229,173 @@ Future<BoardBackupSummary> importBoardBackup(
     strokesImported: strokesImported,
     imagesRestored: imagesRestored,
     imagesMissing: imagesMissing,
+  );
+}
+
+/// Looks up [boardId]'s current row from the already-loaded
+/// [boardsProvider] snapshot, or null if it isn't there (e.g. the
+/// stream hasn't emitted yet).
+BoardRow? _findBoard(WidgetRef ref, String boardId) {
+  for (final board in ref.read(boardsProvider).valueOrNull ?? []) {
+    if (board.id == boardId) return board;
+  }
+  return null;
+}
+
+/// Plain "Save" - writes the current board's backup straight back to
+/// whichever file it was last opened from/saved to, with no dialog at
+/// all. Falls back to [saveBoardBackupAs] (which always shows the
+/// dialog) when no file is known yet, or when writing to the known
+/// path fails (e.g. it was moved/deleted since) - same "first save
+/// behaves like Save As" convention every document editor uses.
+Future<void> saveBoardBackup(BuildContext context, WidgetRef ref) async {
+  final boardId = ref.read(currentBoardIdProvider);
+  final knownPath = _findBoard(ref, boardId)?.backupFilePath;
+  if (knownPath == null) {
+    await saveBoardBackupAs(context, ref);
+    return;
+  }
+
+  final bytes = await exportBoardBackup(ref, boardId);
+  if (!context.mounted) return;
+  try {
+    await writeBytesToPath(knownPath, bytes);
+  } catch (error) {
+    if (!context.mounted) return;
+    await saveBoardBackupAs(context, ref);
+    return;
+  }
+  if (!context.mounted) return;
+  ScaffoldMessenger.of(
+    context,
+  ).showSnackBar(SnackBar(content: Text('Saved to $knownPath')));
+}
+
+/// "Save backup as..." - always shows the save dialog, then records
+/// the chosen file on the board so a later plain [saveBoardBackup]
+/// targets it directly.
+Future<void> saveBoardBackupAs(BuildContext context, WidgetRef ref) async {
+  final boardId = ref.read(currentBoardIdProvider);
+  final bytes = await exportBoardBackup(ref, boardId);
+  if (!context.mounted) return;
+
+  final board = _findBoard(ref, boardId);
+  final suggestedName = board?.backupFilePath != null
+      ? p.basename(board!.backupFilePath!)
+      : 'board.$kBoardBackupExtension';
+
+  String? savePath;
+  try {
+    savePath = await FilePicker.platform.saveFile(
+      dialogTitle: 'Save board backup as',
+      fileName: suggestedName,
+      type: FileType.custom,
+      allowedExtensions: [kBoardBackupExtension],
+      bytes: bytes,
+    );
+  } catch (error) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          "Couldn't open the save dialog. On Linux this needs zenity "
+          '(or kdialog) installed.',
+        ),
+        backgroundColor: AppTheme.danger,
+      ),
+    );
+    return;
+  }
+  if (savePath == null) return;
+  if (!savePath.toLowerCase().endsWith('.$kBoardBackupExtension')) {
+    savePath = '$savePath.$kBoardBackupExtension';
+  }
+  await writeBytesToPath(savePath, bytes);
+  await ref
+      .read(boardsRepositoryProvider)
+      .updateBackupFilePath(boardId, savePath);
+}
+
+/// "Open..." - picks a `.hbbackup` file and imports it as a brand-new
+/// board (see [importBoardBackup]), then records the picked file's
+/// path on that board so a plain [saveBoardBackup] right afterward
+/// writes back to this exact file with no dialog.
+Future<void> openBoardBackup(BuildContext context, WidgetRef ref) async {
+  final FilePickerResult? result;
+  try {
+    result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: [kBoardBackupExtension],
+      withData: true,
+    );
+  } catch (error) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          "Couldn't open the file picker. On Linux this needs zenity "
+          '(or kdialog) installed.',
+        ),
+        backgroundColor: AppTheme.danger,
+      ),
+    );
+    return;
+  }
+  final pickedFile = result?.files.single;
+  final pickedBytes = pickedFile?.bytes;
+  if (pickedBytes == null) return;
+  if (!context.mounted) return;
+
+  BoardBackupSummary summary;
+  try {
+    summary = await importBoardBackup(ref, pickedBytes);
+  } catch (error) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text("Couldn't read this backup file: $error"),
+        backgroundColor: AppTheme.danger,
+      ),
+    );
+    return;
+  }
+  if (!context.mounted) return;
+  ref.read(currentBoardIdProvider.notifier).state = summary.newBoardId;
+  // pickedFile.path is the real filesystem path on native platforms
+  // (null on web, where there's no ambient filesystem to write back
+  // to) - recording it is what lets a plain Save on this freshly
+  // opened board write straight back to this exact file.
+  await ref
+      .read(boardsRepositoryProvider)
+      .updateBackupFilePath(summary.newBoardId, pickedFile?.path);
+
+  final parts = <String>[
+    '${summary.framesImported} frame${summary.framesImported == 1 ? '' : 's'}',
+    '${summary.clipsImported} clip${summary.clipsImported == 1 ? '' : 's'}',
+    '${summary.connectorsImported} connector${summary.connectorsImported == 1 ? '' : 's'}',
+    '${summary.strokesImported} stroke${summary.strokesImported == 1 ? '' : 's'}',
+  ];
+  if (summary.imagesMissing > 0) {
+    parts.add(
+      "${summary.imagesMissing} image${summary.imagesMissing == 1 ? '' : 's'} "
+      "couldn't be recovered (missing from this backup file)",
+    );
+  }
+
+  if (!context.mounted) return;
+  await showDialog<void>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Backup restored'),
+      content: Text(
+        "Restored '${summary.boardName}' as a new board: ${parts.join(', ')}.",
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('OK'),
+        ),
+      ],
+    ),
   );
 }

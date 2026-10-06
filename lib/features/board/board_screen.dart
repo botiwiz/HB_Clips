@@ -6,11 +6,10 @@ import 'package:path/path.dart' as p;
 import 'package:pdf/pdf.dart';
 import 'package:uuid/uuid.dart';
 
-import '../../core/constants.dart' show kBoardBackupExtension;
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/color_swatch_button.dart';
 import '../../core/widgets/hsv_color_picker.dart';
-import '../../data/local/database.dart' show BoardRow, FrameRow;
+import '../../data/local/database.dart' show FrameRow;
 import '../../data/models/clip.dart';
 import '../../data/models/connector.dart';
 import '../../data/pdf/pdf_writer.dart';
@@ -37,6 +36,7 @@ import 'services/save_file_service.dart';
 import 'widgets/board_canvas.dart';
 import 'widgets/board_switcher.dart';
 import 'widgets/board_toolbar.dart';
+import 'widgets/file_menu_button.dart';
 import 'widgets/gif_playback_toolbar.dart';
 import 'widgets/pdf_export_wizard_screen.dart';
 import 'widgets/shape_tool_button.dart';
@@ -286,170 +286,6 @@ class BoardScreen extends ConsumerWidget {
       builder: (context) => AlertDialog(
         title: const Text('Export complete'),
         content: Text('Exported ${parts.join(', ')}.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('OK'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// Looks up [boardId]'s current row from the already-loaded
-  /// [boardsProvider] snapshot, or null if it isn't there (e.g. the
-  /// stream hasn't emitted yet).
-  BoardRow? _findBoard(WidgetRef ref, String boardId) {
-    for (final board in ref.read(boardsProvider).valueOrNull ?? []) {
-      if (board.id == boardId) return board;
-    }
-    return null;
-  }
-
-  /// Plain "Save" - writes the current board's backup straight back to
-  /// whichever file it was last opened from/saved to, with no dialog at
-  /// all. Falls back to [_saveBoardBackupAs] (which always shows the
-  /// dialog) when no file is known yet, or when writing to the known
-  /// path fails (e.g. it was moved/deleted since) - same "first save
-  /// behaves like Save As" convention every document editor uses.
-  Future<void> _saveBoardBackup(BuildContext context, WidgetRef ref) async {
-    final boardId = ref.read(currentBoardIdProvider);
-    final knownPath = _findBoard(ref, boardId)?.backupFilePath;
-    if (knownPath == null) {
-      await _saveBoardBackupAs(context, ref);
-      return;
-    }
-
-    final bytes = await exportBoardBackup(ref, boardId);
-    if (!context.mounted) return;
-    try {
-      await writeBytesToPath(knownPath, bytes);
-    } catch (error) {
-      if (!context.mounted) return;
-      await _saveBoardBackupAs(context, ref);
-      return;
-    }
-    if (!context.mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text('Saved to $knownPath')));
-  }
-
-  /// "Save backup as..." - always shows the save dialog, then records
-  /// the chosen file on the board so a later plain [_saveBoardBackup]
-  /// targets it directly.
-  Future<void> _saveBoardBackupAs(BuildContext context, WidgetRef ref) async {
-    final boardId = ref.read(currentBoardIdProvider);
-    final bytes = await exportBoardBackup(ref, boardId);
-    if (!context.mounted) return;
-
-    final board = _findBoard(ref, boardId);
-    final suggestedName = board?.backupFilePath != null
-        ? p.basename(board!.backupFilePath!)
-        : 'board.$kBoardBackupExtension';
-
-    String? savePath;
-    try {
-      savePath = await FilePicker.platform.saveFile(
-        dialogTitle: 'Save board backup as',
-        fileName: suggestedName,
-        type: FileType.custom,
-        allowedExtensions: [kBoardBackupExtension],
-        bytes: bytes,
-      );
-    } catch (error) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            "Couldn't open the save dialog. On Linux this needs zenity "
-            '(or kdialog) installed.',
-          ),
-          backgroundColor: AppTheme.danger,
-        ),
-      );
-      return;
-    }
-    if (savePath == null) return;
-    if (!savePath.toLowerCase().endsWith('.$kBoardBackupExtension')) {
-      savePath = '$savePath.$kBoardBackupExtension';
-    }
-    await writeBytesToPath(savePath, bytes);
-    await ref
-        .read(boardsRepositoryProvider)
-        .updateBackupFilePath(boardId, savePath);
-  }
-
-  Future<void> _importBoardBackup(BuildContext context, WidgetRef ref) async {
-    final FilePickerResult? result;
-    try {
-      result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: [kBoardBackupExtension],
-        withData: true,
-      );
-    } catch (error) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            "Couldn't open the file picker. On Linux this needs zenity "
-            '(or kdialog) installed.',
-          ),
-          backgroundColor: AppTheme.danger,
-        ),
-      );
-      return;
-    }
-    final pickedFile = result?.files.single;
-    final pickedBytes = pickedFile?.bytes;
-    if (pickedBytes == null) return;
-    if (!context.mounted) return;
-
-    BoardBackupSummary summary;
-    try {
-      summary = await importBoardBackup(ref, pickedBytes);
-    } catch (error) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text("Couldn't read this backup file: $error"),
-          backgroundColor: AppTheme.danger,
-        ),
-      );
-      return;
-    }
-    if (!context.mounted) return;
-    ref.read(currentBoardIdProvider.notifier).state = summary.newBoardId;
-    // pickedFile.path is the real filesystem path on native platforms
-    // (null on web, where there's no ambient filesystem to write back
-    // to) - recording it is what lets a plain Save on this freshly
-    // opened board write straight back to this exact file.
-    await ref
-        .read(boardsRepositoryProvider)
-        .updateBackupFilePath(summary.newBoardId, pickedFile?.path);
-
-    final parts = <String>[
-      '${summary.framesImported} frame${summary.framesImported == 1 ? '' : 's'}',
-      '${summary.clipsImported} clip${summary.clipsImported == 1 ? '' : 's'}',
-      '${summary.connectorsImported} connector${summary.connectorsImported == 1 ? '' : 's'}',
-      '${summary.strokesImported} stroke${summary.strokesImported == 1 ? '' : 's'}',
-    ];
-    if (summary.imagesMissing > 0) {
-      parts.add(
-        "${summary.imagesMissing} image${summary.imagesMissing == 1 ? '' : 's'} "
-        "couldn't be recovered (missing from this backup file)",
-      );
-    }
-
-    if (!context.mounted) return;
-    await showDialog<void>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Backup restored'),
-        content: Text(
-          "Restored '${summary.boardName}' as a new board: ${parts.join(', ')}.",
-        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
@@ -1346,9 +1182,9 @@ class BoardScreen extends ConsumerWidget {
             // gets first chance at the event; this outer binding only
             // ever fires once no note is being edited.
             const SingleActivator(LogicalKeyboardKey.keyS, control: true): () =>
-                _saveBoardBackup(context, ref),
+                saveBoardBackup(context, ref),
             const SingleActivator(LogicalKeyboardKey.keyS, meta: true): () =>
-                _saveBoardBackup(context, ref),
+                saveBoardBackup(context, ref),
             // Ctrl/Cmd+A, +C and +V are handled by _handleEditAwareShortcut
             // instead (above) - not as plain bindings here - since they
             // need to stay out of the way of native text select-all/copy/
@@ -1371,6 +1207,8 @@ class BoardScreen extends ConsumerWidget {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    const FileMenuButton(),
+                    const SizedBox(width: 8),
                     const BoardSwitcher(),
                     const SizedBox(width: 8),
                     Flexible(
@@ -1536,21 +1374,6 @@ class BoardScreen extends ConsumerWidget {
                             tooltip: 'Export board as .pdf',
                             icon: Icons.picture_as_pdf_outlined,
                             onPressed: () => _exportPdfFile(context, ref),
-                          ),
-                          PillIconButton(
-                            tooltip: 'Open board backup...',
-                            icon: Icons.folder_open,
-                            onPressed: () => _importBoardBackup(context, ref),
-                          ),
-                          PillIconButton(
-                            tooltip: 'Save',
-                            icon: Icons.save_outlined,
-                            onPressed: () => _saveBoardBackup(context, ref),
-                          ),
-                          PillIconButton(
-                            tooltip: 'Save backup as...',
-                            icon: Icons.save_as_outlined,
-                            onPressed: () => _saveBoardBackupAs(context, ref),
                           ),
                         ],
                       ),
