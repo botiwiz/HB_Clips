@@ -20,14 +20,54 @@ class BoardsRepository {
 
   Stream<List<BoardRow>> watchBoards() {
     final query = _db.select(_db.boards)
-      ..orderBy([(b) => OrderingTerm.asc(b.createdAt)]);
+      ..orderBy([
+        (b) => OrderingTerm.asc(b.sortOrder),
+        (b) => OrderingTerm.asc(b.createdAt),
+      ]);
     return query.watch();
   }
 
-  Future<void> createBoard(String id, String name) {
-    return _db
+  Future<int> _nextSortOrder() async {
+    final query = _db.selectOnly(_db.boards)
+      ..addColumns([_db.boards.sortOrder.max()]);
+    final row = await query.getSingleOrNull();
+    final maxOrder = row?.read(_db.boards.sortOrder.max());
+    return (maxOrder ?? 0) + 1;
+  }
+
+  Future<void> createBoard(String id, String name) async {
+    final sortOrder = await _nextSortOrder();
+    await _db
         .into(_db.boards)
-        .insert(BoardsCompanion.insert(id: id, name: Value(name)));
+        .insert(
+          BoardsCompanion.insert(
+            id: id,
+            name: Value(name),
+            sortOrder: Value(sortOrder),
+          ),
+        );
+  }
+
+  /// Sets this board's "Manage boards" row-tint color, as `#RRGGBB`, or
+  /// clears it back to the dialog's default background with `null`.
+  Future<void> updateColor(String id, String? colorHex) {
+    return (_db.update(_db.boards)..where((b) => b.id.equals(id))).write(
+      BoardsCompanion(
+        colorHex: Value(colorHex),
+        updatedAt: Value(DateTime.now()),
+      ),
+    );
+  }
+
+  /// Persists a new display order for every board in [orderedIds] (as
+  /// listed, lowest index sorts first) - drives "Manage boards"'
+  /// drag-to-reorder, and everywhere else `watchBoards()` is read since
+  /// they all share the same `sortOrder` column.
+  Future<void> reorderBoards(List<String> orderedIds) async {
+    for (var i = 0; i < orderedIds.length; i++) {
+      await (_db.update(_db.boards)..where((b) => b.id.equals(orderedIds[i])))
+          .write(BoardsCompanion(sortOrder: Value(i)));
+    }
   }
 
   Future<void> renameBoard(String id, String name) {

@@ -2379,6 +2379,29 @@ class $BoardsTable extends Boards with TableInfo<$BoardsTable, BoardRow> {
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _colorHexMeta = const VerificationMeta(
+    'colorHex',
+  );
+  @override
+  late final GeneratedColumn<String> colorHex = GeneratedColumn<String>(
+    'color_hex',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _sortOrderMeta = const VerificationMeta(
+    'sortOrder',
+  );
+  @override
+  late final GeneratedColumn<int> sortOrder = GeneratedColumn<int>(
+    'sort_order',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -2408,6 +2431,8 @@ class $BoardsTable extends Boards with TableInfo<$BoardsTable, BoardRow> {
     id,
     name,
     backupFilePath,
+    colorHex,
+    sortOrder,
     createdAt,
     updatedAt,
   ];
@@ -2443,6 +2468,18 @@ class $BoardsTable extends Boards with TableInfo<$BoardsTable, BoardRow> {
         ),
       );
     }
+    if (data.containsKey('color_hex')) {
+      context.handle(
+        _colorHexMeta,
+        colorHex.isAcceptableOrUnknown(data['color_hex']!, _colorHexMeta),
+      );
+    }
+    if (data.containsKey('sort_order')) {
+      context.handle(
+        _sortOrderMeta,
+        sortOrder.isAcceptableOrUnknown(data['sort_order']!, _sortOrderMeta),
+      );
+    }
     if (data.containsKey('created_at')) {
       context.handle(
         _createdAtMeta,
@@ -2476,6 +2513,14 @@ class $BoardsTable extends Boards with TableInfo<$BoardsTable, BoardRow> {
         DriftSqlType.string,
         data['${effectivePrefix}backup_file_path'],
       ),
+      colorHex: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}color_hex'],
+      ),
+      sortOrder: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}sort_order'],
+      )!,
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
@@ -2504,12 +2549,27 @@ class BoardRow extends DataClass implements Insertable<BoardRow> {
   /// always behaving like "Save As" - see `board_backup_service.dart`.
   /// Always null on web (no ambient filesystem path exists there).
   final String? backupFilePath;
+
+  /// Custom background tint for this board's row in "Manage boards", as
+  /// `#RRGGBB` - purely a glance-at-a-list organizational aid, no effect
+  /// anywhere else. Null uses the dialog's default row background - same
+  /// null-means-default convention as `Frames.backgroundColorHex`.
+  final String? colorHex;
+
+  /// User-controlled display order in "Manage boards" (and everywhere
+  /// else boards are listed) - lower sorts first. Not necessarily
+  /// contiguous; only relative order matters. Sits alongside `createdAt`
+  /// rather than replacing it, since `createdAt` is also kept as a
+  /// stable, never-reordered tiebreaker.
+  final int sortOrder;
   final DateTime createdAt;
   final DateTime updatedAt;
   const BoardRow({
     required this.id,
     required this.name,
     this.backupFilePath,
+    this.colorHex,
+    required this.sortOrder,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -2521,6 +2581,10 @@ class BoardRow extends DataClass implements Insertable<BoardRow> {
     if (!nullToAbsent || backupFilePath != null) {
       map['backup_file_path'] = Variable<String>(backupFilePath);
     }
+    if (!nullToAbsent || colorHex != null) {
+      map['color_hex'] = Variable<String>(colorHex);
+    }
+    map['sort_order'] = Variable<int>(sortOrder);
     map['created_at'] = Variable<DateTime>(createdAt);
     map['updated_at'] = Variable<DateTime>(updatedAt);
     return map;
@@ -2533,6 +2597,10 @@ class BoardRow extends DataClass implements Insertable<BoardRow> {
       backupFilePath: backupFilePath == null && nullToAbsent
           ? const Value.absent()
           : Value(backupFilePath),
+      colorHex: colorHex == null && nullToAbsent
+          ? const Value.absent()
+          : Value(colorHex),
+      sortOrder: Value(sortOrder),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
     );
@@ -2547,6 +2615,8 @@ class BoardRow extends DataClass implements Insertable<BoardRow> {
       id: serializer.fromJson<String>(json['id']),
       name: serializer.fromJson<String>(json['name']),
       backupFilePath: serializer.fromJson<String?>(json['backupFilePath']),
+      colorHex: serializer.fromJson<String?>(json['colorHex']),
+      sortOrder: serializer.fromJson<int>(json['sortOrder']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
     );
@@ -2558,6 +2628,8 @@ class BoardRow extends DataClass implements Insertable<BoardRow> {
       'id': serializer.toJson<String>(id),
       'name': serializer.toJson<String>(name),
       'backupFilePath': serializer.toJson<String?>(backupFilePath),
+      'colorHex': serializer.toJson<String?>(colorHex),
+      'sortOrder': serializer.toJson<int>(sortOrder),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
     };
@@ -2567,6 +2639,8 @@ class BoardRow extends DataClass implements Insertable<BoardRow> {
     String? id,
     String? name,
     Value<String?> backupFilePath = const Value.absent(),
+    Value<String?> colorHex = const Value.absent(),
+    int? sortOrder,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) => BoardRow(
@@ -2575,6 +2649,8 @@ class BoardRow extends DataClass implements Insertable<BoardRow> {
     backupFilePath: backupFilePath.present
         ? backupFilePath.value
         : this.backupFilePath,
+    colorHex: colorHex.present ? colorHex.value : this.colorHex,
+    sortOrder: sortOrder ?? this.sortOrder,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
   );
@@ -2585,6 +2661,8 @@ class BoardRow extends DataClass implements Insertable<BoardRow> {
       backupFilePath: data.backupFilePath.present
           ? data.backupFilePath.value
           : this.backupFilePath,
+      colorHex: data.colorHex.present ? data.colorHex.value : this.colorHex,
+      sortOrder: data.sortOrder.present ? data.sortOrder.value : this.sortOrder,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
@@ -2596,6 +2674,8 @@ class BoardRow extends DataClass implements Insertable<BoardRow> {
           ..write('id: $id, ')
           ..write('name: $name, ')
           ..write('backupFilePath: $backupFilePath, ')
+          ..write('colorHex: $colorHex, ')
+          ..write('sortOrder: $sortOrder, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
@@ -2603,8 +2683,15 @@ class BoardRow extends DataClass implements Insertable<BoardRow> {
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, name, backupFilePath, createdAt, updatedAt);
+  int get hashCode => Object.hash(
+    id,
+    name,
+    backupFilePath,
+    colorHex,
+    sortOrder,
+    createdAt,
+    updatedAt,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -2612,6 +2699,8 @@ class BoardRow extends DataClass implements Insertable<BoardRow> {
           other.id == this.id &&
           other.name == this.name &&
           other.backupFilePath == this.backupFilePath &&
+          other.colorHex == this.colorHex &&
+          other.sortOrder == this.sortOrder &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt);
 }
@@ -2620,6 +2709,8 @@ class BoardsCompanion extends UpdateCompanion<BoardRow> {
   final Value<String> id;
   final Value<String> name;
   final Value<String?> backupFilePath;
+  final Value<String?> colorHex;
+  final Value<int> sortOrder;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
   final Value<int> rowid;
@@ -2627,6 +2718,8 @@ class BoardsCompanion extends UpdateCompanion<BoardRow> {
     this.id = const Value.absent(),
     this.name = const Value.absent(),
     this.backupFilePath = const Value.absent(),
+    this.colorHex = const Value.absent(),
+    this.sortOrder = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -2635,6 +2728,8 @@ class BoardsCompanion extends UpdateCompanion<BoardRow> {
     required String id,
     this.name = const Value.absent(),
     this.backupFilePath = const Value.absent(),
+    this.colorHex = const Value.absent(),
+    this.sortOrder = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -2643,6 +2738,8 @@ class BoardsCompanion extends UpdateCompanion<BoardRow> {
     Expression<String>? id,
     Expression<String>? name,
     Expression<String>? backupFilePath,
+    Expression<String>? colorHex,
+    Expression<int>? sortOrder,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
     Expression<int>? rowid,
@@ -2651,6 +2748,8 @@ class BoardsCompanion extends UpdateCompanion<BoardRow> {
       if (id != null) 'id': id,
       if (name != null) 'name': name,
       if (backupFilePath != null) 'backup_file_path': backupFilePath,
+      if (colorHex != null) 'color_hex': colorHex,
+      if (sortOrder != null) 'sort_order': sortOrder,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (rowid != null) 'rowid': rowid,
@@ -2661,6 +2760,8 @@ class BoardsCompanion extends UpdateCompanion<BoardRow> {
     Value<String>? id,
     Value<String>? name,
     Value<String?>? backupFilePath,
+    Value<String?>? colorHex,
+    Value<int>? sortOrder,
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
     Value<int>? rowid,
@@ -2669,6 +2770,8 @@ class BoardsCompanion extends UpdateCompanion<BoardRow> {
       id: id ?? this.id,
       name: name ?? this.name,
       backupFilePath: backupFilePath ?? this.backupFilePath,
+      colorHex: colorHex ?? this.colorHex,
+      sortOrder: sortOrder ?? this.sortOrder,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       rowid: rowid ?? this.rowid,
@@ -2686,6 +2789,12 @@ class BoardsCompanion extends UpdateCompanion<BoardRow> {
     }
     if (backupFilePath.present) {
       map['backup_file_path'] = Variable<String>(backupFilePath.value);
+    }
+    if (colorHex.present) {
+      map['color_hex'] = Variable<String>(colorHex.value);
+    }
+    if (sortOrder.present) {
+      map['sort_order'] = Variable<int>(sortOrder.value);
     }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
@@ -2705,6 +2814,8 @@ class BoardsCompanion extends UpdateCompanion<BoardRow> {
           ..write('id: $id, ')
           ..write('name: $name, ')
           ..write('backupFilePath: $backupFilePath, ')
+          ..write('colorHex: $colorHex, ')
+          ..write('sortOrder: $sortOrder, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('rowid: $rowid')
@@ -5201,6 +5312,8 @@ typedef $$BoardsTableCreateCompanionBuilder =
       required String id,
       Value<String> name,
       Value<String?> backupFilePath,
+      Value<String?> colorHex,
+      Value<int> sortOrder,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
       Value<int> rowid,
@@ -5210,6 +5323,8 @@ typedef $$BoardsTableUpdateCompanionBuilder =
       Value<String> id,
       Value<String> name,
       Value<String?> backupFilePath,
+      Value<String?> colorHex,
+      Value<int> sortOrder,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
       Value<int> rowid,
@@ -5236,6 +5351,16 @@ class $$BoardsTableFilterComposer
 
   ColumnFilters<String> get backupFilePath => $composableBuilder(
     column: $table.backupFilePath,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get colorHex => $composableBuilder(
+    column: $table.colorHex,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get sortOrder => $composableBuilder(
+    column: $table.sortOrder,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -5274,6 +5399,16 @@ class $$BoardsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get colorHex => $composableBuilder(
+    column: $table.colorHex,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get sortOrder => $composableBuilder(
+    column: $table.sortOrder,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
@@ -5304,6 +5439,12 @@ class $$BoardsTableAnnotationComposer
     column: $table.backupFilePath,
     builder: (column) => column,
   );
+
+  GeneratedColumn<String> get colorHex =>
+      $composableBuilder(column: $table.colorHex, builder: (column) => column);
+
+  GeneratedColumn<int> get sortOrder =>
+      $composableBuilder(column: $table.sortOrder, builder: (column) => column);
 
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
@@ -5343,6 +5484,8 @@ class $$BoardsTableTableManager
                 Value<String> id = const Value.absent(),
                 Value<String> name = const Value.absent(),
                 Value<String?> backupFilePath = const Value.absent(),
+                Value<String?> colorHex = const Value.absent(),
+                Value<int> sortOrder = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
@@ -5350,6 +5493,8 @@ class $$BoardsTableTableManager
                 id: id,
                 name: name,
                 backupFilePath: backupFilePath,
+                colorHex: colorHex,
+                sortOrder: sortOrder,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 rowid: rowid,
@@ -5359,6 +5504,8 @@ class $$BoardsTableTableManager
                 required String id,
                 Value<String> name = const Value.absent(),
                 Value<String?> backupFilePath = const Value.absent(),
+                Value<String?> colorHex = const Value.absent(),
+                Value<int> sortOrder = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
@@ -5366,6 +5513,8 @@ class $$BoardsTableTableManager
                 id: id,
                 name: name,
                 backupFilePath: backupFilePath,
+                colorHex: colorHex,
+                sortOrder: sortOrder,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 rowid: rowid,

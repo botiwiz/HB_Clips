@@ -4,9 +4,12 @@ import 'package:uuid/uuid.dart';
 
 import '../../../core/constants.dart' show kCornerRadius;
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/color_swatch_button.dart';
+import '../../../core/widgets/hsv_color_picker.dart';
 import '../../../data/local/database.dart';
 import '../../../data/providers.dart';
 import '../../../data/repositories/boards_repository.dart';
+import '../../annotation/stroke_painter.dart' show hexToColor, colorToHex;
 import 'board_toolbar.dart';
 
 const _uuid = Uuid();
@@ -153,8 +156,20 @@ class BoardSwitcher extends ConsumerWidget {
   }
 }
 
-class _ManageBoardsDialog extends ConsumerWidget {
+class _ManageBoardsDialog extends ConsumerStatefulWidget {
   const _ManageBoardsDialog();
+
+  @override
+  ConsumerState<_ManageBoardsDialog> createState() =>
+      _ManageBoardsDialogState();
+}
+
+class _ManageBoardsDialogState extends ConsumerState<_ManageBoardsDialog> {
+  /// Which single board's inline color picker is currently expanded, or
+  /// null - same "only one open at a time" shape `board_screen.dart`'s
+  /// `_setFrameColor` already establishes for a frame, just keyed by
+  /// board id since this dialog lists many boards instead of editing one.
+  String? _openPickerBoardId;
 
   Future<void> _rename(
     BuildContext context,
@@ -228,36 +243,95 @@ class _ManageBoardsDialog extends ConsumerWidget {
     }
   }
 
+  void _reorder(List<BoardRow> boards, int oldIndex, int newIndex) {
+    if (newIndex > oldIndex) newIndex -= 1;
+    final reordered = List<BoardRow>.of(boards);
+    final moved = reordered.removeAt(oldIndex);
+    reordered.insert(newIndex, moved);
+    ref
+        .read(boardsRepositoryProvider)
+        .reorderBoards(reordered.map((b) => b.id).toList());
+  }
+
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final boards = ref.watch(boardsProvider).valueOrNull ?? [];
+    final repo = ref.read(boardsRepositoryProvider);
 
     return AlertDialog(
       title: const Text('Manage boards'),
       content: SizedBox(
         width: 360,
-        child: ListView.builder(
+        child: ReorderableListView.builder(
           shrinkWrap: true,
+          buildDefaultDragHandles: false,
           itemCount: boards.length,
+          onReorder: (oldIndex, newIndex) =>
+              _reorder(boards, oldIndex, newIndex),
           itemBuilder: (context, index) {
             final board = boards[index];
-            return ListTile(
-              title: Text(board.name, overflow: TextOverflow.ellipsis),
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
+            final tintColor = board.colorHex != null
+                ? hexToColor(board.colorHex!)
+                : null;
+            return Container(
+              key: ValueKey(board.id),
+              color: tintColor?.withValues(alpha: 0.12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  PillIconButton(
-                    tooltip: 'Rename',
-                    icon: Icons.edit_outlined,
-                    onPressed: () => _rename(context, ref, board),
+                  Row(
+                    children: [
+                      ReorderableDragStartListener(
+                        index: index,
+                        child: const Padding(
+                          padding: EdgeInsets.all(8),
+                          child: Icon(Icons.drag_handle),
+                        ),
+                      ),
+                      ColorSwatchButton(
+                        color: AppTheme.textSecondary,
+                        selected: board.colorHex == null,
+                        onTap: () => repo.updateColor(board.id, null),
+                      ),
+                      InlineColorPickerSwatch(
+                        color: tintColor ?? AppTheme.surfaceCard,
+                        open: _openPickerBoardId == board.id,
+                        onTap: () => setState(
+                          () => _openPickerBoardId =
+                              _openPickerBoardId == board.id ? null : board.id,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          board.name,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      PillIconButton(
+                        tooltip: 'Rename',
+                        icon: Icons.edit_outlined,
+                        onPressed: () => _rename(context, ref, board),
+                      ),
+                      PillIconButton(
+                        tooltip: 'Delete',
+                        icon: Icons.delete_outline,
+                        onPressed: boards.length > 1
+                            ? () => _delete(context, ref, board)
+                            : null,
+                      ),
+                    ],
                   ),
-                  PillIconButton(
-                    tooltip: 'Delete',
-                    icon: Icons.delete_outline,
-                    onPressed: boards.length > 1
-                        ? () => _delete(context, ref, board)
-                        : null,
-                  ),
+                  if (_openPickerBoardId == board.id)
+                    Padding(
+                      padding: const EdgeInsets.only(left: 40, bottom: 8),
+                      child: InlineHsvPickerBar(
+                        initialColor: tintColor ?? AppTheme.surfaceCard,
+                        onChanged: (color) =>
+                            repo.updateColor(board.id, colorToHex(color)),
+                        onDone: () => setState(() => _openPickerBoardId = null),
+                      ),
+                    ),
                 ],
               ),
             );

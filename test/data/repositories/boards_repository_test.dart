@@ -60,6 +60,41 @@ void main() {
     expect(rows.firstWhere((b) => b.id == 'board-2').backupFilePath, isNull);
   });
 
+  test('createBoard assigns strictly increasing sortOrder', () async {
+    await boards.createBoard('board-2', 'Second board');
+    await boards.createBoard('board-3', 'Third board');
+    final rows = await boards.watchBoards().first;
+    final byId = {for (final b in rows) b.id: b.sortOrder};
+    expect(byId[kLocalBoardId]! < byId['board-2']!, isTrue);
+    expect(byId['board-2']! < byId['board-3']!, isTrue);
+  });
+
+  test('updateColor round-trips a hex value and clears back to null', () async {
+    await boards.createBoard('board-2', 'Second board');
+    await boards.updateColor('board-2', '#FF00FF');
+    var rows = await boards.watchBoards().first;
+    expect(rows.firstWhere((b) => b.id == 'board-2').colorHex, '#FF00FF');
+
+    await boards.updateColor('board-2', null);
+    rows = await boards.watchBoards().first;
+    expect(rows.firstWhere((b) => b.id == 'board-2').colorHex, isNull);
+  });
+
+  test("reorderBoards changes watchBoards()'s emitted order to match the new "
+      "arrangement, independent of createdAt", () async {
+    await boards.createBoard('board-2', 'Second board');
+    await boards.createBoard('board-3', 'Third board');
+
+    await boards.reorderBoards(['board-3', kLocalBoardId, 'board-2']);
+
+    final rows = await boards.watchBoards().first;
+    expect(rows.map((b) => b.id).toList(), [
+      'board-3',
+      kLocalBoardId,
+      'board-2',
+    ]);
+  });
+
   test('deleteBoard refuses to delete the only remaining board', () async {
     expect(
       () => boards.deleteBoard(kLocalBoardId),

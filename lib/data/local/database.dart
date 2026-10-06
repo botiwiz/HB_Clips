@@ -19,7 +19,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 20;
+  int get schemaVersion => 21;
 
   Future<void> _seedDefaultBoard(Migrator m) {
     return into(boards).insert(
@@ -112,6 +112,22 @@ class AppDatabase extends _$AppDatabase {
       }
       if (from < 20) {
         await m.addColumn(boards, boards.backupFilePath);
+      }
+      if (from < 21) {
+        await m.addColumn(boards, boards.colorHex);
+        await m.addColumn(boards, boards.sortOrder);
+        // Every pre-existing board just got sortOrder=0 (the column's
+        // default) - backfill each one's real rank in today's createdAt
+        // order, or they'd all tie and the visible order could scramble
+        // the instant this ships.
+        final existing = await (m.database.select(
+          boards,
+        )..orderBy([(b) => OrderingTerm.asc(b.createdAt)])).get();
+        for (var i = 0; i < existing.length; i++) {
+          await (m.database.update(boards)
+                ..where((b) => b.id.equals(existing[i].id)))
+              .write(BoardsCompanion(sortOrder: Value(i)));
+        }
       }
     },
   );
