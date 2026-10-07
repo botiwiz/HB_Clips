@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/constants.dart' show kCornerRadius;
 import '../../../core/theme/app_theme.dart';
+import '../services/auto_backup_service.dart';
 import '../services/board_backup_service.dart';
 
 /// A labeled "File" menu, separate from the main icon toolbar, for the
@@ -34,6 +35,8 @@ class FileMenuButton extends ConsumerWidget {
               saveBoardBackup(context, ref);
             case 'save_as':
               saveBoardBackupAs(context, ref);
+            case 'show_backups':
+              showBackupsFolder(context, ref);
           }
         },
         itemBuilder: (context) => const [
@@ -64,6 +67,17 @@ class FileMenuButton extends ConsumerWidget {
                 Icon(Icons.save_as_outlined, size: 20),
                 SizedBox(width: 8),
                 Text('Save As...'),
+              ],
+            ),
+          ),
+          PopupMenuDivider(),
+          PopupMenuItem<String>(
+            value: 'show_backups',
+            child: Row(
+              children: [
+                Icon(Icons.history, size: 20),
+                SizedBox(width: 8),
+                Text('Show Backups...'),
               ],
             ),
           ),

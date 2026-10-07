@@ -21,6 +21,7 @@ import '../annotation/draw_toolbar.dart';
 import '../annotation/stroke_painter.dart' show colorToHex, hexToColor;
 import '../bin/bin_screen.dart';
 import 'controllers/board_controller.dart';
+import 'controllers/auto_backup_scheduler.dart';
 import 'controllers/board_view_persistence_controller.dart';
 import 'controllers/undo_controller.dart';
 import 'geometry/frame_geometry.dart';
@@ -1197,6 +1198,7 @@ class BoardScreen extends ConsumerWidget {
             children: [
               const Positioned.fill(child: BoardCanvas()),
               const BoardViewPersistence(),
+              const AutoBackupScheduler(),
               Positioned(
                 top: 16,
                 left: 16,

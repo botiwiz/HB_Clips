@@ -111,3 +111,25 @@ const int kBoardBackupFormatVersion = 1;
 /// proprietary, self-contained zip container (manifest.json + embedded
 /// image bytes) distinct from this app's `.pur` import/export format.
 const String kBoardBackupExtension = 'hbbackup';
+
+/// How often AutoBackupScheduler writes a fresh backup of every board
+/// while the app is running (plus once a few minutes after startup, and
+/// once more right before the app is backgrounded/closed - see that
+/// class). Backups are cheap (same bytes `.hbbackup` export already
+/// produces) so this can be fairly frequent without real cost.
+const Duration kAutoBackupInterval = Duration(minutes: 30);
+
+/// Delay before the very first automatic backup after the app starts -
+/// short enough to protect a session the user closes quickly, long
+/// enough not to add disk I/O to the app's own startup.
+const Duration kAutoBackupInitialDelay = Duration(minutes: 2);
+
+/// A background-triggered backup (app pause/close) is skipped if the
+/// last one ran more recently than this - avoids redundant writes from
+/// e.g. frequent alt-tabbing.
+const Duration kAutoBackupMinGap = Duration(minutes: 5);
+
+/// How many past backup runs (each its own timestamped folder) to keep
+/// before pruning the oldest - bounds disk usage from an otherwise
+/// ever-growing backups folder.
+const int kAutoBackupRetentionCount = 10;
