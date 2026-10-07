@@ -19,15 +19,6 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
 
   flutter::DartProject project(L"data");
 
-  // Impeller has no software-rendering fallback on Windows - on a machine
-  // where ANGLE can't establish a D3D11-backed GPU surface the way Impeller
-  // expects, it fails outright instead of falling back through ANGLE's own
-  // driver-negotiation path (D3D11 -> D3D9 -> WARP), leaving the window
-  // blank with no error shown anywhere in the UI. The legacy Skia/ANGLE
-  // renderer does support that fallback - this is Flutter's own documented
-  // opt-out for exactly this class of Windows rendering issue.
-  project.set_impeller_switch(flutter::ImpellerSwitch::Disabled);
-
   std::vector<std::string> command_line_arguments =
       GetCommandLineArguments();
 
