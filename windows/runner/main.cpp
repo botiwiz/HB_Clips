@@ -5,6 +5,19 @@
 #include "flutter_window.h"
 #include "utils.h"
 
+// Switchable-graphics laptops (NVIDIA Optimus / AMD PowerXpress) can pin an
+// app to the integrated GPU per-executable-path regardless of the driver's
+// global preference, and the ANGLE-backed D3D11 swapchain can then fail to
+// ever get composited to the display - startup logs stay completely clean
+// (the renderer reports success) while nothing is ever actually painted.
+// These exported globals are the standard, driver-read opt-out: Windows
+// routes the app to the discrete GPU unconditionally, no Settings UI
+// dependency required.
+extern "C" {
+__declspec(dllexport) unsigned long NvOptimusEnablement = 0x00000001;
+__declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
+}
+
 int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
                       _In_ wchar_t *command_line, _In_ int show_command) {
   // Attach to console when present (e.g., 'flutter run') or create a
