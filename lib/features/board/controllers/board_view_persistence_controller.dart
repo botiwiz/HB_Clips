@@ -27,74 +27,64 @@ BoardRow? _findBoard(List<BoardRow> boards, String id) {
 /// immediately before switching boards (or backgrounding the app) so the
 /// tail end of a gesture is never lost.
 ///
-/// Created once and kept alive for the app's lifetime by being read once
-/// from `BoardScreen.build()` - a plain (non-autoDispose) `Provider` stays
-/// alive once created regardless of further use, the same "a provider
-/// whose job is side effects" shape every other long-lived singleton
-/// service in this app already uses.
+/// An invisible (`SizedBox.shrink()`) widget rather than a bare side-effect
+/// `Provider` - an earlier revision hosted this logic in a plain `Provider`
+/// whose `create` callback called `ref.listen` on its own internal `Ref`;
+/// that never visibly fired on a live build despite reading as correct and
+/// type-checking cleanly. This version uses only `WidgetRef.listen` calls
+/// made directly inside a `ConsumerState.build()` - the exact mechanism
+/// `board_screen.dart`'s own undo-clearing listener already uses
+/// successfully - with the debounce `Timer` held as a genuinely persistent
+/// `State` instance field. Insert `const BoardViewPersistence()` once into
+/// `BoardScreen`'s widget tree (a zero-footprint `Stack` child) - see that
+/// file.
 ///
 /// TEMPORARY: every decision point below logs via `debugPrint` (prefixed
 /// `[view-persist]`) - added because a live report said resuming doesn't
 /// work at all, and this sandbox can't run the app's GUI to reproduce it.
-/// Run via `flutter run` and watch the console while panning/switching
-/// boards/restarting to see exactly which step (if any) isn't doing what
-/// it should; remove this logging once the real cause is found.
-class BoardViewPersistenceController with WidgetsBindingObserver {
-  final Ref ref;
+/// Run via `flutter run` and watch the raw console (not just DevTools'
+/// Logging tab, which can filter print output separately from navigation
+/// events) while panning/switching boards/restarting to see exactly which
+/// step (if any) isn't doing what it should; remove this logging once the
+/// real cause is found.
+class BoardViewPersistence extends ConsumerStatefulWidget {
+  const BoardViewPersistence({super.key});
+
+  @override
+  ConsumerState<BoardViewPersistence> createState() =>
+      _BoardViewPersistenceState();
+}
+
+class _BoardViewPersistenceState extends ConsumerState<BoardViewPersistence>
+    with WidgetsBindingObserver {
   Timer? _debounce;
-  String _trackedBoardId;
+  late String _trackedBoardId;
   bool _loadedInitialView = false;
 
-  BoardViewPersistenceController(this.ref)
-    : _trackedBoardId = ref.read(currentBoardIdProvider) {
-    debugPrint(
-      '[view-persist] controller constructed, initial board = '
-      '$_trackedBoardId',
-    );
+  @override
+  void initState() {
+    super.initState();
+    _trackedBoardId = ref.read(currentBoardIdProvider);
+    debugPrint('[view-persist] initState, initial board = $_trackedBoardId');
     WidgetsBinding.instance.addObserver(this);
 
-    // Cold start: boardsProvider's first stream event may not have landed
-    // yet on the very first build, so the initially-current board's saved
-    // view is applied the first time it resolves - fireImmediately covers
-    // the (more common) case it's already resolved by the time this
-    // listener attaches.
-    ref.listen<AsyncValue<List<BoardRow>>>(boardsProvider, (previous, next) {
-      debugPrint(
-        '[view-persist] boardsProvider listener fired: '
-        'loadedInitialView=$_loadedInitialView, hasValue=${next.hasValue}, '
-        'error=${next.error}',
-      );
-      if (_loadedInitialView) return;
-      final boards = next.valueOrNull;
-      if (boards == null) return;
+    // WidgetRef.listen has no fireImmediately param (unlike Ref.listen) -
+    // emulate it manually: if boardsProvider already resolved by the time
+    // this widget is inserted, apply the saved view right away instead of
+    // waiting for a future change event that may never come.
+    final initialBoards = ref.read(boardsProvider).valueOrNull;
+    if (initialBoards != null) {
       _loadedInitialView = true;
-      _applyView(_trackedBoardId, boards);
-    }, fireImmediately: true);
+      _applyView(_trackedBoardId, initialBoards);
+    }
+  }
 
-    ref.listen<String>(currentBoardIdProvider, (previous, next) {
-      debugPrint('[view-persist] currentBoardIdProvider: $previous -> $next');
-      if (previous == null || previous == next) return;
-      _flushSave(previous);
-      _trackedBoardId = next;
-      _applyView(next, ref.read(boardsProvider).valueOrNull ?? []);
-    });
-
-    ref.listen<BoardViewState>(boardViewProvider, (previous, next) {
-      if (previous == next) return;
-      debugPrint(
-        '[view-persist] boardViewProvider changed: '
-        '${previous?.panOffset}/${previous?.scale} -> '
-        '${next.panOffset}/${next.scale} - scheduling save for '
-        '$_trackedBoardId',
-      );
-      _scheduleSave(_trackedBoardId);
-    });
-
-    ref.onDispose(() {
-      debugPrint('[view-persist] controller disposed');
-      WidgetsBinding.instance.removeObserver(this);
-      _debounce?.cancel();
-    });
+  @override
+  void dispose() {
+    debugPrint('[view-persist] disposed');
+    WidgetsBinding.instance.removeObserver(this);
+    _debounce?.cancel();
+    super.dispose();
   }
 
   @override
@@ -161,8 +151,45 @@ class BoardViewPersistenceController with WidgetsBindingObserver {
       );
     }
   }
-}
 
-final boardViewPersistenceProvider = Provider<BoardViewPersistenceController>(
-  (ref) => BoardViewPersistenceController(ref),
-);
+  @override
+  Widget build(BuildContext context) {
+    // Registered every build - cheap/idempotent, since Riverpod diffs
+    // against what this Element already listens to, same as any
+    // ref.listen inside a ConsumerWidget's build (board_screen.dart's
+    // own undo-clearing listener already relies on exactly this).
+    ref.listen<AsyncValue<List<BoardRow>>>(boardsProvider, (previous, next) {
+      debugPrint(
+        '[view-persist] boardsProvider listener fired: '
+        'loadedInitialView=$_loadedInitialView, hasValue=${next.hasValue}, '
+        'error=${next.error}',
+      );
+      if (_loadedInitialView) return;
+      final boards = next.valueOrNull;
+      if (boards == null) return;
+      _loadedInitialView = true;
+      _applyView(_trackedBoardId, boards);
+    });
+
+    ref.listen<String>(currentBoardIdProvider, (previous, next) {
+      debugPrint('[view-persist] currentBoardIdProvider: $previous -> $next');
+      if (previous == null || previous == next) return;
+      _flushSave(previous);
+      _trackedBoardId = next;
+      _applyView(next, ref.read(boardsProvider).valueOrNull ?? []);
+    });
+
+    ref.listen<BoardViewState>(boardViewProvider, (previous, next) {
+      if (previous == next) return;
+      debugPrint(
+        '[view-persist] boardViewProvider changed: '
+        '${previous?.panOffset}/${previous?.scale} -> '
+        '${next.panOffset}/${next.scale} - scheduling save for '
+        '$_trackedBoardId',
+      );
+      _scheduleSave(_trackedBoardId);
+    });
+
+    return const SizedBox.shrink();
+  }
+}

@@ -1109,11 +1109,6 @@ class BoardScreen extends ConsumerWidget {
         ref.read(undoManagerProvider.notifier).clear();
       }
     });
-    // Keeps BoardViewPersistenceController alive for the app's lifetime -
-    // see that class for what it does. A plain (non-autoDispose) Provider
-    // stays alive once read, regardless of further use, so this one read
-    // is enough.
-    ref.read(boardViewPersistenceProvider);
     final undoState = ref.watch(undoManagerProvider);
     final selection = ref.watch(selectedClipIdsProvider);
     final hasSelection = selection.isNotEmpty;
@@ -1201,6 +1196,7 @@ class BoardScreen extends ConsumerWidget {
           child: Stack(
             children: [
               const Positioned.fill(child: BoardCanvas()),
+              const BoardViewPersistence(),
               Positioned(
                 top: 16,
                 left: 16,
