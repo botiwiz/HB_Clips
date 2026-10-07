@@ -93,6 +93,17 @@ class BoardSwitcher extends ConsumerWidget {
               value: board.id,
               child: Row(
                 children: [
+                  if (board.colorHex != null) ...[
+                    Container(
+                      width: 12,
+                      height: 12,
+                      decoration: BoxDecoration(
+                        color: hexToColor(board.colorHex!),
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
                   Icon(
                     board.id == currentId
                         ? Icons.check_circle

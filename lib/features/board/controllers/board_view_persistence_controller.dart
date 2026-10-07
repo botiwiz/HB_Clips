@@ -32,6 +32,13 @@ BoardRow? _findBoard(List<BoardRow> boards, String id) {
 /// alive once created regardless of further use, the same "a provider
 /// whose job is side effects" shape every other long-lived singleton
 /// service in this app already uses.
+///
+/// TEMPORARY: every decision point below logs via `debugPrint` (prefixed
+/// `[view-persist]`) - added because a live report said resuming doesn't
+/// work at all, and this sandbox can't run the app's GUI to reproduce it.
+/// Run via `flutter run` and watch the console while panning/switching
+/// boards/restarting to see exactly which step (if any) isn't doing what
+/// it should; remove this logging once the real cause is found.
 class BoardViewPersistenceController with WidgetsBindingObserver {
   final Ref ref;
   Timer? _debounce;
@@ -40,6 +47,10 @@ class BoardViewPersistenceController with WidgetsBindingObserver {
 
   BoardViewPersistenceController(this.ref)
     : _trackedBoardId = ref.read(currentBoardIdProvider) {
+    debugPrint(
+      '[view-persist] controller constructed, initial board = '
+      '$_trackedBoardId',
+    );
     WidgetsBinding.instance.addObserver(this);
 
     // Cold start: boardsProvider's first stream event may not have landed
@@ -48,6 +59,11 @@ class BoardViewPersistenceController with WidgetsBindingObserver {
     // the (more common) case it's already resolved by the time this
     // listener attaches.
     ref.listen<AsyncValue<List<BoardRow>>>(boardsProvider, (previous, next) {
+      debugPrint(
+        '[view-persist] boardsProvider listener fired: '
+        'loadedInitialView=$_loadedInitialView, hasValue=${next.hasValue}, '
+        'error=${next.error}',
+      );
       if (_loadedInitialView) return;
       final boards = next.valueOrNull;
       if (boards == null) return;
@@ -56,6 +72,7 @@ class BoardViewPersistenceController with WidgetsBindingObserver {
     }, fireImmediately: true);
 
     ref.listen<String>(currentBoardIdProvider, (previous, next) {
+      debugPrint('[view-persist] currentBoardIdProvider: $previous -> $next');
       if (previous == null || previous == next) return;
       _flushSave(previous);
       _trackedBoardId = next;
@@ -64,10 +81,17 @@ class BoardViewPersistenceController with WidgetsBindingObserver {
 
     ref.listen<BoardViewState>(boardViewProvider, (previous, next) {
       if (previous == next) return;
+      debugPrint(
+        '[view-persist] boardViewProvider changed: '
+        '${previous?.panOffset}/${previous?.scale} -> '
+        '${next.panOffset}/${next.scale} - scheduling save for '
+        '$_trackedBoardId',
+      );
       _scheduleSave(_trackedBoardId);
     });
 
     ref.onDispose(() {
+      debugPrint('[view-persist] controller disposed');
       WidgetsBinding.instance.removeObserver(this);
       _debounce?.cancel();
     });
@@ -87,30 +111,50 @@ class BoardViewPersistenceController with WidgetsBindingObserver {
   void _scheduleSave(String boardId) {
     _debounce?.cancel();
     _debounce = Timer(_kViewSaveDebounce, () => _flushSave(boardId));
+    debugPrint('[view-persist] save scheduled for $boardId');
   }
 
-  Future<void> _flushSave(String boardId) {
+  Future<void> _flushSave(String boardId) async {
     _debounce?.cancel();
     final view = ref.read(boardViewProvider);
-    return ref
-        .read(boardsRepositoryProvider)
-        .updateViewState(
-          boardId,
-          panX: view.panOffset.dx,
-          panY: view.panOffset.dy,
-          scale: view.scale,
-        );
+    debugPrint(
+      '[view-persist] flushing save for $boardId: '
+      '${view.panOffset}/${view.scale}',
+    );
+    try {
+      await ref
+          .read(boardsRepositoryProvider)
+          .updateViewState(
+            boardId,
+            panX: view.panOffset.dx,
+            panY: view.panOffset.dy,
+            scale: view.scale,
+          );
+      debugPrint('[view-persist] save succeeded for $boardId');
+    } catch (e, st) {
+      debugPrint('[view-persist] save FAILED for $boardId: $e\n$st');
+    }
   }
 
   void _applyView(String boardId, List<BoardRow> boards) {
     final board = _findBoard(boards, boardId);
     final notifier = ref.read(boardViewProvider.notifier);
+    debugPrint(
+      '[view-persist] applying view for $boardId: found=${board != null}, '
+      'panX=${board?.viewPanX}, panY=${board?.viewPanY}, '
+      'scale=${board?.viewScale}',
+    );
     if (board == null ||
         board.viewPanX == null ||
         board.viewPanY == null ||
         board.viewScale == null) {
+      debugPrint('[view-persist] -> reset() (no saved view)');
       notifier.reset();
     } else {
+      debugPrint(
+        '[view-persist] -> setView(${board.viewPanX}, ${board.viewPanY}, '
+        '${board.viewScale})',
+      );
       notifier.setView(
         Offset(board.viewPanX!, board.viewPanY!),
         board.viewScale!,
