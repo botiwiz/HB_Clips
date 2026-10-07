@@ -2,23 +2,22 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 
+import '../core/portable_data_root.dart';
 import 'local/database.dart';
 
 const _uuid = Uuid();
 
-/// Native implementation: a key is a real filesystem path under the app's
-/// documents directory, `clips/` subfolder - unchanged from what
-/// `board_screen.dart` did directly before this abstraction existed.
+/// Native implementation: a key is a real filesystem path under
+/// [portableDataRoot]'s `clips/` subfolder.
 class LocalBlobStore {
   // ignore: unused_element_parameter
   LocalBlobStore(AppDatabase db);
 
   Future<String> writeBytes(Uint8List bytes, {String extension = ''}) async {
-    final dir = await getApplicationDocumentsDirectory();
-    final clipsDir = Directory(p.join(dir.path, 'clips'));
+    final root = await portableDataRoot();
+    final clipsDir = Directory(p.join(root.path, 'clips'));
     await clipsDir.create(recursive: true);
     final path = p.join(clipsDir.path, '${_uuid.v4()}$extension');
     await File(path).writeAsBytes(bytes);

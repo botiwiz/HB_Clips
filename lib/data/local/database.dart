@@ -2,6 +2,7 @@ import 'package:drift/drift.dart';
 import 'package:drift_flutter/drift_flutter.dart';
 
 import '../../core/constants.dart';
+import '../../core/portable_data_root.dart';
 import 'tables/boards_table.dart';
 import 'tables/clips_table.dart';
 import 'tables/connectors_table.dart';
@@ -163,16 +164,17 @@ class AppDatabase extends _$AppDatabase {
 }
 
 /// `driftDatabase()` picks the right backend per platform: a native SQLite
-/// file (via `getApplicationDocumentsDirectory()`) on desktop/mobile, or a
-/// WASM+IndexedDB-backed database in the browser on web - the same local
-/// database either way, no separate code path for web. The web backend
-/// needs `sqlite3.wasm` and `drift_worker.js`
+/// file (in [portableDataRoot], a `boards/` folder next to the running
+/// `.exe`) on desktop/mobile, or a WASM+IndexedDB-backed database in the
+/// browser on web - the same local database either way, no separate code
+/// path for web. The web backend needs `sqlite3.wasm` and `drift_worker.js`
 /// present in `web/`, downloaded from the `sqlite3`/`drift` GitHub releases
 /// matching this project's installed package versions - re-download and
 /// replace both if those package versions are ever bumped.
 QueryExecutor _openConnection() {
   return driftDatabase(
     name: 'hb_clips',
+    native: DriftNativeOptions(databaseDirectory: portableDataRoot),
     web: DriftWebOptions(
       sqlite3Wasm: Uri.parse('sqlite3.wasm'),
       driftWorker: Uri.parse('drift_worker.js'),

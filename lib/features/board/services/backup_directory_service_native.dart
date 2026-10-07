@@ -1,15 +1,16 @@
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 
-/// `<documents>/backups` - created if it doesn't exist yet. The single
-/// shared root both AutoBackupScheduler (writes into it) and
+import '../../../core/portable_data_root.dart';
+
+/// `<portableDataRoot>/backups` - created if it doesn't exist yet. The
+/// single shared root both AutoBackupScheduler (writes into it) and
 /// showBackupsFolder (opens it) resolve independently, so it always
 /// exists by the time either is used even if the other never ran yet.
 Future<String> backupsRootPath() async {
-  final docs = await getApplicationDocumentsDirectory();
-  final root = Directory(p.join(docs.path, 'backups'));
+  final dataRoot = await portableDataRoot();
+  final root = Directory(p.join(dataRoot.path, 'backups'));
   await root.create(recursive: true);
   return root.path;
 }
