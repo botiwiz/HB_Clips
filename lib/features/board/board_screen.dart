@@ -21,6 +21,7 @@ import '../annotation/draw_toolbar.dart';
 import '../annotation/stroke_painter.dart' show colorToHex, hexToColor;
 import '../bin/bin_screen.dart';
 import 'controllers/board_controller.dart';
+import 'controllers/board_view_persistence_controller.dart';
 import 'controllers/undo_controller.dart';
 import 'geometry/frame_geometry.dart';
 import 'geometry/frame_presets.dart';
@@ -1108,6 +1109,11 @@ class BoardScreen extends ConsumerWidget {
         ref.read(undoManagerProvider.notifier).clear();
       }
     });
+    // Keeps BoardViewPersistenceController alive for the app's lifetime -
+    // see that class for what it does. A plain (non-autoDispose) Provider
+    // stays alive once read, regardless of further use, so this one read
+    // is enough.
+    ref.read(boardViewPersistenceProvider);
     final undoState = ref.watch(undoManagerProvider);
     final selection = ref.watch(selectedClipIdsProvider);
     final hasSelection = selection.isNotEmpty;

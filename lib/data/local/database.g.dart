@@ -2402,6 +2402,39 @@ class $BoardsTable extends Boards with TableInfo<$BoardsTable, BoardRow> {
     requiredDuringInsert: false,
     defaultValue: const Constant(0),
   );
+  static const VerificationMeta _viewPanXMeta = const VerificationMeta(
+    'viewPanX',
+  );
+  @override
+  late final GeneratedColumn<double> viewPanX = GeneratedColumn<double>(
+    'view_pan_x',
+    aliasedName,
+    true,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _viewPanYMeta = const VerificationMeta(
+    'viewPanY',
+  );
+  @override
+  late final GeneratedColumn<double> viewPanY = GeneratedColumn<double>(
+    'view_pan_y',
+    aliasedName,
+    true,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _viewScaleMeta = const VerificationMeta(
+    'viewScale',
+  );
+  @override
+  late final GeneratedColumn<double> viewScale = GeneratedColumn<double>(
+    'view_scale',
+    aliasedName,
+    true,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -2433,6 +2466,9 @@ class $BoardsTable extends Boards with TableInfo<$BoardsTable, BoardRow> {
     backupFilePath,
     colorHex,
     sortOrder,
+    viewPanX,
+    viewPanY,
+    viewScale,
     createdAt,
     updatedAt,
   ];
@@ -2480,6 +2516,24 @@ class $BoardsTable extends Boards with TableInfo<$BoardsTable, BoardRow> {
         sortOrder.isAcceptableOrUnknown(data['sort_order']!, _sortOrderMeta),
       );
     }
+    if (data.containsKey('view_pan_x')) {
+      context.handle(
+        _viewPanXMeta,
+        viewPanX.isAcceptableOrUnknown(data['view_pan_x']!, _viewPanXMeta),
+      );
+    }
+    if (data.containsKey('view_pan_y')) {
+      context.handle(
+        _viewPanYMeta,
+        viewPanY.isAcceptableOrUnknown(data['view_pan_y']!, _viewPanYMeta),
+      );
+    }
+    if (data.containsKey('view_scale')) {
+      context.handle(
+        _viewScaleMeta,
+        viewScale.isAcceptableOrUnknown(data['view_scale']!, _viewScaleMeta),
+      );
+    }
     if (data.containsKey('created_at')) {
       context.handle(
         _createdAtMeta,
@@ -2521,6 +2575,18 @@ class $BoardsTable extends Boards with TableInfo<$BoardsTable, BoardRow> {
         DriftSqlType.int,
         data['${effectivePrefix}sort_order'],
       )!,
+      viewPanX: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}view_pan_x'],
+      ),
+      viewPanY: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}view_pan_y'],
+      ),
+      viewScale: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}view_scale'],
+      ),
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
@@ -2562,6 +2628,16 @@ class BoardRow extends DataClass implements Insertable<BoardRow> {
   /// rather than replacing it, since `createdAt` is also kept as a
   /// stable, never-reordered tiebreaker.
   final int sortOrder;
+
+  /// Last pan/zoom camera this board was viewed at - null means this
+  /// board has never had a view saved (brand new, or predates this
+  /// column), which falls back to `BoardViewState()`'s own default
+  /// (centered, scale 1) - the same view every board already opens to
+  /// today. Always written/read together as one (panX, panY, scale)
+  /// triple; see `BoardViewPersistenceController`.
+  final double? viewPanX;
+  final double? viewPanY;
+  final double? viewScale;
   final DateTime createdAt;
   final DateTime updatedAt;
   const BoardRow({
@@ -2570,6 +2646,9 @@ class BoardRow extends DataClass implements Insertable<BoardRow> {
     this.backupFilePath,
     this.colorHex,
     required this.sortOrder,
+    this.viewPanX,
+    this.viewPanY,
+    this.viewScale,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -2585,6 +2664,15 @@ class BoardRow extends DataClass implements Insertable<BoardRow> {
       map['color_hex'] = Variable<String>(colorHex);
     }
     map['sort_order'] = Variable<int>(sortOrder);
+    if (!nullToAbsent || viewPanX != null) {
+      map['view_pan_x'] = Variable<double>(viewPanX);
+    }
+    if (!nullToAbsent || viewPanY != null) {
+      map['view_pan_y'] = Variable<double>(viewPanY);
+    }
+    if (!nullToAbsent || viewScale != null) {
+      map['view_scale'] = Variable<double>(viewScale);
+    }
     map['created_at'] = Variable<DateTime>(createdAt);
     map['updated_at'] = Variable<DateTime>(updatedAt);
     return map;
@@ -2601,6 +2689,15 @@ class BoardRow extends DataClass implements Insertable<BoardRow> {
           ? const Value.absent()
           : Value(colorHex),
       sortOrder: Value(sortOrder),
+      viewPanX: viewPanX == null && nullToAbsent
+          ? const Value.absent()
+          : Value(viewPanX),
+      viewPanY: viewPanY == null && nullToAbsent
+          ? const Value.absent()
+          : Value(viewPanY),
+      viewScale: viewScale == null && nullToAbsent
+          ? const Value.absent()
+          : Value(viewScale),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
     );
@@ -2617,6 +2714,9 @@ class BoardRow extends DataClass implements Insertable<BoardRow> {
       backupFilePath: serializer.fromJson<String?>(json['backupFilePath']),
       colorHex: serializer.fromJson<String?>(json['colorHex']),
       sortOrder: serializer.fromJson<int>(json['sortOrder']),
+      viewPanX: serializer.fromJson<double?>(json['viewPanX']),
+      viewPanY: serializer.fromJson<double?>(json['viewPanY']),
+      viewScale: serializer.fromJson<double?>(json['viewScale']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
     );
@@ -2630,6 +2730,9 @@ class BoardRow extends DataClass implements Insertable<BoardRow> {
       'backupFilePath': serializer.toJson<String?>(backupFilePath),
       'colorHex': serializer.toJson<String?>(colorHex),
       'sortOrder': serializer.toJson<int>(sortOrder),
+      'viewPanX': serializer.toJson<double?>(viewPanX),
+      'viewPanY': serializer.toJson<double?>(viewPanY),
+      'viewScale': serializer.toJson<double?>(viewScale),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
     };
@@ -2641,6 +2744,9 @@ class BoardRow extends DataClass implements Insertable<BoardRow> {
     Value<String?> backupFilePath = const Value.absent(),
     Value<String?> colorHex = const Value.absent(),
     int? sortOrder,
+    Value<double?> viewPanX = const Value.absent(),
+    Value<double?> viewPanY = const Value.absent(),
+    Value<double?> viewScale = const Value.absent(),
     DateTime? createdAt,
     DateTime? updatedAt,
   }) => BoardRow(
@@ -2651,6 +2757,9 @@ class BoardRow extends DataClass implements Insertable<BoardRow> {
         : this.backupFilePath,
     colorHex: colorHex.present ? colorHex.value : this.colorHex,
     sortOrder: sortOrder ?? this.sortOrder,
+    viewPanX: viewPanX.present ? viewPanX.value : this.viewPanX,
+    viewPanY: viewPanY.present ? viewPanY.value : this.viewPanY,
+    viewScale: viewScale.present ? viewScale.value : this.viewScale,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
   );
@@ -2663,6 +2772,9 @@ class BoardRow extends DataClass implements Insertable<BoardRow> {
           : this.backupFilePath,
       colorHex: data.colorHex.present ? data.colorHex.value : this.colorHex,
       sortOrder: data.sortOrder.present ? data.sortOrder.value : this.sortOrder,
+      viewPanX: data.viewPanX.present ? data.viewPanX.value : this.viewPanX,
+      viewPanY: data.viewPanY.present ? data.viewPanY.value : this.viewPanY,
+      viewScale: data.viewScale.present ? data.viewScale.value : this.viewScale,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
@@ -2676,6 +2788,9 @@ class BoardRow extends DataClass implements Insertable<BoardRow> {
           ..write('backupFilePath: $backupFilePath, ')
           ..write('colorHex: $colorHex, ')
           ..write('sortOrder: $sortOrder, ')
+          ..write('viewPanX: $viewPanX, ')
+          ..write('viewPanY: $viewPanY, ')
+          ..write('viewScale: $viewScale, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
@@ -2689,6 +2804,9 @@ class BoardRow extends DataClass implements Insertable<BoardRow> {
     backupFilePath,
     colorHex,
     sortOrder,
+    viewPanX,
+    viewPanY,
+    viewScale,
     createdAt,
     updatedAt,
   );
@@ -2701,6 +2819,9 @@ class BoardRow extends DataClass implements Insertable<BoardRow> {
           other.backupFilePath == this.backupFilePath &&
           other.colorHex == this.colorHex &&
           other.sortOrder == this.sortOrder &&
+          other.viewPanX == this.viewPanX &&
+          other.viewPanY == this.viewPanY &&
+          other.viewScale == this.viewScale &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt);
 }
@@ -2711,6 +2832,9 @@ class BoardsCompanion extends UpdateCompanion<BoardRow> {
   final Value<String?> backupFilePath;
   final Value<String?> colorHex;
   final Value<int> sortOrder;
+  final Value<double?> viewPanX;
+  final Value<double?> viewPanY;
+  final Value<double?> viewScale;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
   final Value<int> rowid;
@@ -2720,6 +2844,9 @@ class BoardsCompanion extends UpdateCompanion<BoardRow> {
     this.backupFilePath = const Value.absent(),
     this.colorHex = const Value.absent(),
     this.sortOrder = const Value.absent(),
+    this.viewPanX = const Value.absent(),
+    this.viewPanY = const Value.absent(),
+    this.viewScale = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -2730,6 +2857,9 @@ class BoardsCompanion extends UpdateCompanion<BoardRow> {
     this.backupFilePath = const Value.absent(),
     this.colorHex = const Value.absent(),
     this.sortOrder = const Value.absent(),
+    this.viewPanX = const Value.absent(),
+    this.viewPanY = const Value.absent(),
+    this.viewScale = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -2740,6 +2870,9 @@ class BoardsCompanion extends UpdateCompanion<BoardRow> {
     Expression<String>? backupFilePath,
     Expression<String>? colorHex,
     Expression<int>? sortOrder,
+    Expression<double>? viewPanX,
+    Expression<double>? viewPanY,
+    Expression<double>? viewScale,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
     Expression<int>? rowid,
@@ -2750,6 +2883,9 @@ class BoardsCompanion extends UpdateCompanion<BoardRow> {
       if (backupFilePath != null) 'backup_file_path': backupFilePath,
       if (colorHex != null) 'color_hex': colorHex,
       if (sortOrder != null) 'sort_order': sortOrder,
+      if (viewPanX != null) 'view_pan_x': viewPanX,
+      if (viewPanY != null) 'view_pan_y': viewPanY,
+      if (viewScale != null) 'view_scale': viewScale,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (rowid != null) 'rowid': rowid,
@@ -2762,6 +2898,9 @@ class BoardsCompanion extends UpdateCompanion<BoardRow> {
     Value<String?>? backupFilePath,
     Value<String?>? colorHex,
     Value<int>? sortOrder,
+    Value<double?>? viewPanX,
+    Value<double?>? viewPanY,
+    Value<double?>? viewScale,
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
     Value<int>? rowid,
@@ -2772,6 +2911,9 @@ class BoardsCompanion extends UpdateCompanion<BoardRow> {
       backupFilePath: backupFilePath ?? this.backupFilePath,
       colorHex: colorHex ?? this.colorHex,
       sortOrder: sortOrder ?? this.sortOrder,
+      viewPanX: viewPanX ?? this.viewPanX,
+      viewPanY: viewPanY ?? this.viewPanY,
+      viewScale: viewScale ?? this.viewScale,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       rowid: rowid ?? this.rowid,
@@ -2796,6 +2938,15 @@ class BoardsCompanion extends UpdateCompanion<BoardRow> {
     if (sortOrder.present) {
       map['sort_order'] = Variable<int>(sortOrder.value);
     }
+    if (viewPanX.present) {
+      map['view_pan_x'] = Variable<double>(viewPanX.value);
+    }
+    if (viewPanY.present) {
+      map['view_pan_y'] = Variable<double>(viewPanY.value);
+    }
+    if (viewScale.present) {
+      map['view_scale'] = Variable<double>(viewScale.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
@@ -2816,6 +2967,9 @@ class BoardsCompanion extends UpdateCompanion<BoardRow> {
           ..write('backupFilePath: $backupFilePath, ')
           ..write('colorHex: $colorHex, ')
           ..write('sortOrder: $sortOrder, ')
+          ..write('viewPanX: $viewPanX, ')
+          ..write('viewPanY: $viewPanY, ')
+          ..write('viewScale: $viewScale, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('rowid: $rowid')
@@ -5314,6 +5468,9 @@ typedef $$BoardsTableCreateCompanionBuilder =
       Value<String?> backupFilePath,
       Value<String?> colorHex,
       Value<int> sortOrder,
+      Value<double?> viewPanX,
+      Value<double?> viewPanY,
+      Value<double?> viewScale,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
       Value<int> rowid,
@@ -5325,6 +5482,9 @@ typedef $$BoardsTableUpdateCompanionBuilder =
       Value<String?> backupFilePath,
       Value<String?> colorHex,
       Value<int> sortOrder,
+      Value<double?> viewPanX,
+      Value<double?> viewPanY,
+      Value<double?> viewScale,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
       Value<int> rowid,
@@ -5361,6 +5521,21 @@ class $$BoardsTableFilterComposer
 
   ColumnFilters<int> get sortOrder => $composableBuilder(
     column: $table.sortOrder,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get viewPanX => $composableBuilder(
+    column: $table.viewPanX,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get viewPanY => $composableBuilder(
+    column: $table.viewPanY,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get viewScale => $composableBuilder(
+    column: $table.viewScale,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -5409,6 +5584,21 @@ class $$BoardsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<double> get viewPanX => $composableBuilder(
+    column: $table.viewPanX,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get viewPanY => $composableBuilder(
+    column: $table.viewPanY,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get viewScale => $composableBuilder(
+    column: $table.viewScale,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
@@ -5445,6 +5635,15 @@ class $$BoardsTableAnnotationComposer
 
   GeneratedColumn<int> get sortOrder =>
       $composableBuilder(column: $table.sortOrder, builder: (column) => column);
+
+  GeneratedColumn<double> get viewPanX =>
+      $composableBuilder(column: $table.viewPanX, builder: (column) => column);
+
+  GeneratedColumn<double> get viewPanY =>
+      $composableBuilder(column: $table.viewPanY, builder: (column) => column);
+
+  GeneratedColumn<double> get viewScale =>
+      $composableBuilder(column: $table.viewScale, builder: (column) => column);
 
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
@@ -5486,6 +5685,9 @@ class $$BoardsTableTableManager
                 Value<String?> backupFilePath = const Value.absent(),
                 Value<String?> colorHex = const Value.absent(),
                 Value<int> sortOrder = const Value.absent(),
+                Value<double?> viewPanX = const Value.absent(),
+                Value<double?> viewPanY = const Value.absent(),
+                Value<double?> viewScale = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
@@ -5495,6 +5697,9 @@ class $$BoardsTableTableManager
                 backupFilePath: backupFilePath,
                 colorHex: colorHex,
                 sortOrder: sortOrder,
+                viewPanX: viewPanX,
+                viewPanY: viewPanY,
+                viewScale: viewScale,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 rowid: rowid,
@@ -5506,6 +5711,9 @@ class $$BoardsTableTableManager
                 Value<String?> backupFilePath = const Value.absent(),
                 Value<String?> colorHex = const Value.absent(),
                 Value<int> sortOrder = const Value.absent(),
+                Value<double?> viewPanX = const Value.absent(),
+                Value<double?> viewPanY = const Value.absent(),
+                Value<double?> viewScale = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
@@ -5515,6 +5723,9 @@ class $$BoardsTableTableManager
                 backupFilePath: backupFilePath,
                 colorHex: colorHex,
                 sortOrder: sortOrder,
+                viewPanX: viewPanX,
+                viewPanY: viewPanY,
+                viewScale: viewScale,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 rowid: rowid,

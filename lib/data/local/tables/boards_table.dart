@@ -30,6 +30,16 @@ class Boards extends Table {
   /// stable, never-reordered tiebreaker.
   IntColumn get sortOrder => integer().withDefault(const Constant(0))();
 
+  /// Last pan/zoom camera this board was viewed at - null means this
+  /// board has never had a view saved (brand new, or predates this
+  /// column), which falls back to `BoardViewState()`'s own default
+  /// (centered, scale 1) - the same view every board already opens to
+  /// today. Always written/read together as one (panX, panY, scale)
+  /// triple; see `BoardViewPersistenceController`.
+  RealColumn get viewPanX => real().nullable()();
+  RealColumn get viewPanY => real().nullable()();
+  RealColumn get viewScale => real().nullable()();
+
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
 

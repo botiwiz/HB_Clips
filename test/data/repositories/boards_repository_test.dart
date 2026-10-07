@@ -80,6 +80,25 @@ void main() {
     expect(rows.firstWhere((b) => b.id == 'board-2').colorHex, isNull);
   });
 
+  test("a freshly created board's view fields all start null", () async {
+    await boards.createBoard('board-2', 'Second board');
+    final rows = await boards.watchBoards().first;
+    final board = rows.firstWhere((b) => b.id == 'board-2');
+    expect(board.viewPanX, isNull);
+    expect(board.viewPanY, isNull);
+    expect(board.viewScale, isNull);
+  });
+
+  test('updateViewState round-trips panX/panY/scale', () async {
+    await boards.createBoard('board-2', 'Second board');
+    await boards.updateViewState('board-2', panX: 12.5, panY: -7.0, scale: 2.0);
+    final rows = await boards.watchBoards().first;
+    final board = rows.firstWhere((b) => b.id == 'board-2');
+    expect(board.viewPanX, 12.5);
+    expect(board.viewPanY, -7.0);
+    expect(board.viewScale, 2.0);
+  });
+
   test("reorderBoards changes watchBoards()'s emitted order to match the new "
       "arrangement, independent of createdAt", () async {
     await boards.createBoard('board-2', 'Second board');

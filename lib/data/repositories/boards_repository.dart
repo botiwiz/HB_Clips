@@ -70,6 +70,27 @@ class BoardsRepository {
     }
   }
 
+  /// Persists this board's current pan/zoom camera, so switching back to
+  /// it later resumes exactly here - see `BoardViewPersistenceController`,
+  /// the only caller. Deliberately does NOT bump `updatedAt` - panning/
+  /// zooming isn't "editing" the board's content, and `updatedAt` isn't
+  /// read anywhere boards are listed (sortOrder/createdAt drive that), so
+  /// there's no reason a camera move should look like a content edit.
+  Future<void> updateViewState(
+    String id, {
+    required double panX,
+    required double panY,
+    required double scale,
+  }) {
+    return (_db.update(_db.boards)..where((b) => b.id.equals(id))).write(
+      BoardsCompanion(
+        viewPanX: Value(panX),
+        viewPanY: Value(panY),
+        viewScale: Value(scale),
+      ),
+    );
+  }
+
   Future<void> renameBoard(String id, String name) {
     return (_db.update(_db.boards)..where((b) => b.id.equals(id))).write(
       BoardsCompanion(name: Value(name), updatedAt: Value(DateTime.now())),

@@ -19,7 +19,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 21;
+  int get schemaVersion => 22;
 
   Future<void> _seedDefaultBoard(Migrator m) {
     return into(boards).insert(
@@ -128,6 +128,11 @@ class AppDatabase extends _$AppDatabase {
                 ..where((b) => b.id.equals(existing[i].id)))
               .write(BoardsCompanion(sortOrder: Value(i)));
         }
+      }
+      if (from < 22) {
+        await m.addColumn(boards, boards.viewPanX);
+        await m.addColumn(boards, boards.viewPanY);
+        await m.addColumn(boards, boards.viewScale);
       }
     },
   );
