@@ -11,6 +11,30 @@ import 'tables/strokes_table.dart';
 
 part 'database.g.dart';
 
+/// Adds [column] to [table] only if it isn't already physically present -
+/// guards against a desync between a database's tracked `PRAGMA user_version`
+/// and its real on-disk schema (e.g. from an interrupted earlier migration
+/// run), which otherwise makes `m.addColumn` throw "duplicate column name"
+/// and permanently fail `beforeOpen`, wedging the whole database open forever.
+/// Every onUpgrade step below that adds a column goes through this instead of
+/// calling `m.addColumn` directly, so the migration chain self-heals
+/// regardless of which specific step a given database happens to be
+/// desynced on. A no-op (one extra PRAGMA query) for an already-consistent
+/// database - functionally identical to a direct `m.addColumn` call.
+Future<void> _addColumnIfMissing(
+  Migrator m,
+  TableInfo table,
+  GeneratedColumn column,
+) async {
+  final rows = await m.database
+      .customSelect('PRAGMA table_info(${table.actualTableName})')
+      .get();
+  final exists = rows.any((row) => row.read<String>('name') == column.name);
+  if (!exists) {
+    await m.addColumn(table, column);
+  }
+}
+
 @DriftDatabase(tables: [Clips, Strokes, Boards, LocalBlobs, Frames, Connectors])
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
@@ -35,17 +59,17 @@ class AppDatabase extends _$AppDatabase {
     },
     onUpgrade: (m, from, to) async {
       if (from < 2) {
-        await m.addColumn(clips, clips.opacity);
+        await _addColumnIfMissing(m, clips, clips.opacity);
       }
       if (from < 3) {
-        await m.addColumn(clips, clips.backgroundColorHex);
+        await _addColumnIfMissing(m, clips, clips.backgroundColorHex);
       }
       if (from < 4) {
-        await m.addColumn(clips, clips.groupId);
+        await _addColumnIfMissing(m, clips, clips.groupId);
       }
       if (from < 5) {
-        await m.addColumn(strokes, strokes.dashed);
-        await m.addColumn(strokes, strokes.arrowEnd);
+        await _addColumnIfMissing(m, strokes, strokes.dashed);
+        await _addColumnIfMissing(m, strokes, strokes.arrowEnd);
       }
       if (from < 6) {
         await m.createTable(boards);
@@ -58,10 +82,10 @@ class AppDatabase extends _$AppDatabase {
         await m.createTable(frames);
       }
       if (from < 10) {
-        await m.addColumn(frames, frames.backgroundColorHex);
+        await _addColumnIfMissing(m, frames, frames.backgroundColorHex);
       }
       if (from < 11) {
-        await m.addColumn(clips, clips.frameId);
+        await _addColumnIfMissing(m, clips, clips.frameId);
       }
       if (from < 12) {
         // Drops the cloud-sync-only columns/table this version removes
@@ -77,28 +101,28 @@ class AppDatabase extends _$AppDatabase {
         await m.deleteTable('sync_queue_entries');
       }
       if (from < 13) {
-        await m.addColumn(clips, clips.imagePanX);
-        await m.addColumn(clips, clips.imagePanY);
-        await m.addColumn(clips, clips.imageZoom);
-        await m.addColumn(clips, clips.imageAspectRatio);
+        await _addColumnIfMissing(m, clips, clips.imagePanX);
+        await _addColumnIfMissing(m, clips, clips.imagePanY);
+        await _addColumnIfMissing(m, clips, clips.imageZoom);
+        await _addColumnIfMissing(m, clips, clips.imageAspectRatio);
       }
       if (from < 14) {
         await m.createTable(connectors);
       }
       if (from < 15) {
-        await m.addColumn(clips, clips.textFormattingJson);
-        await m.addColumn(clips, clips.fontSize);
-        await m.addColumn(clips, clips.sizeLockScale);
+        await _addColumnIfMissing(m, clips, clips.textFormattingJson);
+        await _addColumnIfMissing(m, clips, clips.fontSize);
+        await _addColumnIfMissing(m, clips, clips.sizeLockScale);
       }
       if (from < 16) {
-        await m.addColumn(connectors, connectors.toRelX);
-        await m.addColumn(connectors, connectors.toRelY);
+        await _addColumnIfMissing(m, connectors, connectors.toRelX);
+        await _addColumnIfMissing(m, connectors, connectors.toRelY);
       }
       if (from < 17) {
-        await m.addColumn(clips, clips.shapeKind);
-        await m.addColumn(clips, clips.shapeFillColorHex);
-        await m.addColumn(clips, clips.shapeStrokeColorHex);
-        await m.addColumn(clips, clips.shapeStrokeWidth);
+        await _addColumnIfMissing(m, clips, clips.shapeKind);
+        await _addColumnIfMissing(m, clips, clips.shapeFillColorHex);
+        await _addColumnIfMissing(m, clips, clips.shapeStrokeColorHex);
+        await _addColumnIfMissing(m, clips, clips.shapeStrokeWidth);
       }
       if (from < 18) {
         // Every connector originates from a text clip and, until now,
@@ -108,14 +132,14 @@ class AppDatabase extends _$AppDatabase {
         await customStatement("UPDATE connectors SET color = '#FFFFFF'");
       }
       if (from < 19) {
-        await m.addColumn(clips, clips.highlightColorHex);
+        await _addColumnIfMissing(m, clips, clips.highlightColorHex);
       }
       if (from < 20) {
-        await m.addColumn(boards, boards.backupFilePath);
+        await _addColumnIfMissing(m, boards, boards.backupFilePath);
       }
       if (from < 21) {
-        await m.addColumn(boards, boards.colorHex);
-        await m.addColumn(boards, boards.sortOrder);
+        await _addColumnIfMissing(m, boards, boards.colorHex);
+        await _addColumnIfMissing(m, boards, boards.sortOrder);
         // Every pre-existing board just got sortOrder=0 (the column's
         // default) - backfill each one's real rank in today's createdAt
         // order, or they'd all tie and the visible order could scramble
@@ -130,9 +154,9 @@ class AppDatabase extends _$AppDatabase {
         }
       }
       if (from < 22) {
-        await m.addColumn(boards, boards.viewPanX);
-        await m.addColumn(boards, boards.viewPanY);
-        await m.addColumn(boards, boards.viewScale);
+        await _addColumnIfMissing(m, boards, boards.viewPanX);
+        await _addColumnIfMissing(m, boards, boards.viewPanY);
+        await _addColumnIfMissing(m, boards, boards.viewScale);
       }
     },
   );
