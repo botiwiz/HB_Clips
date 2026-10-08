@@ -21,6 +21,12 @@ BoardRow? _findBoard(List<BoardRow> boards, String id) {
   return null;
 }
 
+/// Black or white, whichever reads better on [background] - used for the
+/// switcher's full-row board colors, which are arbitrary user picks (see
+/// `InlineHsvPickerBar`) that can land anywhere from very light to very dark.
+Color _readableTextColor(Color background) =>
+    background.computeLuminance() > 0.5 ? Colors.black : Colors.white;
+
 /// Compact board-name button (matches the app's pill chrome) that opens a
 /// dropdown menu for switching boards, creating a new one, or opening the
 /// full rename/delete "Manage boards" dialog - the board-switcher UI called
@@ -91,33 +97,52 @@ class BoardSwitcher extends ConsumerWidget {
           for (final board in boards)
             PopupMenuItem<String>(
               value: board.id,
-              child: Row(
-                children: [
-                  if (board.colorHex != null) ...[
-                    Container(
-                      width: 12,
-                      height: 12,
-                      decoration: BoxDecoration(
-                        color: hexToColor(board.colorHex!),
-                        shape: BoxShape.circle,
+              padding: EdgeInsets.zero,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+                color: board.colorHex != null
+                    ? hexToColor(board.colorHex!)
+                    : null,
+                child: Row(
+                  children: [
+                    if (board.colorHex == null)
+                      Icon(
+                        board.id == currentId
+                            ? Icons.check_circle
+                            : Icons.circle_outlined,
+                        size: 20,
+                        color: board.id == currentId
+                            ? AppTheme.red
+                            : AppTheme.textSecondary,
+                      )
+                    else if (board.id == currentId)
+                      Icon(
+                        Icons.check,
+                        size: 20,
+                        color: _readableTextColor(hexToColor(board.colorHex!)),
+                      )
+                    else
+                      const SizedBox(width: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        board.name,
+                        overflow: TextOverflow.ellipsis,
+                        style: board.colorHex != null
+                            ? TextStyle(
+                                color: _readableTextColor(
+                                  hexToColor(board.colorHex!),
+                                ),
+                                fontWeight: FontWeight.w600,
+                              )
+                            : null,
                       ),
                     ),
-                    const SizedBox(width: 8),
                   ],
-                  Icon(
-                    board.id == currentId
-                        ? Icons.check_circle
-                        : Icons.circle_outlined,
-                    size: 20,
-                    color: board.id == currentId
-                        ? AppTheme.red
-                        : AppTheme.textSecondary,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(board.name, overflow: TextOverflow.ellipsis),
-                  ),
-                ],
+                ),
               ),
             ),
           const PopupMenuDivider(),
