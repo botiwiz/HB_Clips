@@ -98,10 +98,11 @@ class BoardSwitcher extends ConsumerWidget {
             PopupMenuItem<String>(
               value: board.id,
               padding: EdgeInsets.zero,
+              height: 32,
               child: Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 16,
-                  vertical: 12,
+                  vertical: 6,
                 ),
                 color: board.colorHex != null
                     ? hexToColor(board.colorHex!)
@@ -113,7 +114,7 @@ class BoardSwitcher extends ConsumerWidget {
                         board.id == currentId
                             ? Icons.check_circle
                             : Icons.circle_outlined,
-                        size: 20,
+                        size: 16,
                         color: board.id == currentId
                             ? AppTheme.red
                             : AppTheme.textSecondary,
@@ -121,24 +122,23 @@ class BoardSwitcher extends ConsumerWidget {
                     else if (board.id == currentId)
                       Icon(
                         Icons.check,
-                        size: 20,
+                        size: 16,
                         color: _readableTextColor(hexToColor(board.colorHex!)),
                       )
                     else
-                      const SizedBox(width: 20),
+                      const SizedBox(width: 16),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
                         board.name,
                         overflow: TextOverflow.ellipsis,
-                        style: board.colorHex != null
-                            ? TextStyle(
-                                color: _readableTextColor(
-                                  hexToColor(board.colorHex!),
-                                ),
-                                fontWeight: FontWeight.w600,
-                              )
-                            : null,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w400,
+                          color: board.colorHex != null
+                              ? _readableTextColor(hexToColor(board.colorHex!))
+                              : null,
+                        ),
                       ),
                     ),
                   ],
