@@ -230,17 +230,42 @@ void main() {
       }
     });
 
-    test('very close clips clamp the stub length to the minimum', () {
-      final fromClip = _clip(id: 'from', x: 0, y: 0, width: 100, height: 60);
-      final toClip = _clip(id: 'to', x: 105, y: 0, width: 100, height: 60);
-      final result = ConnectorGeometry.routeBoard(
-        fromClip: fromClip,
-        fromSide: ConnectorSide.right,
-        toClip: toClip,
-      );
+    test(
+      'very close facing clips derive the stub from the real gap instead of the fixed minimum',
+      () {
+        final fromClip = _clip(id: 'from', x: 0, y: 0, width: 100, height: 60);
+        final toClip = _clip(id: 'to', x: 105, y: 0, width: 100, height: 60);
+        final result = ConnectorGeometry.routeBoard(
+          fromClip: fromClip,
+          fromSide: ConnectorSide.right,
+          toClip: toClip,
+        );
 
-      expect((result[1] - result[0]).distance, closeTo(16, 1e-9));
-    });
+        expect((result[1] - result[0]).distance, closeTo(2.5, 1e-9));
+      },
+    );
+
+    test(
+      'close clips offset on the perpendicular axis never overshoot past either anchor',
+      () {
+        final fromClip = _clip(id: 'from', x: 0, y: 0, width: 100, height: 60);
+        final toClip = _clip(id: 'to', x: 30, y: 70, width: 100, height: 60);
+        final result = ConnectorGeometry.routeBoard(
+          fromClip: fromClip,
+          fromSide: ConnectorSide.bottom,
+          toClip: toClip,
+        );
+
+        final p0 = result.first;
+        final p1 = result.last;
+        final minY = math.min(p0.dy, p1.dy);
+        final maxY = math.max(p0.dy, p1.dy);
+        for (final point in result) {
+          expect(point.dy, greaterThanOrEqualTo(minY - 1e-9));
+          expect(point.dy, lessThanOrEqualTo(maxY + 1e-9));
+        }
+      },
+    );
 
     test('very far clips clamp the stub length to the maximum', () {
       final fromClip = _clip(id: 'from', x: 0, y: 0, width: 100, height: 60);

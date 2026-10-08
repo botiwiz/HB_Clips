@@ -243,12 +243,27 @@ class ConnectorGeometry {
 
     final d0 = _snapToCardinal(outwardNormal(fromClip, fromSide));
     final d1 = _snapToCardinal(d1Source);
-    final stub = _stubLength(p0, p1);
+    final d0Horizontal = d0.dx != 0;
+    final d1Horizontal = d1.dx != 0;
+
+    var stub = _stubLength(p0, p1);
+    if (d0 == -d1) {
+      // The two anchors face directly toward each other (e.g. a clip's
+      // right edge connecting to another clip's left edge just beside
+      // it). Letting the stub push either anchor more than halfway across
+      // the real gap between them would make the two stub points cross -
+      // the route would overshoot past one anchor before doubling back
+      // toward the other, instead of a clean elbow. Re-derive the stub
+      // from the actual gap along the shared axis so it can never exceed
+      // that halfway point.
+      final axisGap = d0Horizontal
+          ? (p1.dx - p0.dx) * d0.dx
+          : (p1.dy - p0.dy) * d0.dy;
+      stub = math.max(0.0, math.min(stub, axisGap / 2));
+    }
     final s0 = p0 + d0 * stub;
     final s1 = p1 + d1 * stub;
 
-    final d0Horizontal = d0.dx != 0;
-    final d1Horizontal = d1.dx != 0;
     final bends = <Offset>[];
     if (d0Horizontal == d1Horizontal) {
       if (d0Horizontal) {
