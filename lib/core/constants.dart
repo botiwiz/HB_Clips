@@ -27,6 +27,12 @@ const double kMaxImageZoom = 8.0;
 /// board-space positions.
 const double kEdgeSnapThresholdPx = 8;
 
+/// Connector/spline line thickness on screen, in logical pixels - fixed
+/// regardless of zoom (like the grid dots), not derived from the per-
+/// connector `strokeWidth` DB column, which PDF export still uses directly
+/// for paper-space line width (see `pdf_writer.dart`).
+const double kConnectorStrokeWidth = 1.5;
+
 /// Fixed angle increment (degrees) that every clip's rotate-handle drag
 /// snaps to - see `ClipGeometry.rotate`. 15 degrees matches the common
 /// design-tool default (Figma, Miro) for this exact gesture.

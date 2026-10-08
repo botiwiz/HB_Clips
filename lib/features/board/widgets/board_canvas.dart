@@ -3549,23 +3549,17 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     // column (and resize others) as the target rect changes (see
     // MasonryLayout). Animating just the clips actively being arranged
     // turns that pop into a smooth slide; every other gesture (plain drag,
-    // resize, frame-drag, ...) keeps a zero-lag plain Positioned - direct
-    // manipulation should never lag behind the cursor.
-    if (arranging && drag != null) {
-      return AnimatedPositioned(
-        key: ValueKey(clip.id),
-        duration: const Duration(milliseconds: 120),
-        curve: Curves.easeOut,
-        left: topLeft.dx,
-        top: topLeft.dy,
-        width: boxWidth,
-        height: boxHeight,
-        child: child,
-      );
-    }
-
-    return Positioned(
+    // resize, frame-drag, ...) keeps a zero-duration tween - visually
+    // identical to a plain Positioned, direct manipulation should never lag
+    // behind the cursor. Always returning the same widget type (instead of
+    // switching between Positioned and AnimatedPositioned) avoids an element
+    // remount right as an arrange drag starts/stops.
+    return AnimatedPositioned(
       key: ValueKey(clip.id),
+      duration: (arranging && drag != null)
+          ? const Duration(milliseconds: 220)
+          : Duration.zero,
+      curve: Curves.easeOutCubic,
       left: topLeft.dx,
       top: topLeft.dy,
       width: boxWidth,
