@@ -3,27 +3,48 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
-/// The folder the running `.exe` lives in, with a `boards/` subfolder - the
+/// The folder the running app lives in, with a `boards/` subfolder - the
 /// single root every piece of this app's local state (the sqlite database,
-/// image blobs, and backups) is stored under. Copying or moving the folder
-/// that contains the `.exe` takes `boards/` with it, with no dependency on
-/// the per-user Documents folder - that's what makes a `build_portable.bat`
-/// output folder a genuinely self-contained, portable app.
+/// image blobs, and backups) is stored under. Copying or moving that folder
+/// takes `boards/` with it, with no dependency on the per-user Documents
+/// folder - that's what makes a `build_portable.bat` output folder (Windows)
+/// or an AppImage (Linux) a genuinely self-contained, portable app: drop the
+/// exe/AppImage anywhere, and its data folder travels right alongside it.
 ///
-/// Windows-only: this repo also targets Android and Linux, where there is
+/// Windows and Linux only: this repo also targets Android, where there is
 /// no writable, copyable "folder next to the executable" (an installed
-/// APK's path isn't writable at all) - every other native platform keeps
-/// using the original `getApplicationDocumentsDirectory()` location
-/// unchanged, exactly as before this file existed.
+/// APK's path isn't writable at all) - that platform keeps using the
+/// original `getApplicationDocumentsDirectory()` location unchanged, exactly
+/// as before this file existed.
 Future<Directory> portableDataRoot() async {
-  if (!Platform.isWindows) {
+  if (!Platform.isWindows && !Platform.isLinux) {
     return getApplicationDocumentsDirectory();
   }
-  final exeDir = p.dirname(Platform.resolvedExecutable);
+  final exeDir = p.dirname(_appDirectoryPath());
   final root = Directory(p.join(exeDir, 'boards'));
   await root.create(recursive: true);
   await _migrateLegacyDocumentsDataIfNeeded(root);
   return root;
+}
+
+/// The path of the running executable, or - on Linux, when launched from
+/// an AppImage - the path of the `.AppImage` file itself.
+///
+/// An AppImage runs its payload from a temporary FUSE mount (e.g.
+/// `/tmp/.mount_XXXXXX/...`) that's unmounted the moment the app exits, so
+/// `Platform.resolvedExecutable` alone would resolve a `boards/` folder
+/// that's wiped out between runs. The AppImage runtime sets the `APPIMAGE`
+/// environment variable to the real, stable path of the `.AppImage` file
+/// the user actually placed somewhere - that's what "next to the AppImage"
+/// has to mean. Outside of an AppImage (a plain unpacked Linux bundle, or
+/// Windows), there's no such mount to work around, so this is just
+/// `Platform.resolvedExecutable`.
+String _appDirectoryPath() {
+  final appImagePath = Platform.environment['APPIMAGE'];
+  if (Platform.isLinux && appImagePath != null && appImagePath.isNotEmpty) {
+    return appImagePath;
+  }
+  return Platform.resolvedExecutable;
 }
 
 /// One-time upgrade path for installs that still have their real data in
