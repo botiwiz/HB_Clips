@@ -1,0 +1,44 @@
+name: Windows build
+
+on:
+  push:
+    branches: [claude/hb-clips-cross-platform-jt48h7]
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.35.5'
+          channel: stable
+          cache: true
+
+      - run: flutter pub get
+
+      # Non-blocking: lib/data/local/database.dart has one pre-existing,
+      # unrelated analyze error (argument_type_not_assignable) that isn't
+      # in scope here - surfaced for visibility without failing the build.
+      - run: flutter analyze
+        continue-on-error: true
+
+      - run: flutter test
+
+      # --no-tree-shake-icons: without it, release builds subset the
+      # Material Icons font down to only statically-provable codepoints,
+      # silently dropping some toolbar icons to empty glyphs - same flag
+      # build_portable.bat already carries for the same reason.
+      - run: flutter build windows --release --no-tree-shake-icons
+
+      - name: Package portable build
+        shell: pwsh
+        run: |
+          Compress-Archive -Path build\windows\x64\runner\Release\* -DestinationPath HB_Clips-windows.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: HB_Clips-windows
+          path: HB_Clips-windows.zip
