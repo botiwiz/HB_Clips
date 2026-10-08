@@ -26,6 +26,7 @@ FrameRow _frame({
     y: y,
     width: width,
     height: height,
+    sortOrder: 0,
     backgroundColorHex: backgroundColorHex,
     createdAt: now,
     updatedAt: now,

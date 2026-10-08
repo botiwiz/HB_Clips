@@ -27,6 +27,21 @@ class FramesPanel extends ConsumerWidget {
         .fitRect(FrameGeometry.boardRect(frame), MediaQuery.sizeOf(context));
   }
 
+  void _reorder(
+    WidgetRef ref,
+    List<FrameRow> frames,
+    int oldIndex,
+    int newIndex,
+  ) {
+    if (newIndex > oldIndex) newIndex -= 1;
+    final reordered = List<FrameRow>.of(frames);
+    final moved = reordered.removeAt(oldIndex);
+    reordered.insert(newIndex, moved);
+    ref
+        .read(framesRepositoryProvider)
+        .reorderFrames(reordered.map((f) => f.id).toList());
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final frames = ref.watch(boardFramesProvider).valueOrNull ?? [];
@@ -51,10 +66,13 @@ class FramesPanel extends ConsumerWidget {
                 style: TextStyle(color: AppTheme.textSecondary),
               ),
             )
-          : ListView.builder(
+          : ReorderableListView.builder(
               shrinkWrap: true,
+              buildDefaultDragHandles: false,
               padding: const EdgeInsets.symmetric(vertical: 4),
               itemCount: frames.length,
+              onReorder: (oldIndex, newIndex) =>
+                  _reorder(ref, frames, oldIndex, newIndex),
               itemBuilder: (context, index) {
                 final frame = frames[index];
                 final selected = selectedFrameIds.contains(frame.id);
@@ -62,16 +80,31 @@ class FramesPanel extends ConsumerWidget {
                     ? hexToColor(frame.backgroundColorHex!)
                     : AppTheme.textSecondary;
                 return ListTile(
+                  key: ValueKey(frame.id),
                   dense: true,
                   selected: selected,
                   selectedTileColor: AppTheme.red.withValues(alpha: 0.12),
-                  leading: Container(
-                    width: 10,
-                    height: 10,
-                    decoration: BoxDecoration(
-                      color: swatchColor,
-                      shape: BoxShape.circle,
-                    ),
+                  leading: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      ReorderableDragStartListener(
+                        index: index,
+                        child: const Icon(
+                          Icons.drag_handle,
+                          size: 16,
+                          color: AppTheme.textSecondary,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Container(
+                        width: 10,
+                        height: 10,
+                        decoration: BoxDecoration(
+                          color: swatchColor,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                    ],
                   ),
                   title: Text(
                     frame.name,

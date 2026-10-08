@@ -44,7 +44,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 22;
+  int get schemaVersion => 23;
 
   Future<void> _seedDefaultBoard(Migrator m) {
     return into(boards).insert(
@@ -158,6 +158,28 @@ class AppDatabase extends _$AppDatabase {
         await _addColumnIfMissing(m, boards, boards.viewPanX);
         await _addColumnIfMissing(m, boards, boards.viewPanY);
         await _addColumnIfMissing(m, boards, boards.viewScale);
+      }
+      if (from < 23) {
+        await _addColumnIfMissing(m, frames, frames.sortOrder);
+        // Every pre-existing frame just got sortOrder=0 (the column's
+        // default) - backfill each one's real rank in today's createdAt
+        // order, or they'd all tie and the visible/stacking order could
+        // scramble the instant this ships. Frames are scoped per board,
+        // so each board's frames are ranked independently.
+        final existing = await (m.database.select(
+          frames,
+        )..orderBy([(f) => OrderingTerm.asc(f.createdAt)])).get();
+        final byBoardInsertOrder = <String, List<FrameRow>>{};
+        for (final frame in existing) {
+          (byBoardInsertOrder[frame.boardId] ??= []).add(frame);
+        }
+        for (final boardFrames in byBoardInsertOrder.values) {
+          for (var i = 0; i < boardFrames.length; i++) {
+            await (m.database.update(frames)
+                  ..where((f) => f.id.equals(boardFrames[i].id)))
+                .write(FramesCompanion(sortOrder: Value(i)));
+          }
+        }
       }
     },
   );

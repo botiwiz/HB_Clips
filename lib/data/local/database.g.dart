@@ -3258,6 +3258,18 @@ class $FramesTable extends Frames with TableInfo<$FramesTable, FrameRow> {
     requiredDuringInsert: false,
     defaultValue: const Constant(240),
   );
+  static const VerificationMeta _sortOrderMeta = const VerificationMeta(
+    'sortOrder',
+  );
+  @override
+  late final GeneratedColumn<int> sortOrder = GeneratedColumn<int>(
+    'sort_order',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
   static const VerificationMeta _backgroundColorHexMeta =
       const VerificationMeta('backgroundColorHex');
   @override
@@ -3302,6 +3314,7 @@ class $FramesTable extends Frames with TableInfo<$FramesTable, FrameRow> {
     y,
     width,
     height,
+    sortOrder,
     backgroundColorHex,
     createdAt,
     updatedAt,
@@ -3353,6 +3366,12 @@ class $FramesTable extends Frames with TableInfo<$FramesTable, FrameRow> {
       context.handle(
         _heightMeta,
         height.isAcceptableOrUnknown(data['height']!, _heightMeta),
+      );
+    }
+    if (data.containsKey('sort_order')) {
+      context.handle(
+        _sortOrderMeta,
+        sortOrder.isAcceptableOrUnknown(data['sort_order']!, _sortOrderMeta),
       );
     }
     if (data.containsKey('background_color_hex')) {
@@ -3413,6 +3432,10 @@ class $FramesTable extends Frames with TableInfo<$FramesTable, FrameRow> {
         DriftSqlType.double,
         data['${effectivePrefix}height'],
       )!,
+      sortOrder: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}sort_order'],
+      )!,
       backgroundColorHex: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}background_color_hex'],
@@ -3443,6 +3466,14 @@ class FrameRow extends DataClass implements Insertable<FrameRow> {
   final double width;
   final double height;
 
+  /// User-controlled display order in the Frames Panel (and on-canvas
+  /// stacking order, since both read the same `watchFrames()` list - frames
+  /// have no separate z-index concept) - lower sorts first. Not necessarily
+  /// contiguous; only relative order matters. Sits alongside `createdAt`
+  /// rather than replacing it, since `createdAt` is also kept as a stable,
+  /// never-reordered tiebreaker.
+  final int sortOrder;
+
   /// Custom accent color for this frame's border/label/subtle fill, as
   /// `#RRGGBB`. Null uses the default neutral gray - same
   /// null-means-default convention as `Clips.backgroundColorHex`.
@@ -3457,6 +3488,7 @@ class FrameRow extends DataClass implements Insertable<FrameRow> {
     required this.y,
     required this.width,
     required this.height,
+    required this.sortOrder,
     this.backgroundColorHex,
     required this.createdAt,
     required this.updatedAt,
@@ -3471,6 +3503,7 @@ class FrameRow extends DataClass implements Insertable<FrameRow> {
     map['y'] = Variable<double>(y);
     map['width'] = Variable<double>(width);
     map['height'] = Variable<double>(height);
+    map['sort_order'] = Variable<int>(sortOrder);
     if (!nullToAbsent || backgroundColorHex != null) {
       map['background_color_hex'] = Variable<String>(backgroundColorHex);
     }
@@ -3488,6 +3521,7 @@ class FrameRow extends DataClass implements Insertable<FrameRow> {
       y: Value(y),
       width: Value(width),
       height: Value(height),
+      sortOrder: Value(sortOrder),
       backgroundColorHex: backgroundColorHex == null && nullToAbsent
           ? const Value.absent()
           : Value(backgroundColorHex),
@@ -3509,6 +3543,7 @@ class FrameRow extends DataClass implements Insertable<FrameRow> {
       y: serializer.fromJson<double>(json['y']),
       width: serializer.fromJson<double>(json['width']),
       height: serializer.fromJson<double>(json['height']),
+      sortOrder: serializer.fromJson<int>(json['sortOrder']),
       backgroundColorHex: serializer.fromJson<String?>(
         json['backgroundColorHex'],
       ),
@@ -3527,6 +3562,7 @@ class FrameRow extends DataClass implements Insertable<FrameRow> {
       'y': serializer.toJson<double>(y),
       'width': serializer.toJson<double>(width),
       'height': serializer.toJson<double>(height),
+      'sortOrder': serializer.toJson<int>(sortOrder),
       'backgroundColorHex': serializer.toJson<String?>(backgroundColorHex),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
@@ -3541,6 +3577,7 @@ class FrameRow extends DataClass implements Insertable<FrameRow> {
     double? y,
     double? width,
     double? height,
+    int? sortOrder,
     Value<String?> backgroundColorHex = const Value.absent(),
     DateTime? createdAt,
     DateTime? updatedAt,
@@ -3552,6 +3589,7 @@ class FrameRow extends DataClass implements Insertable<FrameRow> {
     y: y ?? this.y,
     width: width ?? this.width,
     height: height ?? this.height,
+    sortOrder: sortOrder ?? this.sortOrder,
     backgroundColorHex: backgroundColorHex.present
         ? backgroundColorHex.value
         : this.backgroundColorHex,
@@ -3567,6 +3605,7 @@ class FrameRow extends DataClass implements Insertable<FrameRow> {
       y: data.y.present ? data.y.value : this.y,
       width: data.width.present ? data.width.value : this.width,
       height: data.height.present ? data.height.value : this.height,
+      sortOrder: data.sortOrder.present ? data.sortOrder.value : this.sortOrder,
       backgroundColorHex: data.backgroundColorHex.present
           ? data.backgroundColorHex.value
           : this.backgroundColorHex,
@@ -3585,6 +3624,7 @@ class FrameRow extends DataClass implements Insertable<FrameRow> {
           ..write('y: $y, ')
           ..write('width: $width, ')
           ..write('height: $height, ')
+          ..write('sortOrder: $sortOrder, ')
           ..write('backgroundColorHex: $backgroundColorHex, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
@@ -3601,6 +3641,7 @@ class FrameRow extends DataClass implements Insertable<FrameRow> {
     y,
     width,
     height,
+    sortOrder,
     backgroundColorHex,
     createdAt,
     updatedAt,
@@ -3616,6 +3657,7 @@ class FrameRow extends DataClass implements Insertable<FrameRow> {
           other.y == this.y &&
           other.width == this.width &&
           other.height == this.height &&
+          other.sortOrder == this.sortOrder &&
           other.backgroundColorHex == this.backgroundColorHex &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt);
@@ -3629,6 +3671,7 @@ class FramesCompanion extends UpdateCompanion<FrameRow> {
   final Value<double> y;
   final Value<double> width;
   final Value<double> height;
+  final Value<int> sortOrder;
   final Value<String?> backgroundColorHex;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
@@ -3641,6 +3684,7 @@ class FramesCompanion extends UpdateCompanion<FrameRow> {
     this.y = const Value.absent(),
     this.width = const Value.absent(),
     this.height = const Value.absent(),
+    this.sortOrder = const Value.absent(),
     this.backgroundColorHex = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
@@ -3654,6 +3698,7 @@ class FramesCompanion extends UpdateCompanion<FrameRow> {
     this.y = const Value.absent(),
     this.width = const Value.absent(),
     this.height = const Value.absent(),
+    this.sortOrder = const Value.absent(),
     this.backgroundColorHex = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
@@ -3668,6 +3713,7 @@ class FramesCompanion extends UpdateCompanion<FrameRow> {
     Expression<double>? y,
     Expression<double>? width,
     Expression<double>? height,
+    Expression<int>? sortOrder,
     Expression<String>? backgroundColorHex,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
@@ -3681,6 +3727,7 @@ class FramesCompanion extends UpdateCompanion<FrameRow> {
       if (y != null) 'y': y,
       if (width != null) 'width': width,
       if (height != null) 'height': height,
+      if (sortOrder != null) 'sort_order': sortOrder,
       if (backgroundColorHex != null)
         'background_color_hex': backgroundColorHex,
       if (createdAt != null) 'created_at': createdAt,
@@ -3697,6 +3744,7 @@ class FramesCompanion extends UpdateCompanion<FrameRow> {
     Value<double>? y,
     Value<double>? width,
     Value<double>? height,
+    Value<int>? sortOrder,
     Value<String?>? backgroundColorHex,
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
@@ -3710,6 +3758,7 @@ class FramesCompanion extends UpdateCompanion<FrameRow> {
       y: y ?? this.y,
       width: width ?? this.width,
       height: height ?? this.height,
+      sortOrder: sortOrder ?? this.sortOrder,
       backgroundColorHex: backgroundColorHex ?? this.backgroundColorHex,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
@@ -3741,6 +3790,9 @@ class FramesCompanion extends UpdateCompanion<FrameRow> {
     if (height.present) {
       map['height'] = Variable<double>(height.value);
     }
+    if (sortOrder.present) {
+      map['sort_order'] = Variable<int>(sortOrder.value);
+    }
     if (backgroundColorHex.present) {
       map['background_color_hex'] = Variable<String>(backgroundColorHex.value);
     }
@@ -3766,6 +3818,7 @@ class FramesCompanion extends UpdateCompanion<FrameRow> {
           ..write('y: $y, ')
           ..write('width: $width, ')
           ..write('height: $height, ')
+          ..write('sortOrder: $sortOrder, ')
           ..write('backgroundColorHex: $backgroundColorHex, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
@@ -5897,6 +5950,7 @@ typedef $$FramesTableCreateCompanionBuilder =
       Value<double> y,
       Value<double> width,
       Value<double> height,
+      Value<int> sortOrder,
       Value<String?> backgroundColorHex,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
@@ -5911,6 +5965,7 @@ typedef $$FramesTableUpdateCompanionBuilder =
       Value<double> y,
       Value<double> width,
       Value<double> height,
+      Value<int> sortOrder,
       Value<String?> backgroundColorHex,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
@@ -5958,6 +6013,11 @@ class $$FramesTableFilterComposer
 
   ColumnFilters<double> get height => $composableBuilder(
     column: $table.height,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get sortOrder => $composableBuilder(
+    column: $table.sortOrder,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -6021,6 +6081,11 @@ class $$FramesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get sortOrder => $composableBuilder(
+    column: $table.sortOrder,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get backgroundColorHex => $composableBuilder(
     column: $table.backgroundColorHex,
     builder: (column) => ColumnOrderings(column),
@@ -6066,6 +6131,9 @@ class $$FramesTableAnnotationComposer
 
   GeneratedColumn<double> get height =>
       $composableBuilder(column: $table.height, builder: (column) => column);
+
+  GeneratedColumn<int> get sortOrder =>
+      $composableBuilder(column: $table.sortOrder, builder: (column) => column);
 
   GeneratedColumn<String> get backgroundColorHex => $composableBuilder(
     column: $table.backgroundColorHex,
@@ -6114,6 +6182,7 @@ class $$FramesTableTableManager
                 Value<double> y = const Value.absent(),
                 Value<double> width = const Value.absent(),
                 Value<double> height = const Value.absent(),
+                Value<int> sortOrder = const Value.absent(),
                 Value<String?> backgroundColorHex = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
@@ -6126,6 +6195,7 @@ class $$FramesTableTableManager
                 y: y,
                 width: width,
                 height: height,
+                sortOrder: sortOrder,
                 backgroundColorHex: backgroundColorHex,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
@@ -6140,6 +6210,7 @@ class $$FramesTableTableManager
                 Value<double> y = const Value.absent(),
                 Value<double> width = const Value.absent(),
                 Value<double> height = const Value.absent(),
+                Value<int> sortOrder = const Value.absent(),
                 Value<String?> backgroundColorHex = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
@@ -6152,6 +6223,7 @@ class $$FramesTableTableManager
                 y: y,
                 width: width,
                 height: height,
+                sortOrder: sortOrder,
                 backgroundColorHex: backgroundColorHex,
                 createdAt: createdAt,
                 updatedAt: updatedAt,

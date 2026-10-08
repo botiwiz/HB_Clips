@@ -13,6 +13,14 @@ class Frames extends Table {
   RealColumn get width => real().withDefault(const Constant(320))();
   RealColumn get height => real().withDefault(const Constant(240))();
 
+  /// User-controlled display order in the Frames Panel (and on-canvas
+  /// stacking order, since both read the same `watchFrames()` list - frames
+  /// have no separate z-index concept) - lower sorts first. Not necessarily
+  /// contiguous; only relative order matters. Sits alongside `createdAt`
+  /// rather than replacing it, since `createdAt` is also kept as a stable,
+  /// never-reordered tiebreaker.
+  IntColumn get sortOrder => integer().withDefault(const Constant(0))();
+
   /// Custom accent color for this frame's border/label/subtle fill, as
   /// `#RRGGBB`. Null uses the default neutral gray - same
   /// null-means-default convention as `Clips.backgroundColorHex`.

@@ -137,6 +137,7 @@ Future<BoardBackupSummary> importBoardBackup(
             y: f.y,
             width: f.width,
             height: f.height,
+            sortOrder: 0,
             backgroundColorHex: f.backgroundColorHex,
             createdAt: DateTime.now(),
             updatedAt: DateTime.now(),

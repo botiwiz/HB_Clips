@@ -15,6 +15,7 @@ FrameRow _frame(String id) {
     y: 0,
     width: 200,
     height: 200,
+    sortOrder: 0,
     createdAt: now,
     updatedAt: now,
   );

@@ -12,8 +12,24 @@ class FramesRepository {
   Stream<List<FrameRow>> watchFrames(String boardId) {
     final query = _db.select(_db.frames)
       ..where((f) => f.boardId.equals(boardId))
-      ..orderBy([(f) => OrderingTerm.asc(f.createdAt)]);
+      ..orderBy([
+        (f) => OrderingTerm.asc(f.sortOrder),
+        (f) => OrderingTerm.asc(f.createdAt),
+      ]);
     return query.watch();
+  }
+
+  /// `MAX(sortOrder) + 1` among [boardId]'s frames - so a newly created or
+  /// duplicated frame still sorts after (renders on top of) every existing
+  /// one, same as it already did under plain `createdAt` ordering before
+  /// `sortOrder` existed.
+  Future<int> _nextSortOrder(String boardId) async {
+    final query = _db.selectOnly(_db.frames)
+      ..addColumns([_db.frames.sortOrder.max()])
+      ..where(_db.frames.boardId.equals(boardId));
+    final row = await query.getSingleOrNull();
+    final maxOrder = row?.read(_db.frames.sortOrder.max());
+    return (maxOrder ?? 0) + 1;
   }
 
   Future<void> createFrame({
@@ -24,8 +40,9 @@ class FramesRepository {
     required double y,
     required double width,
     required double height,
-  }) {
-    return _db
+  }) async {
+    final sortOrder = await _nextSortOrder(boardId);
+    await _db
         .into(_db.frames)
         .insert(
           FramesCompanion.insert(
@@ -36,6 +53,7 @@ class FramesRepository {
             y: Value(y),
             width: Value(width),
             height: Value(height),
+            sortOrder: Value(sortOrder),
           ),
         );
   }
@@ -55,6 +73,7 @@ class FramesRepository {
     double? x,
     double? y,
   }) async {
+    final sortOrder = await _nextSortOrder(source.boardId);
     await _db
         .into(_db.frames)
         .insert(
@@ -67,11 +86,23 @@ class FramesRepository {
             width: Value(source.width),
             height: Value(source.height),
             backgroundColorHex: Value(source.backgroundColorHex),
+            sortOrder: Value(sortOrder),
           ),
         );
     return (_db.select(
       _db.frames,
     )..where((f) => f.id.equals(newId))).getSingle();
+  }
+
+  /// Persists a new display/stacking order for every frame in [orderedIds]
+  /// (as listed, lowest index sorts first, i.e. renders at the back) -
+  /// drives the Frames Panel's drag-to-reorder, and the canvas's on-screen
+  /// stacking order since both read the same `watchFrames()` list.
+  Future<void> reorderFrames(List<String> orderedIds) async {
+    for (var i = 0; i < orderedIds.length; i++) {
+      await (_db.update(_db.frames)..where((f) => f.id.equals(orderedIds[i])))
+          .write(FramesCompanion(sortOrder: Value(i)));
+    }
   }
 
   Future<void> renameFrame(String id, String name) {
