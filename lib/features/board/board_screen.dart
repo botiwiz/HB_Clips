@@ -1195,6 +1195,17 @@ class BoardScreen extends ConsumerWidget {
             // conditionally).
           },
           child: Stack(
+            // Without this, the two zero-size, non-Positioned children
+            // below (BoardViewPersistence/AutoBackupScheduler, both
+            // SizedBox.shrink()) make RenderStack size itself to their
+            // dimensions instead of filling the Scaffold body - Stack's
+            // layout algorithm only accounts for Positioned children once
+            // it already has a size, and otherwise sizes to the largest
+            // non-positioned child. That collapses the whole Stack (and
+            // everything in it, including BoardCanvas) to 0x0, so nothing
+            // paints at all despite the widget tree building correctly -
+            // this was the root cause of the long-standing blank-window bug.
+            fit: StackFit.expand,
             children: [
               const Positioned.fill(child: BoardCanvas()),
               const BoardViewPersistence(),
