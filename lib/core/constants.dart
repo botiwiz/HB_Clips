@@ -45,14 +45,10 @@ const double kRotationSnapIncrementDegrees = 15;
 /// staying a constant screen size.
 const double kTextNoteFontSize = 14;
 
-/// Board-space (world) padding around a text note's content, converted to
-/// screen pixels via `* viewScale` at render time, same pattern as
-/// [kTextNoteFontSize]. Horizontal is larger than vertical - text already
-/// has natural vertical breathing room from its own line-height
-/// (ascenders/descenders), so a flush left/right edge reads as visibly
-/// tighter than a flush top/bottom one unless the sides get more inset.
-const double kTextNoteHorizontalPadding = 8;
-const double kTextNoteVerticalPadding = 2;
+/// Board-space (world) padding around a text note's content on every side,
+/// converted to screen pixels via `* viewScale` at render time, same
+/// pattern as [kTextNoteFontSize].
+const double kTextNotePadding = 1;
 
 /// Line-height multiplier for text-note content - the single source of
 /// truth shared by `TextNoteGeometry.baseStyle` (and therefore every

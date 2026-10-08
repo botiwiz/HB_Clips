@@ -14,8 +14,7 @@ import '../../core/constants.dart'
         kHighlightCornerRadius,
         kTextCaretReservedWidth,
         kTextNoteFontSize,
-        kTextNoteHorizontalPadding,
-        kTextNoteVerticalPadding;
+        kTextNotePadding;
 import '../../core/theme/app_theme.dart' show AppTheme;
 import '../../features/annotation/controllers/annotation_controller.dart'
     show kDefaultStrokeWidth;
@@ -499,7 +498,7 @@ Future<Uint8List> rasterizeTextClip(
   // Same width math as ClipWidget._buildText() (NOT TextNoteGeometry's
   // own requiredHeight(), which omits the caret-reservation subtraction
   // - the raster must match what the live board actually draws).
-  final innerWidth = clip.width - 2 * kTextNoteHorizontalPadding;
+  final innerWidth = clip.width - 2 * kTextNotePadding;
   final contentWidth = innerWidth > kTextCaretReservedWidth
       ? innerWidth - kTextCaretReservedWidth
       : innerWidth;
@@ -535,10 +534,7 @@ Future<Uint8List> rasterizeTextClip(
   if (highlightRects.isNotEmpty) {
     final highlightPaint = Paint()
       ..color = hexToColor(clip.highlightColorHex ?? kDefaultHighlightColorHex);
-    final padOffset = Offset(
-      kTextNoteHorizontalPadding,
-      kTextNoteVerticalPadding,
-    );
+    final padOffset = Offset(kTextNotePadding, kTextNotePadding);
     for (final rect in highlightRects) {
       canvas.drawRRect(rect.shift(padOffset), highlightPaint);
     }
@@ -551,10 +547,7 @@ Future<Uint8List> rasterizeTextClip(
     ),
     textDirection: TextDirection.ltr,
   )..layout(maxWidth: contentWidth < 1 ? 1 : contentWidth);
-  painter.paint(
-    canvas,
-    Offset(kTextNoteHorizontalPadding, kTextNoteVerticalPadding),
-  );
+  painter.paint(canvas, Offset(kTextNotePadding, kTextNotePadding));
 
   final picture = recorder.endRecording();
   final image = await picture.toImage(pixelWidth, pixelHeight);

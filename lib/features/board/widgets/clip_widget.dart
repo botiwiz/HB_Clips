@@ -89,11 +89,7 @@ class ClipWidget extends StatelessWidget {
             clipBehavior: Clip.antiAlias,
             child: _buildImage(),
           ),
-          ClipType.text => ClipRRect(
-            borderRadius: BorderRadius.circular(kCornerRadius),
-            clipBehavior: Clip.antiAlias,
-            child: _buildText(),
-          ),
+          ClipType.text => _buildText(),
           ClipType.shape => _buildShape(),
         },
       ),
@@ -145,8 +141,7 @@ class ClipWidget extends StatelessWidget {
     );
     final text = clip.textContent ?? '';
     final formatting = clip.textFormatting;
-    final innerWidth =
-        (clip.width - 2 * kTextNoteHorizontalPadding) * viewScale;
+    final innerWidth = (clip.width - 2 * kTextNotePadding) * viewScale;
     // The live editor's real TextField wraps text kTextCaretReservedWidth
     // narrower than innerWidth (its RenderEditable reserves that margin
     // for the cursor - see that constant's doc comment). Text.rich/
@@ -169,12 +164,10 @@ class ClipWidget extends StatelessWidget {
       cornerRadius: kHighlightCornerRadius * viewScale,
     );
     return Padding(
-      padding: EdgeInsets.symmetric(
-        horizontal: kTextNoteHorizontalPadding * viewScale,
-        vertical: kTextNoteVerticalPadding * viewScale,
-      ),
+      padding: EdgeInsets.all(kTextNotePadding * viewScale),
       child: Stack(
         fit: StackFit.expand,
+        clipBehavior: Clip.none,
         children: [
           if (highlightRects.isNotEmpty)
             Positioned.fill(
@@ -204,6 +197,7 @@ class ClipWidget extends StatelessWidget {
                 ),
               ),
               textScaler: TextScaler.noScaling,
+              overflow: TextOverflow.visible,
             ),
           ),
         ],

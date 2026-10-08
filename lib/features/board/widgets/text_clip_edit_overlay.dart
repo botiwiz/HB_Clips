@@ -629,8 +629,7 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
       fontSize: (clip.fontSize ?? kTextNoteFontSize) * effectiveScale,
       color: AppTheme.textNoteText,
     );
-    final innerWidth =
-        boxWidth - 2 * kTextNoteHorizontalPadding * effectiveScale;
+    final innerWidth = boxWidth - 2 * kTextNotePadding * effectiveScale;
     // The live TextField's real RenderEditable lays text out
     // kTextCaretReservedWidth narrower than innerWidth (reserved for the
     // cursor - see that constant's doc comment) - HighlightGeometry's
@@ -723,10 +722,7 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
                 ),
                 clipBehavior: Clip.antiAlias,
                 child: Padding(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: kTextNoteHorizontalPadding * effectiveScale,
-                    vertical: kTextNoteVerticalPadding * effectiveScale,
-                  ),
+                  padding: EdgeInsets.all(kTextNotePadding * effectiveScale),
                   child: Stack(
                     // passthrough, not loose: the incoming constraints
                     // here are tight-width (from the outer Positioned's

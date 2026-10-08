@@ -8,7 +8,7 @@ import 'text_style_ranges.dart';
 /// auto-grow-height behavior - the inverse of how `ClipWidget`/
 /// `TextClipEditOverlay` already render a note (same
 /// `TextStyleRanges.buildSpans` call, same `TextNoteGeometry.baseStyle`,
-/// same [kTextNoteHorizontalPadding]/[kTextNoteVerticalPadding]), so
+/// same [kTextNotePadding]), so
 /// rendering and this measurement can never disagree. Everything here is
 /// board-space (never multiplied by `view.scale`) - same "world unit"
 /// convention as every other board-space constant in this app.
@@ -45,26 +45,23 @@ class TextNoteGeometry {
       );
 
   /// Board-space height needed to render [text]/[formatting] at
-  /// board-space [fontSize], wrapped to board-space [width].
+  /// board-space [fontSize], wrapped to board-space [width]. Used only by
+  /// callers with no live `TextField` to measure (a width-resize drag or a
+  /// font-size change while the note isn't being actively edited - see
+  /// `board_canvas.dart`/`TextClipEditOverlay._adjustFontSize`); while a
+  /// note is actively edited, `TextClipEditOverlay._scheduleHeightSync`
+  /// measures Flutter's real rendered height directly instead of calling
+  /// this at all.
   static double requiredHeight({
     required String text,
     required TextFormatting formatting,
     required double fontSize,
     required double width,
   }) {
-    final innerWidth = width - 2 * kTextNoteHorizontalPadding;
+    final innerWidth = width - 2 * kTextNotePadding;
     // Mirrors ClipWidget._buildText()/rasterizeTextClip's own correction
     // (see kTextCaretReservedWidth's doc comment) - without it, this
-    // measurement wraps a line later than every real render path does,
-    // silently under-predicting height by a line in some cases. This
-    // was the actual root cause of a text note occasionally needing an
-    // extra edit (a space/Enter) before its full content became
-    // visible: the callers of this function (board_canvas.dart's
-    // resize-drag auto-fit, and this file's own undo/redo height
-    // predictions) only ever predict - they have no live TextField to
-    // measure - so an under-prediction here persisted directly as
-    // `clip.height`, clipping the last line until the next real edit
-    // re-measured and self-corrected it.
+    // measurement wraps a line later than every real render path does.
     final contentWidth = innerWidth > kTextCaretReservedWidth
         ? innerWidth - kTextCaretReservedWidth
         : innerWidth;
@@ -78,6 +75,21 @@ class TextNoteGeometry {
       ),
       textDirection: TextDirection.ltr,
     )..layout(maxWidth: contentWidth < 1 ? 1 : contentWidth);
-    return painter.height + 2 * kTextNoteVerticalPadding;
+    // Where a cursor would sit right after the very last character (the
+    // same caret-placement math RenderEditable itself uses) - the top of
+    // whichever line the last glyph landed on, already accounting for
+    // every earlier line's real height (kTextNoteLineHeight included).
+    // One more fontSize's worth of room covers that final line itself,
+    // then padding on both edges - a tight fit defined by where the
+    // content actually ends, instead of trusting TextPainter's own total
+    // laid-out height (which reserves a full line-height's worth of
+    // space below the last line even when the glyphs themselves don't
+    // need it). Any small residual gap between this prediction and
+    // Flutter's real layout is now harmless either way - ClipWidget no
+    // longer clips a text note's content to its box.
+    final lastLineTop = painter
+        .getOffsetForCaret(TextPosition(offset: text.length), Rect.zero)
+        .dy;
+    return lastLineTop + fontSize + 2 * kTextNotePadding;
   }
 }

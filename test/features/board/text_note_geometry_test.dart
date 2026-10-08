@@ -85,7 +85,7 @@ void main() {
       // Wide enough to fit both words on one line at the natural
       // (uncorrected) width, but once kTextCaretReservedWidth (3.0)
       // is subtracted, narrower than the text itself - forcing a wrap.
-      final boundaryWidth = naturalWidth + 2 * kTextNoteHorizontalPadding + 1.0;
+      final boundaryWidth = naturalWidth + 2 * kTextNotePadding + 1.0;
       // Comfortably wider still, so both correction and non-correction
       // agree this fits on one line - the baseline to compare against.
       final comfortableWidth = boundaryWidth + kTextCaretReservedWidth * 4;
@@ -122,5 +122,33 @@ void main() {
       );
       expect(bold, greaterThanOrEqualTo(plain));
     });
+
+    test(
+      'single-line text is sized from where the last glyph landed, not from how long '
+      'that one line is - two different single-line strings at the same fontSize produce '
+      'the exact same height, since the caret for both sits on the same (only) line',
+      () {
+        const fontSize = 14.0;
+        final short = TextNoteGeometry.requiredHeight(
+          text: 'hi',
+          formatting: TextFormatting.empty,
+          fontSize: fontSize,
+          width: 400,
+        );
+        final longerButStillOneLine = TextNoteGeometry.requiredHeight(
+          text: 'a somewhat longer line that still fits on one row',
+          formatting: TextFormatting.empty,
+          fontSize: fontSize,
+          width: 1000,
+        );
+        expect(longerButStillOneLine, equals(short));
+        // Sanity range rather than an exact pixel value tied to font-metric
+        // internals (same convention as the other requiredHeight tests
+        // above) - one line's content plus padding should land well under
+        // two lines' worth of room.
+        expect(short, greaterThan(fontSize));
+        expect(short, lessThan(fontSize * 2));
+      },
+    );
   });
 }
