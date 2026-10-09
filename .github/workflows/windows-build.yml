@@ -11,9 +11,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # No pinned flutter-version: `flutter doctor -v` on the previous run
+      # showed this runner has Visual Studio 2026 (18.x) installed, but the
+      # pinned 3.35.5 (Sept 2025) predates VS2026's release - its CMake
+      # generator lookup table has no entry for major version 18, so it
+      # silently fell back to the oldest known default ("Visual Studio 16
+      # 2019"), which CMake then can't find on this machine. Tracking
+      # `stable` instead pulls whatever Flutter release is current today,
+      # which should include VS2026 support by now.
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.35.5'
           channel: stable
           cache: true
 
