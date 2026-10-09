@@ -27,6 +27,13 @@ jobs:
 
       - run: flutter test
 
+      # Diagnostic only: the previous run failed with CMake unable to find
+      # any Visual Studio instance for a "Visual Studio 16 2019" generator,
+      # even though windows-latest ships VS2022 - this surfaces exactly what
+      # flutter_tools' own VS detection sees on this runner before the next
+      # attempt, instead of guessing at a fix blind.
+      - run: flutter doctor -v
+
       # --no-tree-shake-icons: without it, release builds subset the
       # Material Icons font down to only statically-provable codepoints,
       # silently dropping some toolbar icons to empty glyphs - same flag
