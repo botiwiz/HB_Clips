@@ -154,6 +154,46 @@ class ConnectorGeometry {
     return ((a - b).distance * 0.5).clamp(_minStubLength, _maxStubLength);
   }
 
+  /// For every interior vertex of orthogonal route [points] (i.e. every
+  /// point except the first and last - a connector's two anchors, which
+  /// stay sharp and pinned exactly to the clip edge/surface point they
+  /// attach to, never rounded), the largest corner radius that fits
+  /// without overshooting past a neighboring vertex or crossing into the
+  /// next corner's own rounding - capped at [desiredRadius].
+  ///
+  /// Every segment between two vertices is shared by up to two corners,
+  /// one at each end. Capping each corner's radius at half the *shorter*
+  /// of its two adjacent segments means the two corners sharing a
+  /// segment can together claim at most half + half of it - touching at
+  /// the segment's midpoint in the worst case, never crossing. Same
+  /// "never more than half the shared gap" reasoning as [_stubLength]'s
+  /// `axisGap / 2` clamp in [routeBoard], generalized from stubs to
+  /// every corner - this is why a route's *inter-bend* segment (the gap
+  /// between a "Z" route's two bends, which the stub clamp has no say
+  /// over at all) still can't make a corner overshoot even when that
+  /// segment is far shorter than any stub.
+  ///
+  /// Degenerate zero-length segments (e.g. two touching clips collapsing
+  /// the whole route to a single point) safely clamp to radius 0 - a
+  /// sharp corner, not an error.
+  ///
+  /// Scale-agnostic by construction: works identically whether [points]
+  /// and [desiredRadius] are board-space or already screen-space -
+  /// callers decide which. `ConnectorPainter` calls this with already-
+  /// screen-space points and a fixed screen-pixel radius
+  /// (`kConnectorCornerRadius`), so the curve stays visually the same
+  /// size on screen at every zoom level, the same way connector stroke
+  /// width already does.
+  static List<double> cornerRadii(List<Offset> points, double desiredRadius) {
+    final radii = List<double>.filled(points.length, 0);
+    for (var i = 1; i < points.length - 1; i++) {
+      final prevLen = (points[i] - points[i - 1]).distance;
+      final nextLen = (points[i + 1] - points[i]).distance;
+      radii[i] = desiredRadius.clamp(0.0, math.min(prevLen, nextLen) / 2);
+    }
+    return radii;
+  }
+
   /// Rounds an arbitrary (possibly rotated) direction vector to the
   /// nearest of the 4 board-space cardinal directions - whichever axis
   /// has the larger-magnitude component wins, snapped to its sign. Lets
@@ -201,12 +241,18 @@ class ConnectorGeometry {
   /// The board-space, axis-aligned polyline of an orthogonal ("elbow")
   /// connector from [fromClip]'s fixed [fromSide] to [toClip] - a
   /// flowchart-style route of straight horizontal/vertical segments only,
-  /// turning in 90-degree steps (actual corner rounding happens at paint
-  /// time, in screen space - see `ConnectorPainter`). When [toRelX]/
-  /// [toRelY] are both given, the target anchor is that exact surface
-  /// point ([pointFromRelative]); otherwise it falls back to the nearest
-  /// boundary point ([nearestBoundaryAnchor]) - same two cases
-  /// `bezierBoard` used to handle, unchanged.
+  /// turning in 90-degree steps. The vertices returned here are always
+  /// the raw sharp polyline, by design - this is what keeps [hitTestRoute]
+  /// exact and this method's own tests simple. Turning these sharp
+  /// vertices into an actual radius-clamped curve happens in two places:
+  /// [cornerRadii] below computes, per vertex, the largest radius that
+  /// can't overshoot (pure math, unit-tested here); `ConnectorPainter` is
+  /// what actually draws that curve, in screen space, from this route
+  /// plus [cornerRadii]'s output. When [toRelX]/[toRelY] are both given,
+  /// the target anchor is that exact surface point ([pointFromRelative]);
+  /// otherwise it falls back to the nearest boundary point
+  /// ([nearestBoundaryAnchor]) - same two cases `bezierBoard` used to
+  /// handle, unchanged.
   ///
   /// Construction: each anchor is pushed out a short "stub" along its own
   /// direction ([_snapToCardinal]-ed to a cardinal axis), then the two
@@ -289,7 +335,14 @@ class ConnectorGeometry {
   /// [points] (already screen-space) - a direct
   /// `EraserGeometry.strokeNearPoint` call, no sampling needed since an
   /// orthogonal route already *is* a polyline (unlike the old cubic
-  /// bezier, which had to be sampled into one first).
+  /// bezier, which had to be sampled into one first). Deliberately not
+  /// curve-aware: tested against the *sharp* polyline, not the rounded
+  /// curve `ConnectorPainter` actually draws from these same points plus
+  /// [cornerRadii]. `kConnectorCornerRadius` (<= 8px, often less once
+  /// clamped) is smaller than [handleHitRadius] (10px) itself, so the
+  /// curve can never deviate from this straight-line approximation by
+  /// more than the existing hit-test fuzz already allows for - an
+  /// accepted, bounded precision loss, not an oversight.
   static bool hitTestRoute(List<Offset> points, Offset screenPoint) {
     return EraserGeometry.strokeNearPoint(points, screenPoint, handleHitRadius);
   }

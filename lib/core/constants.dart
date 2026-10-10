@@ -33,6 +33,16 @@ const double kEdgeSnapThresholdPx = 8;
 /// for paper-space line width (see `pdf_writer.dart`).
 const double kConnectorStrokeWidth = 1.5;
 
+/// Screen-space ceiling (logical pixels, fixed regardless of zoom - same
+/// convention as `kConnectorStrokeWidth`, not `kCornerRadius`) for
+/// rounding a connector's 90-degree elbow turns. This is only the
+/// *desired* radius: `ConnectorGeometry.cornerRadii` clamps it down,
+/// per corner, to whatever that corner's adjacent on-screen segments can
+/// actually fit at the current zoom - so the real on-screen radius can be
+/// smaller than this, but never large enough to overshoot a neighboring
+/// vertex or cross into the next corner's own curve.
+const double kConnectorCornerRadius = 8;
+
 /// Fixed angle increment (degrees) that every clip's rotate-handle drag
 /// snaps to - see `ClipGeometry.rotate`. 15 degrees matches the common
 /// design-tool default (Figma, Miro) for this exact gesture.
@@ -65,10 +75,24 @@ const double kTextNoteLineHeight = 1.3;
 /// constant in a different unit system (multiplied by `view.scale` at
 /// paint time) rather than a screen-space pixel radius - it's
 /// independently zeroed for the same visual effect, not tied to this
-/// constant. Connector corners are sharp by construction (a mitered
-/// stroke join in `ConnectorPainter`, not a radius), so there's no
-/// equivalent connector constant here.
+/// constant. Connectors have their own scoped exception,
+/// `kConnectorCornerRadius` above, for the same reason `kImageCornerRadius`
+/// below is image clips' - both are deliberately *not* 0, unlike
+/// everything else that reads this constant.
 const double kCornerRadius = 0.0;
+
+/// Corner radius applied only to image clips - the sole deliberate
+/// exception to the app's otherwise-sharp `kCornerRadius = 0` design
+/// (frames, text notes, and shapes all stay sharp). A fixed UI-chrome
+/// pixel radius, not scaled by `viewScale` - same convention as this
+/// decoration's sibling properties in `ClipWidget` (`Border.all(width:
+/// 1.0)`, `BoxShadow(blurRadius: 10, ...)`), none of which scale with
+/// zoom either. Restores the exact value and convention images used
+/// before the "sharp corners everywhere" pass unified every clip type
+/// onto `kCornerRadius` (confirmed via git history: the image
+/// `ClipRRect` literally read `BorderRadius.circular(10)` before that
+/// pass).
+const double kImageCornerRadius = 10;
 
 /// Starting highlight color (a standard highlighter yellow) for a text
 /// note before its color has ever been customized via the toolbar's

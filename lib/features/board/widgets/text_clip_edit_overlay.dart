@@ -225,6 +225,14 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
   // that actually matched the pre-edit text, not the post-edit ranges
   // misapplied to reverted text.
   TextFormatting? _formattingBeforeEdit;
+  // The clip's persisted height when this edit session started - may
+  // differ from content auto-fit if the user manually dragged it (see
+  // board_canvas.dart's resize handler + _scheduleHeightSync's grow-only
+  // rule above). Captured once here, unlike _lastSyncedHeight below
+  // (which _scheduleHeightSync keeps overwriting through the session),
+  // so _commitAndExit's undo step can restore the real pre-edit height
+  // instead of silently resetting a manual resize to auto-fit.
+  double? _heightBeforeEdit;
   // Stable across rebuilds of the same edit session (recreated only when
   // _bind binds a different clip) - identifies the outer Container whose
   // real, Flutter-measured size _scheduleHeightSync reads back after
@@ -252,6 +260,7 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
     );
     _textBeforeEdit = clip.textContent ?? '';
     _formattingBeforeEdit = clip.textFormatting;
+    _heightBeforeEdit = clip.height;
     _boxKey = GlobalKey(debugLabel: 'TextClipEditBox-${clip.id}');
     _lastSyncedHeight = clip.height;
     _focusNode = FocusNode(debugLabel: 'TextClipEdit-${clip.id}');
@@ -295,17 +304,19 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
           );
         }
 
+        final heightBeforeEdit = _heightBeforeEdit ?? heightFor(before, beforeFormatting);
         ref
             .read(undoManagerProvider.notifier)
             .push(
               UndoableAction(
+                // Restores the real pre-session height (which may be a
+                // manually-dragged size, not necessarily the text's
+                // auto-fit height) rather than recomputing it from the
+                // reverted text - see _heightBeforeEdit's doc comment.
                 undo: () => Future.wait([
                   repo.updateTextContent(id, before),
                   repo.updateTextFormatting(id, beforeFormatting),
-                  repo.updateTransform(
-                    id,
-                    height: heightFor(before, beforeFormatting),
-                  ),
+                  repo.updateTransform(id, height: heightBeforeEdit),
                 ]),
                 redo: () => Future.wait([
                   repo.updateTextContent(id, finalText),
@@ -530,6 +541,17 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
   /// `clip.height` directly, which can itself be mid-round-trip) turns a
   /// rebuild from unrelated board activity (panning, another clip
   /// moving) into a single key lookup and comparison, not a write.
+  ///
+  /// Can only ever GROW the persisted height without the user having
+  /// typed anything this session (never clip content - the same
+  /// invariant Part 81's visible-overflow protects); it will not SHRINK
+  /// a manually-dragged height (board_canvas.dart's resize handler) back
+  /// down to tight auto-fit just because the editor was opened - only
+  /// once the user has actually edited the text this session does a
+  /// shrink get written. Without this, simply double-clicking into a
+  /// note the user had resized taller than its content (for visual
+  /// breathing room) would silently discard that resize on the very
+  /// first frame, before a single keystroke.
   void _scheduleHeightSync(String id, double effectiveScale) {
     final key = _boxKey;
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -539,6 +561,8 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
       final measured = box.size.height / effectiveScale;
       final last = _lastSyncedHeight;
       if (last != null && (measured - last).abs() <= 0.5) return;
+      final edited = _controller!.text != (_textBeforeEdit ?? '');
+      if (!edited && last != null && measured < last) return;
       _lastSyncedHeight = measured;
       ref.read(clipsRepositoryProvider).updateTransform(id, height: measured);
     });

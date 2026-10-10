@@ -347,6 +347,129 @@ void main() {
     });
   });
 
+  group('cornerRadii', () {
+    test(
+      'generous spacing: every interior vertex gets the full desired radius',
+      () {
+        final fromClip = _clip(id: 'from', x: 0, y: 0, width: 100, height: 100);
+        final toClip = _clip(id: 'to', x: 250, y: 950, width: 100, height: 100);
+        final points = ConnectorGeometry.routeBoard(
+          fromClip: fromClip,
+          fromSide: ConnectorSide.right,
+          toClip: toClip,
+          toRelX: 0.5,
+          toRelY: 0.5,
+        );
+        final radii = ConnectorGeometry.cornerRadii(points, 8);
+
+        expect(radii.first, 0);
+        expect(radii.last, 0);
+        for (var i = 1; i < radii.length - 1; i++) {
+          expect(radii[i], closeTo(8, 1e-9));
+        }
+      },
+    );
+
+    test(
+      'tight gap between facing anchors: radius shrinks well below the '
+      'desired value',
+      () {
+        final fromClip = _clip(id: 'from', x: 0, y: 0, width: 100, height: 60);
+        final toClip = _clip(id: 'to', x: 105, y: 0, width: 100, height: 60);
+        final points = ConnectorGeometry.routeBoard(
+          fromClip: fromClip,
+          fromSide: ConnectorSide.right,
+          toClip: toClip,
+          toRelX: 0.0,
+          toRelY: 0.5,
+        );
+        final radii = ConnectorGeometry.cornerRadii(points, 8);
+
+        expect(radii, hasLength(3));
+        expect(radii[1], closeTo(1.25, 1e-9));
+      },
+    );
+
+    test(
+      'a short inter-bend segment forces its two corners to shrink '
+      'independently of comfortably-sized (not floor-clamped) stubs',
+      () {
+        final fromClip = _clip(id: 'from', x: 0, y: 0, width: 100, height: 60);
+        final toClip = _clip(id: 'to', x: 140, y: 1, width: 100, height: 60);
+        final points = ConnectorGeometry.routeBoard(
+          fromClip: fromClip,
+          fromSide: ConnectorSide.right,
+          toClip: toClip,
+          toRelX: 0.0,
+          toRelY: 0.5,
+        );
+        final radii = ConnectorGeometry.cornerRadii(points, 8);
+
+        // Both stubs here land around 20 board units - comfortably inside
+        // the normal [16, 40] stub range, not floor-clamped - yet the
+        // 1-unit middle segment between the route's two bends still
+        // forces both corners straddling it down to its own half (0.5),
+        // proving the stub clamp alone doesn't bound every segment a
+        // corner might need to round around.
+        expect(radii, hasLength(4));
+        expect(radii[1], closeTo(0.5, 1e-9));
+        expect(radii[2], closeTo(0.5, 1e-9));
+      },
+    );
+
+    test(
+      'no corner radius ever overshoots past either of its own adjacent '
+      'vertices, at any desired radius',
+      () {
+        final routedScenarios = [
+          ConnectorGeometry.routeBoard(
+            fromClip: _clip(id: 'from', x: 0, y: 0, width: 100, height: 100),
+            fromSide: ConnectorSide.right,
+            toClip: _clip(id: 'to', x: 250, y: 950, width: 100, height: 100),
+            toRelX: 0.5,
+            toRelY: 0.5,
+          ),
+          ConnectorGeometry.routeBoard(
+            fromClip: _clip(id: 'from', x: 0, y: 0, width: 100, height: 60),
+            fromSide: ConnectorSide.right,
+            toClip: _clip(id: 'to', x: 105, y: 0, width: 100, height: 60),
+            toRelX: 0.0,
+            toRelY: 0.5,
+          ),
+          ConnectorGeometry.routeBoard(
+            fromClip: _clip(id: 'from', x: 0, y: 0, width: 100, height: 60),
+            fromSide: ConnectorSide.right,
+            toClip: _clip(id: 'to', x: 140, y: 1, width: 100, height: 60),
+            toRelX: 0.0,
+            toRelY: 0.5,
+          ),
+          // Fully collapsed to a single point - the degenerate case no
+          // real route can produce after dedup (consecutive points are
+          // always distinct), but cornerRadii must still handle it
+          // safely (no division, no exception) since it's a public,
+          // independently-callable method.
+          const [Offset(5, 5)],
+        ];
+
+        for (final points in routedScenarios) {
+          for (final desired in [0.0, 8.0, 10000.0]) {
+            final radii = ConnectorGeometry.cornerRadii(points, desired);
+            expect(radii.first, 0);
+            expect(radii.last, 0);
+            for (var i = 1; i < radii.length - 1; i++) {
+              final prevLen = (points[i] - points[i - 1]).distance;
+              final nextLen = (points[i + 1] - points[i]).distance;
+              expect(radii[i], greaterThanOrEqualTo(0.0));
+              expect(radii[i], lessThanOrEqualTo(prevLen / 2 + 1e-9));
+              expect(radii[i], lessThanOrEqualTo(nextLen / 2 + 1e-9));
+              expect(radii[i], lessThanOrEqualTo(desired + 1e-9));
+            }
+          }
+        }
+      },
+    );
+  });
+
   group('hitTestRoute', () {
     test('true near the midpoint of a route segment', () {
       final fromClip = _clip(id: 'from', x: 0, y: 0, width: 100, height: 60);

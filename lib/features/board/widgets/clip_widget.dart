@@ -56,11 +56,16 @@ class ClipWidget extends StatelessWidget {
     // handles for a single selection), so every clip type - shapes
     // included - must keep it.
     final isShape = clip.type == ClipType.shape;
+    // Images are the sole deliberate exception to this app's otherwise-
+    // sharp corner design - see `kImageCornerRadius`'s doc comment.
+    final cardRadius = clip.type == ClipType.image
+        ? kImageCornerRadius
+        : kCornerRadius;
     return Opacity(
       opacity: clip.opacity,
       child: Container(
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(kCornerRadius),
+          borderRadius: BorderRadius.circular(cardRadius),
           border: selected
               ? Border.all(color: AppTheme.red, width: 1.0)
               : (isShape || clip.type == ClipType.text
@@ -85,7 +90,7 @@ class ClipWidget extends StatelessWidget {
         ),
         child: switch (clip.type) {
           ClipType.image => ClipRRect(
-            borderRadius: BorderRadius.circular(kCornerRadius),
+            borderRadius: BorderRadius.circular(cardRadius),
             clipBehavior: Clip.antiAlias,
             child: _buildImage(),
           ),

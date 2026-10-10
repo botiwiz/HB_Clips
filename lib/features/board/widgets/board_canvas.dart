@@ -25,7 +25,6 @@ import '../geometry/frame_geometry.dart';
 import '../geometry/image_pan_zoom_geometry.dart';
 import '../geometry/selection_geometry.dart';
 import '../geometry/snap_geometry.dart';
-import '../geometry/text_note_geometry.dart';
 import '../geometry/view_focus_geometry.dart';
 import '../services/add_image_service.dart';
 import '../services/eyedropper_service.dart';
@@ -1642,30 +1641,19 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
         final resultWidth = snap
             ? ClipGeometry.snap(result.width, kBoardGridSpacing)
             : result.width;
-        double resultY;
-        double resultHeight;
-        if (_handleStartClip!.type == ClipType.text) {
-          // A text note's height is always an exact fit for its content
-          // (see TextClipEditOverlay's _liveHeight/onChanged) - dragging a
-          // handle only changes width (and x, following the normal
-          // opposite-corner pivot above); height re-fits live to whatever
-          // width is being dragged to, and y never moves, so the box's
-          // top edge stays put regardless of which corner is grabbed.
-          resultY = _handleStartClip!.y;
-          resultHeight = TextNoteGeometry.requiredHeight(
-            text: _handleStartClip!.textContent ?? '',
-            formatting: _handleStartClip!.textFormatting,
-            fontSize: _handleStartClip!.fontSize ?? kTextNoteFontSize,
-            width: resultWidth,
-          );
-        } else {
-          resultY = snap
-              ? ClipGeometry.snap(result.y, kBoardGridSpacing)
-              : result.y;
-          resultHeight = snap
-              ? ClipGeometry.snap(result.height, kBoardGridSpacing)
-              : result.height;
-        }
+        // Text notes resize like every other clip type now - dragging a
+        // handle sets height directly. Content auto-fit still happens
+        // live while actively typing (TextClipEditOverlay
+        // ._scheduleHeightSync), but a manual resize-drag is no longer
+        // overridden by it the moment the box is reopened for editing
+        // (see that method's own doc comment for how it respects a
+        // manually-dragged height).
+        final resultY = snap
+            ? ClipGeometry.snap(result.y, kBoardGridSpacing)
+            : result.y;
+        final resultHeight = snap
+            ? ClipGeometry.snap(result.height, kBoardGridSpacing)
+            : result.height;
         ref.read(groupDragProvider.notifier).state = {
           id: current.copyWith(
             x: resultX,
