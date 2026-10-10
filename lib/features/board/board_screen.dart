@@ -1404,6 +1404,7 @@ class BoardScreen extends ConsumerWidget {
                     PillIconButton(
                       tooltip: 'Bin',
                       icon: Icons.delete_outline,
+                      visualDensity: VisualDensity.standard,
                       onPressed: () => Navigator.of(context).push(
                         MaterialPageRoute(builder: (_) => const BinScreen()),
                       ),
@@ -1411,6 +1412,7 @@ class BoardScreen extends ConsumerWidget {
                     PillIconButton(
                       tooltip: 'About',
                       icon: Icons.info_outline,
+                      visualDensity: VisualDensity.standard,
                       onPressed: () => Navigator.of(context).push(
                         MaterialPageRoute(builder: (_) => const AboutScreen()),
                       ),

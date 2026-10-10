@@ -43,12 +43,23 @@ class PillIconButton extends StatelessWidget {
   final Color? color;
   final VoidCallback? onPressed;
 
+  /// [VisualDensity.compact] (the default everywhere else) renders about
+  /// 8px shorter than the File/Board-switcher pills next to it - those
+  /// get their height from their own 10px vertical content padding, not
+  /// from an IconButton at all. Standalone single-row pill groups (e.g.
+  /// Bin/About) sit right next to those taller pills with nothing else to
+  /// visually average the mismatch away, so they opt into
+  /// [VisualDensity.standard] here to match exactly; every other
+  /// `PillIconButton` call site keeps the compact default unchanged.
+  final VisualDensity visualDensity;
+
   const PillIconButton({
     super.key,
     required this.tooltip,
     required this.icon,
     required this.onPressed,
     this.color,
+    this.visualDensity = VisualDensity.compact,
   });
 
   @override
@@ -57,7 +68,7 @@ class PillIconButton extends StatelessWidget {
       tooltip: tooltip,
       icon: Icon(icon, color: color),
       iconSize: 20,
-      visualDensity: VisualDensity.compact,
+      visualDensity: visualDensity,
       onPressed: onPressed,
     );
   }
