@@ -113,8 +113,20 @@ class PinterestService {
     try {
       return jsonDecode(response.body) as Map<String, dynamic>;
     } catch (e) {
+      // A non-JSON 200 means Pinterest accepted the request but didn't
+      // treat it as a resource-API call - most likely an HTML bot-
+      // challenge page, a login wall, or a redirect that landed somewhere
+      // unexpected. Surfacing a snippet of the actual body (and the final
+      // URL, which may differ from [uri] if a redirect was followed) lets
+      // the user report back real diagnostic data instead of guessing
+      // blind again - see this class's doc comment for what to do with it.
+      final snippet = response.body.length > 300
+          ? '${response.body.substring(0, 300)}...'
+          : response.body;
+      final finalUrl = response.request?.url ?? uri;
       throw PinterestRequestException(
-        'Unexpected response shape from Pinterest (not valid JSON).',
+        'Unexpected response from Pinterest (not valid JSON) at '
+        '$finalUrl:\n$snippet',
       );
     }
   }
