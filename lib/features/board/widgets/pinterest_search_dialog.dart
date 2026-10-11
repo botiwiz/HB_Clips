@@ -72,7 +72,15 @@ class _PinterestSearchDialogState
       _results = null;
     });
     try {
-      final results = await _pinterest.searchBoards(query);
+      // A pasted board URL (or bare "username/boardname") resolves via
+      // the confirmed-working Board resource - see
+      // PinterestService.resolveBoardUrl's doc comment. Only a query that
+      // doesn't parse as one falls back to the experimental keyword
+      // search, which may 403 (gallery-dl's reference extractor has no
+      // board-search capability at all - the scope it uses was a guess).
+      final results = PinterestService.parseBoardIdentifier(query) != null
+          ? [await _pinterest.resolveBoardUrl(query)]
+          : await _pinterest.searchBoards(query);
       if (!mounted) return;
       setState(() {
         _results = results;
@@ -152,7 +160,7 @@ class _PinterestSearchDialogState
     }
 
     return AlertDialog(
-      title: const Text('Search Pinterest boards'),
+      title: const Text('Add a Pinterest board'),
       content: SizedBox(
         width: 420,
         child: Column(
@@ -163,7 +171,7 @@ class _PinterestSearchDialogState
               controller: _controller,
               autofocus: true,
               decoration: const InputDecoration(
-                hintText: 'e.g. mid-century furniture',
+                hintText: 'pinterest.com/username/boardname, or a keyword',
                 isDense: true,
               ),
               onSubmitted: (_) => _search(),

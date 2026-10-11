@@ -10,27 +10,29 @@ import 'package:http/http.dart' as http;
 /// own pins). This is the technique documented by the long-established,
 /// widely-used open-source `gallery-dl` project's Pinterest extractor
 /// (github.com/mikf/gallery-dl, `gallery_dl/extractor/pinterest.py`) -
-/// every endpoint, parameter, and pagination rule below is taken directly
-/// from reading that extractor's source, not guessed.
+/// every endpoint, parameter, pagination rule, and header below is taken
+/// directly from reading that extractor's source (and its base
+/// `Extractor._init_session()` in `common.py`), not guessed, confirmed on
+/// 2026-10-11 by re-reading both files after a real-world 403 report (see
+/// below).
 ///
 /// Because this is an unofficial, undocumented API, it can change or
 /// start rejecting requests at any time, and Pinterest's Terms of Service
 /// don't sanction this kind of access - the user explicitly chose this
 /// tradeoff after being told the alternatives (see the board chat this
-/// shipped from). Two specific things below are inferred by analogy
-/// rather than confirmed against a real response (this sandbox's network
-/// policy blocks pinterest.com entirely, so none of this could be tested
-/// here) - each is called out at its call site:
-/// 1. The `scope: "boards"` search parameter (gallery-dl's own source
-///    only documents `scope: "pins"`; `"boards"` is the obvious analogous
-///    value but unverified).
-/// 2. The exact field names on a board search result object (`id`,
-///    `name`, `pin_count`, `owner.username`, `image_thumbnail_url`) -
-///    inferred from Pinterest's generally-documented object conventions.
-/// If results come back empty/malformed on a real run, these are the
-/// first two things to check against the actual JSON (add a debugPrint
-/// of the raw response body temporarily, inspect it, adjust the field
-/// paths in [PinterestBoard.fromJson] below to match).
+/// shipped from).
+///
+/// **Known gap, found from a real 403 after this shipped:** gallery-dl's
+/// extractor has no keyword board-search at all - its `search()` method
+/// only supports `scope: "pins"`. The `scope: "boards"` parameter
+/// [searchBoards] below uses was always an unverified guess (there is no
+/// `search_boards()` anywhere in the reference source), and may simply not
+/// be a real capability of this API - a 403 here could be Pinterest
+/// rejecting an unsupported scope value as aggressively as it rejects a
+/// non-browser-looking request. [resolveBoardUrl] is the one board-lookup
+/// path gallery-dl's `PinterestBoardExtractor` actually confirms works: a
+/// board URL's username+slug resolved via the `Board` resource, with no
+/// search involved - prefer it; treat [searchBoards] as experimental.
 class PinterestService {
   PinterestService({http.Client? client}) : _client = client ?? http.Client();
 
@@ -38,9 +40,12 @@ class PinterestService {
   static const String _root = 'https://www.pinterest.com';
 
   // A random 32-char hex string, regenerated per `PinterestService`
-  // instance - mirrors gallery-dl's `util.generate_token()`, sent as a
-  // `csrftoken` cookie (and duplicated into the matching header, the
-  // standard double-submit CSRF pattern) on every request.
+  // instance - mirrors gallery-dl's `util.generate_token()`, sent only as
+  // a `csrftoken` cookie (gallery-dl passes it through its HTTP client's
+  // cookie jar, not as a header - no `X-CSRFToken` header appears
+  // anywhere in its source, so this deliberately doesn't send one either;
+  // an earlier version of this file did, which may have made requests
+  // look more suspicious, not less).
   static String _generateToken() {
     final rand = Random.secure();
     return List.generate(32, (_) => rand.nextInt(16).toRadixString(16)).join();
@@ -48,10 +53,24 @@ class PinterestService {
 
   final String _csrfToken = _generateToken();
 
+  // Mirrors gallery-dl's `PinterestAPI.__init__` headers dict plus the
+  // bare-default (no `browser` option) headers `Extractor._init_session()`
+  // sets - every entry here is read verbatim from one or the other, not
+  // invented. gallery-dl never fills in `X-Pinterest-Source-Url`, so this
+  // leaves it out too rather than guessing a value for it.
   Map<String, String> get _headers => {
     'Accept': 'application/json, text/javascript, */*, q=0.01',
+    'Accept-Language': 'en-US,en;q=0.5',
+    'Accept-Encoding': 'gzip, deflate, br',
     'X-Requested-With': 'XMLHttpRequest',
-    'X-CSRFToken': _csrfToken,
+    'X-APP-VERSION': 'a89153f',
+    'X-Pinterest-AppState': 'active',
+    'X-Pinterest-PWS-Handler': 'www/[username].js',
+    'Alt-Used': 'www.pinterest.com',
+    'Connection': 'keep-alive',
+    'Sec-Fetch-Dest': 'empty',
+    'Sec-Fetch-Mode': 'cors',
+    'Sec-Fetch-Site': 'same-origin',
     'Referer': '$_root/',
     'User-Agent':
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
@@ -100,9 +119,9 @@ class PinterestService {
     }
   }
 
-  /// Searches for boards matching [query]. See this class's doc comment -
-  /// `scope: "boards"` is inferred by analogy with gallery-dl's documented
-  /// `scope: "pins"` pin-search, not independently confirmed.
+  /// Experimental keyword board search - see this class's doc comment.
+  /// `scope: "boards"` is an unverified guess; gallery-dl's reference
+  /// extractor has no board-search method at all. Prefer [resolveBoardUrl].
   Future<List<PinterestBoard>> searchBoards(String query) async {
     final json = await _getResource('BaseSearch', {
       'query': query,
@@ -114,6 +133,83 @@ class PinterestService {
       for (final item in data)
         if (item is Map<String, dynamic>) PinterestBoard.fromJson(item),
     ].whereType<PinterestBoard>().toList();
+  }
+
+  /// Resolves a Pinterest board from its URL (or a bare `username/slug`
+  /// pair) via the `Board` resource - the one board-lookup mechanism
+  /// gallery-dl's `PinterestBoardExtractor` actually confirms works
+  /// (`PinterestAPI.board(username, slug)`, calling `BoardResource` with
+  /// `{slug, username, field_set_key: "detailed"}`). No search involved,
+  /// so it isn't subject to [searchBoards]'s "is `scope: boards` even
+  /// real" uncertainty. Throws [PinterestRequestException] if [input]
+  /// doesn't parse as a board identifier (see [parseBoardIdentifier]) or
+  /// the board resource comes back in an unexpected shape.
+  Future<PinterestBoard> resolveBoardUrl(String input) async {
+    final parsed = parseBoardIdentifier(input);
+    if (parsed == null) {
+      throw PinterestRequestException(
+        'Enter a Pinterest board URL (e.g. pinterest.com/username/boardname) '
+        'or a plain keyword to search.',
+      );
+    }
+    final json = await _getResource('Board', {
+      'slug': parsed.slug,
+      'username': parsed.username,
+      'field_set_key': 'detailed',
+    });
+    final data = json['resource_response'];
+    final board = data is Map<String, dynamic> ? data['data'] : null;
+    if (board is! Map<String, dynamic>) {
+      throw PinterestRequestException('Board not found.');
+    }
+    final parsedBoard = PinterestBoard.fromJson(board);
+    if (parsedBoard == null) {
+      throw PinterestRequestException(
+        'Unexpected response shape for this board.',
+      );
+    }
+    return parsedBoard;
+  }
+
+  /// Parses a Pinterest board URL (`https://www.pinterest.com/username/
+  /// boardname/`, with or without scheme/query/trailing slash), a bare
+  /// `pinterest.com/username/boardname`, or a plain `username/boardname`
+  /// pair (no domain at all, for pasting just the slug part) into its two
+  /// path segments. Rejects a pin permalink (`pinterest.com/pin/12345/` -
+  /// first segment `"pin"`, same exclusion gallery-dl's own
+  /// `PinterestBoardExtractor` URL pattern applies) and anything with
+  /// fewer than two non-empty path segments (e.g. a bare profile URL with
+  /// no board, or a plain keyword-search query with no slash at all).
+  ///
+  /// A domain-less `username/boardname` can't just be run through
+  /// `Uri.tryParse` with an `https://` prefix tacked on - that would parse
+  /// `username` as the URL's *host*, not a path segment, leaving only
+  /// `boardname` in `pathSegments` (one segment, so it would fail the
+  /// length check for the wrong reason). Only `pinterest.com`-containing
+  /// or scheme-prefixed input goes through `Uri`; anything else is split
+  /// on `/` directly.
+  ///
+  /// Pure and synchronous - no network access - so it's unit-testable on
+  /// its own.
+  static ({String username, String slug})? parseBoardIdentifier(String input) {
+    final trimmed = input.trim();
+    if (trimmed.isEmpty) return null;
+    final looksLikeUrl =
+        trimmed.contains('://') ||
+        trimmed.toLowerCase().contains('pinterest.com');
+    final List<String> segments;
+    if (looksLikeUrl) {
+      final hasScheme = trimmed.contains('://');
+      final uri = Uri.tryParse(hasScheme ? trimmed : 'https://$trimmed');
+      if (uri == null) return null;
+      segments = uri.pathSegments.where((s) => s.isNotEmpty).toList();
+    } else {
+      segments = trimmed.split('/').where((s) => s.isNotEmpty).toList();
+    }
+    if (segments.length < 2 || segments.first.toLowerCase() == 'pin') {
+      return null;
+    }
+    return (username: segments[0], slug: segments[1]);
   }
 
   /// Fetches every pin image in board [boardId], paginating via the
