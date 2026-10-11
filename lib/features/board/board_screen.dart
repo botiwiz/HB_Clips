@@ -41,6 +41,7 @@ import 'widgets/board_toolbar.dart';
 import 'widgets/file_menu_button.dart';
 import 'widgets/gif_playback_toolbar.dart';
 import 'widgets/pdf_export_wizard_screen.dart';
+import 'widgets/pinterest_search_dialog.dart';
 import 'widgets/shape_tool_button.dart';
 
 const _uuid = Uuid();
@@ -1389,6 +1390,12 @@ class BoardScreen extends ConsumerWidget {
                             tooltip: 'Export board as .pdf',
                             icon: Icons.picture_as_pdf_outlined,
                             onPressed: () => _exportPdfFile(context, ref),
+                          ),
+                          PillIconButton(
+                            tooltip: 'Search Pinterest boards',
+                            icon: Icons.search,
+                            onPressed: () =>
+                                showPinterestSearchDialog(context, ref),
                           ),
                         ],
                       ),
