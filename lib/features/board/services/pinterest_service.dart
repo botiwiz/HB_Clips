@@ -56,12 +56,19 @@ class PinterestService {
   // Mirrors gallery-dl's `PinterestAPI.__init__` headers dict plus the
   // bare-default (no `browser` option) headers `Extractor._init_session()`
   // sets - every entry here is read verbatim from one or the other, not
-  // invented. gallery-dl never fills in `X-Pinterest-Source-Url`, so this
-  // leaves it out too rather than guessing a value for it.
+  // invented, with one deliberate exception: `Accept-Encoding` is left
+  // unset. gallery-dl's Python HTTP stack transparently decompresses
+  // gzip/deflate/br regardless of who sets that header, but Dart's
+  // `dart:io` `HttpClient` only auto-decompresses gzip when *it* adds the
+  // `Accept-Encoding` header itself - an explicit one from calling code
+  // (as this file briefly had) turns that off, so the server's compressed
+  // bytes arrive raw and `jsonDecode`/`.body` fail decoding them as UTF-8
+  // text. Omitting the header restores `dart:io`'s default gzip-only
+  // auto-decompression. gallery-dl never fills in `X-Pinterest-Source-Url`
+  // either, so this leaves it out too rather than guessing a value for it.
   Map<String, String> get _headers => {
     'Accept': 'application/json, text/javascript, */*, q=0.01',
     'Accept-Language': 'en-US,en;q=0.5',
-    'Accept-Encoding': 'gzip, deflate, br',
     'X-Requested-With': 'XMLHttpRequest',
     'X-APP-VERSION': 'a89153f',
     'X-Pinterest-AppState': 'active',
