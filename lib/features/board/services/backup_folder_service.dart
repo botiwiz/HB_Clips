@@ -24,10 +24,15 @@ String sanitizedBackupFileName(String name) {
 
 /// Opens a native "choose a folder" dialog. Same try/catch-zenity-missing
 /// pattern `board_backup_service.dart`'s old file-picker call sites used.
-/// Returns null if the user cancels or the picker itself couldn't open.
+/// Returns null if the user cancels, the picker itself couldn't open, or
+/// the folder it handed back turns out not to actually be writable (see
+/// below) - every failure path here already shows its own SnackBar, so
+/// callers can treat a null return as "already explained, nothing more to
+/// say."
 Future<String?> pickBackupFolder(BuildContext context) async {
+  final String? picked;
   try {
-    return await FilePicker.platform.getDirectoryPath(
+    picked = await FilePicker.platform.getDirectoryPath(
       dialogTitle: 'Choose a backup folder',
     );
   } catch (error) {
@@ -43,6 +48,28 @@ Future<String?> pickBackupFolder(BuildContext context) async {
     );
     return null;
   }
+  if (picked == null) return null;
+
+  // Some file-picker backends (notably an xdg-desktop-portal-confined GTK
+  // dialog on certain Linux desktops) can hand back a path that looks
+  // valid but isn't actually writable by this process - silently adopting
+  // it would make every later Save/Load fail with no visible reason at
+  // all, exactly the "nothing happens" failure mode this probe exists to
+  // catch right at the point of picking, instead of later and more
+  // confusingly.
+  try {
+    await probeFolderWritable(picked);
+  } catch (error) {
+    if (!context.mounted) return null;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text("Can't write to $picked: $error"),
+        backgroundColor: AppTheme.danger,
+      ),
+    );
+    return null;
+  }
+  return picked;
 }
 
 /// Shows the "choose a backup folder" explainer dialog if nothing is
@@ -93,20 +120,32 @@ Future<bool> ensureBackupFolderConfigured(
   return true;
 }
 
+/// A board name paired with the error that stopped it from being written -
+/// see [saveAllBoardsToBackupFolder].
+typedef SaveFailure = (String boardName, Object error);
+
+/// How many boards [saveAllBoardsToBackupFolder] wrote successfully, plus
+/// which ones (if any) failed and why - [saveAllBoards] surfaces
+/// [failures] in its summary instead of only reporting a possibly-
+/// confusing raw count.
+typedef SaveAllBoardsResult = ({int written, List<SaveFailure> failures});
+
 /// Writes every board's current state to
 /// `<folderPath>/<sanitized board name>.hbbackup`, overwriting in place -
 /// no run subfolder, no pruning, since there's only ever one file per
 /// board now. Shared by [saveAllBoards] (the File menu action) and
 /// [runAutoBackup] (the periodic scheduler). A failure on one board is
 /// logged and skipped rather than aborting the rest - this is meant to be
-/// a reliable background safety net, not an all-or-nothing transaction.
-/// Returns how many boards were written successfully.
-Future<int> saveAllBoardsToBackupFolder(
+/// a reliable background safety net, not an all-or-nothing transaction -
+/// but is still collected and returned so a caller that wants to show the
+/// user what went wrong (unlike the silent background scheduler) can.
+Future<SaveAllBoardsResult> saveAllBoardsToBackupFolder(
   WidgetRef ref,
   String folderPath,
 ) async {
   final boards = ref.read(boardsProvider).valueOrNull ?? [];
   var written = 0;
+  final failures = <SaveFailure>[];
   for (final board in boards) {
     try {
       final bytes = await exportBoardBackup(ref, board.id);
@@ -116,9 +155,10 @@ Future<int> saveAllBoardsToBackupFolder(
       written++;
     } catch (e, st) {
       debugPrint('[backup-folder] failed to save "${board.name}": $e\n$st');
+      failures.add((board.name, e));
     }
   }
-  return written;
+  return (written: written, failures: failures);
 }
 
 /// File menu "Save" - writes every board into the configured backup
@@ -133,13 +173,43 @@ Future<void> saveAllBoards(BuildContext context, WidgetRef ref) async {
       .read(appSettingsRepositoryProvider)
       .getBackupFolderPath();
   if (folderPath == null) return; // shouldn't happen once configured==true
-  final count = await saveAllBoardsToBackupFolder(ref, folderPath);
+  final result = await saveAllBoardsToBackupFolder(ref, folderPath);
   if (!context.mounted) return;
-  ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(
-      content: Text(
-        'Saved $count board${count == 1 ? '' : 's'} to $folderPath',
+
+  if (result.failures.isEmpty) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Saved ${result.written} board'
+          '${result.written == 1 ? '' : 's'} to $folderPath',
+        ),
       ),
+    );
+    return;
+  }
+
+  // At least one board failed - a plain count would hide that something
+  // is actually wrong, so switch to the same error-list dialog pattern
+  // `loadBackupFolder` already uses for its own per-file failures.
+  await showDialog<void>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      title: const Text('Save to folder'),
+      content: Text(
+        [
+          'Saved ${result.written} board${result.written == 1 ? '' : 's'} '
+              'to $folderPath.',
+          "\nCouldn't save:",
+          for (final (boardName, error) in result.failures)
+            '$boardName: $error',
+        ].join('\n'),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(dialogContext).pop(),
+          child: const Text('OK'),
+        ),
+      ],
     ),
   );
 }
@@ -156,8 +226,11 @@ Future<void> runAutoBackup(WidgetRef ref) async {
         .read(appSettingsRepositoryProvider)
         .getBackupFolderPath();
     if (folderPath == null) return;
-    final count = await saveAllBoardsToBackupFolder(ref, folderPath);
-    debugPrint('[auto-backup] wrote $count board(s) to $folderPath');
+    final result = await saveAllBoardsToBackupFolder(ref, folderPath);
+    debugPrint(
+      '[auto-backup] wrote ${result.written} board(s) to $folderPath'
+      '${result.failures.isEmpty ? '' : ', ${result.failures.length} failed'}',
+    );
   } catch (e, st) {
     debugPrint('[auto-backup] failed: $e\n$st');
   }

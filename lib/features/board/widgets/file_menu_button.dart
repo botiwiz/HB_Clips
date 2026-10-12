@@ -28,16 +28,7 @@ class FileMenuButton extends ConsumerWidget {
       shadowColor: Colors.black54,
       child: PopupMenuButton<String>(
         tooltip: 'File',
-        onSelected: (value) {
-          switch (value) {
-            case 'load':
-              loadBackupFolder(context, ref);
-            case 'save':
-              saveAllBoards(context, ref);
-            case 'backup_folder':
-              showBackupFolderDialog(context, ref);
-          }
-        },
+        onSelected: (value) => _handleSelection(context, ref, value),
         itemBuilder: (context) => const [
           PopupMenuItem<String>(
             value: 'load',
@@ -82,6 +73,50 @@ class FileMenuButton extends ConsumerWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Routes a selected menu value to its action and makes sure it can never
+/// fail completely silently. `PopupMenuButton.onSelected` is a synchronous
+/// callback, so without this wrapper any exception thrown anywhere inside
+/// `loadBackupFolder`/`saveAllBoards`/`showBackupFolderDialog`'s await
+/// chains (a desynced settings-table read, an unwritable folder a file
+/// picker handed back, anything else) becomes an unhandled Future
+/// rejection - logged to stderr only, invisible in a packaged release
+/// build, which is exactly what made an earlier real-world report ("I
+/// navigate to the folder and set it... but nothing happens") impossible
+/// to diagnose from the user's side. Whatever the actual cause, the user
+/// now always sees either a result or a real error message, never silence.
+Future<void> _handleSelection(
+  BuildContext context,
+  WidgetRef ref,
+  String value,
+) async {
+  try {
+    switch (value) {
+      case 'load':
+        await loadBackupFolder(context, ref);
+      case 'save':
+        await saveAllBoards(context, ref);
+      case 'backup_folder':
+        await showBackupFolderDialog(context, ref);
+    }
+  } catch (e, st) {
+    debugPrint('[file-menu] "$value" failed: $e\n$st');
+    if (!context.mounted) return;
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Something went wrong'),
+        content: Text(e.toString()),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('OK'),
+          ),
+        ],
       ),
     );
   }
