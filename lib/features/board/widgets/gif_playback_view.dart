@@ -58,12 +58,18 @@ class _GifPlaybackViewState extends ConsumerState<GifPlaybackView> {
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(gifPlaybackControllerProvider);
-    if (state == null || state.clipId != widget.clipId || state.frames.isEmpty) {
+    if (state == null ||
+        state.clipId != widget.clipId ||
+        state.frames.isEmpty) {
       return ImagePanZoomFrame(
         clip: widget.clip,
         live: widget.panZoomLive,
-        imageBuilder: (width, height) =>
-            LocalImage(path: widget.path, fit: BoxFit.fill, width: width, height: height),
+        imageBuilder: (width, height) => LocalImage(
+          path: widget.path,
+          fit: BoxFit.fill,
+          width: width,
+          height: height,
+        ),
       );
     }
     return ImagePanZoomFrame(

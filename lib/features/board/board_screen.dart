@@ -22,6 +22,7 @@ import '../annotation/stroke_painter.dart' show colorToHex, hexToColor;
 import '../bin/bin_screen.dart';
 import 'controllers/board_controller.dart';
 import 'controllers/auto_backup_scheduler.dart';
+import 'controllers/backup_folder_prompt_controller.dart';
 import 'controllers/board_view_persistence_controller.dart';
 import 'controllers/undo_controller.dart';
 import 'geometry/frame_geometry.dart';
@@ -30,7 +31,7 @@ import 'geometry/pdf_export_selection.dart';
 import 'geometry/selection_geometry.dart';
 import 'services/add_image_service.dart' show pushAddClipUndo, pushAddClipsUndo;
 import 'services/apply_frame_preset.dart' show applyFramePreset;
-import 'services/board_backup_service.dart';
+import 'services/backup_folder_service.dart';
 import 'services/clipboard_paste_service.dart';
 import 'services/image_size_service.dart';
 import 'services/pureref_import_service.dart';
@@ -1177,17 +1178,18 @@ class BoardScreen extends ConsumerWidget {
             // Windows' other common redo convention, alongside Ctrl+Shift+Z.
             const SingleActivator(LogicalKeyboardKey.keyY, control: true): () =>
                 ref.read(undoManagerProvider.notifier).redo(),
-            // Plain Ctrl/Cmd+S saves the current board's .hbbackup file.
-            // This never fights with TextClipEditOverlay's own Ctrl+S
-            // binding (which toggles strikethrough while editing a text
-            // note) - that overlay's CallbackShortcuts sits CLOSER to the
-            // focused TextField in the Focus-node ancestry and so always
-            // gets first chance at the event; this outer binding only
-            // ever fires once no note is being edited.
+            // Plain Ctrl/Cmd+S saves every board into the configured
+            // backup folder (see backup_folder_service.dart). This never
+            // fights with TextClipEditOverlay's own Ctrl+S binding (which
+            // toggles strikethrough while editing a text note) - that
+            // overlay's CallbackShortcuts sits CLOSER to the focused
+            // TextField in the Focus-node ancestry and so always gets
+            // first chance at the event; this outer binding only ever
+            // fires once no note is being edited.
             const SingleActivator(LogicalKeyboardKey.keyS, control: true): () =>
-                saveBoardBackup(context, ref),
+                saveAllBoards(context, ref),
             const SingleActivator(LogicalKeyboardKey.keyS, meta: true): () =>
-                saveBoardBackup(context, ref),
+                saveAllBoards(context, ref),
             // Ctrl/Cmd+A, +C and +V are handled by _handleEditAwareShortcut
             // instead (above) - not as plain bindings here - since they
             // need to stay out of the way of native text select-all/copy/
@@ -1196,9 +1198,10 @@ class BoardScreen extends ConsumerWidget {
             // conditionally).
           },
           child: Stack(
-            // Without this, the two zero-size, non-Positioned children
-            // below (BoardViewPersistence/AutoBackupScheduler, both
-            // SizedBox.shrink()) make RenderStack size itself to their
+            // Without this, the three zero-size, non-Positioned children
+            // below (BoardViewPersistence/AutoBackupScheduler/
+            // BackupFolderPromptController, all SizedBox.shrink()) make
+            // RenderStack size itself to their
             // dimensions instead of filling the Scaffold body - Stack's
             // layout algorithm only accounts for Positioned children once
             // it already has a size, and otherwise sizes to the largest
@@ -1211,6 +1214,7 @@ class BoardScreen extends ConsumerWidget {
               const Positioned.fill(child: BoardCanvas()),
               const BoardViewPersistence(),
               const AutoBackupScheduler(),
+              const BackupFolderPromptController(),
               Positioned(
                 top: 16,
                 left: 16,

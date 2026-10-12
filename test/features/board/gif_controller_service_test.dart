@@ -20,18 +20,21 @@ void main() {
     gifBytes = img.encodeGif(anim);
   });
 
-  test('openClip decodes every frame and starts playing from frame 0', () async {
-    final controller = GifPlaybackController();
-    await controller.openClip('clip-1', gifBytes);
-    final state = controller.state;
-    expect(state, isNotNull);
-    expect(state!.clipId, 'clip-1');
-    expect(state.frames.length, 2);
-    expect(state.currentFrame, 0);
-    expect(state.playing, isTrue);
-    expect(state.speed, 1.0);
-    controller.dispose();
-  });
+  test(
+    'openClip decodes every frame and starts playing from frame 0',
+    () async {
+      final controller = GifPlaybackController();
+      await controller.openClip('clip-1', gifBytes);
+      final state = controller.state;
+      expect(state, isNotNull);
+      expect(state!.clipId, 'clip-1');
+      expect(state.frames.length, 2);
+      expect(state.currentFrame, 0);
+      expect(state.playing, isTrue);
+      expect(state.speed, 1.0);
+      controller.dispose();
+    },
+  );
 
   test('togglePlay flips the playing flag', () async {
     final controller = GifPlaybackController();
@@ -55,15 +58,18 @@ void main() {
     controller.dispose();
   });
 
-  test('setSpeed updates the speed without changing the current frame', () async {
-    final controller = GifPlaybackController();
-    await controller.openClip('clip-1', gifBytes);
-    controller.seekToFrame(1);
-    controller.setSpeed(2.0);
-    expect(controller.state!.speed, 2.0);
-    expect(controller.state!.currentFrame, 1);
-    controller.dispose();
-  });
+  test(
+    'setSpeed updates the speed without changing the current frame',
+    () async {
+      final controller = GifPlaybackController();
+      await controller.openClip('clip-1', gifBytes);
+      controller.seekToFrame(1);
+      controller.setSpeed(2.0);
+      expect(controller.state!.speed, 2.0);
+      expect(controller.state!.currentFrame, 1);
+      controller.dispose();
+    },
+  );
 
   test('closeClip clears the state', () async {
     final controller = GifPlaybackController();

@@ -254,5 +254,39 @@ void main() {
       final encoded = encodeBackupArchive(newer, const {});
       expect(() => decodeBackupArchive(encoded), throwsFormatException);
     });
+
+    test('round-trips a non-null boardId', () {
+      final manifest = BoardBackupManifest(
+        formatVersion: 2,
+        appVersion: '1.0.0',
+        exportedAt: DateTime.utc(2026, 1, 1),
+        boardName: 'My Board',
+        boardId: 'board-123',
+        frames: const [],
+        clips: const [],
+        connectors: const [],
+        strokes: const [],
+      );
+      final encoded = encodeBackupArchive(manifest, const {});
+      final decoded = decodeBackupArchive(encoded);
+      expect(decoded.manifest.boardId, 'board-123');
+    });
+
+    test('a v1-shaped manifest with no boardId key decodes with boardId '
+        'null - a legacy file always imports as a new board', () {
+      final v1Json = {
+        'formatVersion': 1,
+        'appVersion': '1.0.0',
+        'exportedAt': DateTime.utc(2026, 1, 1).toIso8601String(),
+        'boardName': 'Legacy Board',
+        // no 'boardId' key at all - predates this field.
+        'frames': <dynamic>[],
+        'clips': <dynamic>[],
+        'connectors': <dynamic>[],
+        'strokes': <dynamic>[],
+      };
+      final manifest = BoardBackupManifest.fromJson(v1Json);
+      expect(manifest.boardId, isNull);
+    });
   });
 }

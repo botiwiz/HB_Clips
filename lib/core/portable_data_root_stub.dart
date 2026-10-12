@@ -2,5 +2,6 @@
 // actually reached in this app; exists only to satisfy the conditional
 // export in portable_data_root.dart.
 
-Future<dynamic> portableDataRoot() =>
-    throw UnsupportedError('portableDataRoot is not supported on this platform');
+Future<dynamic> portableDataRoot() => throw UnsupportedError(
+  'portableDataRoot is not supported on this platform',
+);

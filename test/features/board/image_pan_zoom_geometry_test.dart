@@ -49,21 +49,27 @@ void main() {
   });
 
   group('scaledSize / overflow', () {
-    test('overflow is zero at zoom=1 when the aspect already matches the frame', () {
-      final cover = ImagePanZoomGeometry.coverSize(200, 100, 2);
-      final scaled = ImagePanZoomGeometry.scaledSize(cover, 1.0);
-      final overflow = ImagePanZoomGeometry.overflow(200, 100, scaled);
-      expect(overflow.dx, closeTo(0, 1e-9));
-      expect(overflow.dy, closeTo(0, 1e-9));
-    });
+    test(
+      'overflow is zero at zoom=1 when the aspect already matches the frame',
+      () {
+        final cover = ImagePanZoomGeometry.coverSize(200, 100, 2);
+        final scaled = ImagePanZoomGeometry.scaledSize(cover, 1.0);
+        final overflow = ImagePanZoomGeometry.overflow(200, 100, scaled);
+        expect(overflow.dx, closeTo(0, 1e-9));
+        expect(overflow.dy, closeTo(0, 1e-9));
+      },
+    );
 
-    test('zooming in creates overflow on both axes when the aspect matches', () {
-      final cover = ImagePanZoomGeometry.coverSize(200, 100, 2);
-      final scaled = ImagePanZoomGeometry.scaledSize(cover, 2.0);
-      final overflow = ImagePanZoomGeometry.overflow(200, 100, scaled);
-      expect(overflow.dx, closeTo(200, 1e-9)); // scaled 400 - frame 200
-      expect(overflow.dy, closeTo(100, 1e-9)); // scaled 200 - frame 100
-    });
+    test(
+      'zooming in creates overflow on both axes when the aspect matches',
+      () {
+        final cover = ImagePanZoomGeometry.coverSize(200, 100, 2);
+        final scaled = ImagePanZoomGeometry.scaledSize(cover, 2.0);
+        final overflow = ImagePanZoomGeometry.overflow(200, 100, scaled);
+        expect(overflow.dx, closeTo(200, 1e-9)); // scaled 400 - frame 200
+        expect(overflow.dy, closeTo(100, 1e-9)); // scaled 200 - frame 100
+      },
+    );
   });
 
   group('applyPanDelta', () {
@@ -120,24 +126,27 @@ void main() {
   });
 
   group('rotation-aware pan (matches how board_canvas.dart applies it)', () {
-    test('a 90-degree-rotated clip maps a horizontal drag to a vertical pan change', () {
-      // Un-rotating a purely-horizontal board-space delta by -90 degrees
-      // should produce a purely-vertical local delta.
-      final localDelta = ClipGeometry.rotatePoint(
-        const Offset(10, 0),
-        Offset.zero,
-        -math.pi / 2,
-      );
-      expect(localDelta.dx, closeTo(0, 1e-9));
-      expect(localDelta.dy, isNot(closeTo(0, 1e-9)));
+    test(
+      'a 90-degree-rotated clip maps a horizontal drag to a vertical pan change',
+      () {
+        // Un-rotating a purely-horizontal board-space delta by -90 degrees
+        // should produce a purely-vertical local delta.
+        final localDelta = ClipGeometry.rotatePoint(
+          const Offset(10, 0),
+          Offset.zero,
+          -math.pi / 2,
+        );
+        expect(localDelta.dx, closeTo(0, 1e-9));
+        expect(localDelta.dy, isNot(closeTo(0, 1e-9)));
 
-      final result = ImagePanZoomGeometry.applyPanDelta(
-        Offset.zero,
-        localDelta,
-        const Offset(100, 100),
-      );
-      expect(result.dx, closeTo(0, 1e-9));
-      expect(result.dy, isNot(closeTo(0, 1e-9)));
-    });
+        final result = ImagePanZoomGeometry.applyPanDelta(
+          Offset.zero,
+          localDelta,
+          const Offset(100, 100),
+        );
+        expect(result.dx, closeTo(0, 1e-9));
+        expect(result.dy, isNot(closeTo(0, 1e-9)));
+      },
+    );
   });
 }

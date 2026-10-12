@@ -31,11 +31,7 @@ class GifPlaybackState {
     required this.speed,
   });
 
-  GifPlaybackState copyWith({
-    int? currentFrame,
-    bool? playing,
-    double? speed,
-  }) {
+  GifPlaybackState copyWith({int? currentFrame, bool? playing, double? speed}) {
     return GifPlaybackState(
       clipId: clipId,
       frames: frames,

@@ -59,7 +59,12 @@ class MasonryLayout {
     List<Rect>? best;
     var bestWidthDiff = double.infinity;
     for (var columns = 1; columns <= n; columns++) {
-      final layout = _layoutColumns(aspectRatios, targetTotalHeight, columns, gap);
+      final layout = _layoutColumns(
+        aspectRatios,
+        targetTotalHeight,
+        columns,
+        gap,
+      );
       final width = _totalWidth(layout);
       final diff = (width - containerWidth).abs();
       if (diff < bestWidthDiff) {

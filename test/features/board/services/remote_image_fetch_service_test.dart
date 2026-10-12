@@ -20,17 +20,11 @@ void main() {
 
   group('extensionForUrl', () {
     test('matches a known extension in the path', () {
-      expect(
-        extensionForUrl(Uri.parse('https://example.com/pic.jpg')),
-        '.jpg',
-      );
+      expect(extensionForUrl(Uri.parse('https://example.com/pic.jpg')), '.jpg');
     });
 
     test('returns null when the path has no recognized extension', () {
-      expect(
-        extensionForUrl(Uri.parse('https://example.com/pic')),
-        isNull,
-      );
+      expect(extensionForUrl(Uri.parse('https://example.com/pic')), isNull);
     });
   });
 
@@ -54,16 +48,19 @@ void main() {
       expect(result.extension, '.png');
     });
 
-    test('falls back to the URL extension when content-type is unknown', () async {
-      final client = MockClient((request) async {
-        return http.Response.bytes(fakeBytes, 200);
-      });
-      final result = await fetchImageBytes(
-        Uri.parse('https://example.com/pic.jpg'),
-        client: client,
-      );
-      expect(result!.extension, '.jpg');
-    });
+    test(
+      'falls back to the URL extension when content-type is unknown',
+      () async {
+        final client = MockClient((request) async {
+          return http.Response.bytes(fakeBytes, 200);
+        });
+        final result = await fetchImageBytes(
+          Uri.parse('https://example.com/pic.jpg'),
+          client: client,
+        );
+        expect(result!.extension, '.jpg');
+      },
+    );
 
     test('defaults to .png when nothing identifies the format', () async {
       final client = MockClient((request) async {

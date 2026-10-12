@@ -93,19 +93,22 @@ void main() {
     expect(result.guideY, closeTo(200, 0.001));
   });
 
-  test('no candidates within threshold on either axis leaves delta unchanged', () {
-    final result = SnapGeometry.snap(
-      draggedBoundsBeforeDelta: const Rect.fromLTWH(0, 0, 100, 100),
-      delta: const Offset(50, 30),
-      others: [const Rect.fromLTWH(500, 500, 100, 100)],
-      threshold: 8,
-    );
+  test(
+    'no candidates within threshold on either axis leaves delta unchanged',
+    () {
+      final result = SnapGeometry.snap(
+        draggedBoundsBeforeDelta: const Rect.fromLTWH(0, 0, 100, 100),
+        delta: const Offset(50, 30),
+        others: [const Rect.fromLTWH(500, 500, 100, 100)],
+        threshold: 8,
+      );
 
-    expect(result.delta.dx, closeTo(50, 0.001));
-    expect(result.delta.dy, closeTo(30, 0.001));
-    expect(result.guideX, isNull);
-    expect(result.guideY, isNull);
-  });
+      expect(result.delta.dx, closeTo(50, 0.001));
+      expect(result.delta.dy, closeTo(30, 0.001));
+      expect(result.guideX, isNull);
+      expect(result.guideY, isNull);
+    },
+  );
 
   test('empty others list leaves delta unchanged with no guides', () {
     final result = SnapGeometry.snap(

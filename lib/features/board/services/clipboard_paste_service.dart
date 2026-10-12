@@ -12,10 +12,16 @@ import 'image_file_formats.dart';
 /// it as a new image clip, mirroring how file-picker imports are handled in
 /// `board_screen.dart`. Shared by the Ctrl+V shortcut and the paste toolbar
 /// button so there is exactly one code path.
-Future<void> pasteImageFromClipboard(BuildContext context, WidgetRef ref) async {
+Future<void> pasteImageFromClipboard(
+  BuildContext context,
+  WidgetRef ref,
+) async {
   final clipboard = SystemClipboard.instance;
   if (clipboard == null) {
-    showBoardSnack(context, 'Clipboard access is not available on this platform.');
+    showBoardSnack(
+      context,
+      'Clipboard access is not available on this platform.',
+    );
     return;
   }
 
@@ -32,7 +38,11 @@ Future<void> pasteImageFromClipboard(BuildContext context, WidgetRef ref) async 
     bytes = await readImageFileBytes(reader, matchedFormat);
   } catch (_) {
     if (!context.mounted) return;
-    showBoardSnack(context, "Couldn't read the image from the clipboard.", isError: true);
+    showBoardSnack(
+      context,
+      "Couldn't read the image from the clipboard.",
+      isError: true,
+    );
     return;
   }
   if (!context.mounted) return;

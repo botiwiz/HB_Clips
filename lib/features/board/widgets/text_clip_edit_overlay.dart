@@ -304,7 +304,8 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
           );
         }
 
-        final heightBeforeEdit = _heightBeforeEdit ?? heightFor(before, beforeFormatting);
+        final heightBeforeEdit =
+            _heightBeforeEdit ?? heightFor(before, beforeFormatting);
         ref
             .read(undoManagerProvider.notifier)
             .push(

@@ -28,8 +28,7 @@ class EraserGeometry {
       return (point - points.first).distance <= maxDistance;
     }
     for (var i = 0; i < points.length - 1; i++) {
-      if (_distanceToSegment(point, points[i], points[i + 1]) <=
-          maxDistance) {
+      if (_distanceToSegment(point, points[i], points[i + 1]) <= maxDistance) {
         return true;
       }
     }

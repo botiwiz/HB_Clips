@@ -94,7 +94,9 @@ void main() {
     });
 
     test('recovers the 2 decodable images instead of dropping them', () {
-      final transforms = file.images.expand((image) => image.transforms).toList();
+      final transforms = file.images
+          .expand((image) => image.transforms)
+          .toList();
       expect(transforms.length, 2);
     });
 
@@ -107,7 +109,9 @@ void main() {
     });
 
     test('the grid-fallback positions do not overlap', () {
-      final transforms = file.images.expand((image) => image.transforms).toList();
+      final transforms = file.images
+          .expand((image) => image.transforms)
+          .toList();
       Rect rectOf(PurImageItem t) => Rect.fromCenter(
         center: Offset(t.x, t.y),
         width: t.width,

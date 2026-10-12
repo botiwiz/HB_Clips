@@ -44,9 +44,7 @@ class GroupScaleHandles extends ConsumerWidget {
     final positions = ClipGeometry.rectHandleScreenPositions(rect, view);
 
     return Stack(
-      children: [
-        for (final entry in positions.entries) _handle(entry.value),
-      ],
+      children: [for (final entry in positions.entries) _handle(entry.value)],
     );
   }
 

@@ -131,7 +131,10 @@ const double kHighlightCornerRadius = 0.0;
 /// Format version written into every `.hbbackup` file's manifest -
 /// bumped only if the manifest's own JSON shape changes incompatibly.
 /// `importBoardBackup` refuses to import a version newer than this.
-const int kBoardBackupFormatVersion = 1;
+/// Bumped 1 -> 2 for the addition of `BoardBackupManifest.boardId`
+/// (nullable, so a v1 file still satisfies the "not newer than this"
+/// check and imports exactly as before - see that field's doc comment).
+const int kBoardBackupFormatVersion = 2;
 
 /// File extension (no leading dot) for a board backup file - a
 /// proprietary, self-contained zip container (manifest.json + embedded
@@ -154,8 +157,3 @@ const Duration kAutoBackupInitialDelay = Duration(minutes: 2);
 /// last one ran more recently than this - avoids redundant writes from
 /// e.g. frequent alt-tabbing.
 const Duration kAutoBackupMinGap = Duration(minutes: 5);
-
-/// How many past backup runs (each its own timestamped folder) to keep
-/// before pruning the oldest - bounds disk usage from an otherwise
-/// ever-growing backups folder.
-const int kAutoBackupRetentionCount = 10;

@@ -51,13 +51,14 @@ class ArrangeSelectionButton extends ConsumerWidget {
   /// code path, not two that could drift apart.
   static Map<String, ({double x, double y, double width, double height})>?
   packImages(List<BoardClip> selected, Rect targetRect) {
-    final images = [
-      for (final c in selected)
-        if (c.type == ClipType.image) c,
-    ]..sort((a, b) {
-      final byY = a.y.compareTo(b.y);
-      return byY != 0 ? byY : a.x.compareTo(b.x);
-    });
+    final images =
+        [
+          for (final c in selected)
+            if (c.type == ClipType.image) c,
+        ]..sort((a, b) {
+          final byY = a.y.compareTo(b.y);
+          return byY != 0 ? byY : a.x.compareTo(b.x);
+        });
     if (images.length < 2) return null;
 
     final rects = MasonryLayout.pack(

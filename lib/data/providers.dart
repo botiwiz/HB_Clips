@@ -6,6 +6,7 @@ import 'local_blob_store.dart';
 import 'models/clip.dart';
 import 'models/connector.dart';
 import 'models/stroke.dart';
+import 'repositories/app_settings_repository.dart';
 import 'repositories/boards_repository.dart';
 import 'repositories/clips_repository.dart';
 import 'repositories/connectors_repository.dart';
@@ -57,6 +58,16 @@ final boardsRepositoryProvider = Provider<BoardsRepository>((ref) {
 
 final boardsProvider = StreamProvider<List<BoardRow>>((ref) {
   return ref.watch(boardsRepositoryProvider).watchBoards();
+});
+
+final appSettingsRepositoryProvider = Provider<AppSettingsRepository>((ref) {
+  return AppSettingsRepository(ref.watch(databaseProvider));
+});
+
+/// The one folder every board's `.hbbackup` file is saved to/loaded from -
+/// null means never configured yet. See `backup_folder_service.dart`.
+final backupFolderPathProvider = StreamProvider<String?>((ref) {
+  return ref.watch(appSettingsRepositoryProvider).watchBackupFolderPath();
 });
 
 final framesRepositoryProvider = Provider<FramesRepository>((ref) {

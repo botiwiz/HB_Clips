@@ -3,6 +3,7 @@ import 'package:drift_flutter/drift_flutter.dart';
 
 import '../../core/constants.dart';
 import '../../core/portable_data_root.dart';
+import 'tables/app_settings_table.dart';
 import 'tables/boards_table.dart';
 import 'tables/clips_table.dart';
 import 'tables/connectors_table.dart';
@@ -36,7 +37,9 @@ Future<void> _addColumnIfMissing(
   }
 }
 
-@DriftDatabase(tables: [Clips, Strokes, Boards, LocalBlobs, Frames, Connectors])
+@DriftDatabase(
+  tables: [Clips, Strokes, Boards, LocalBlobs, Frames, Connectors, AppSettings],
+)
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
@@ -44,7 +47,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 23;
+  int get schemaVersion => 24;
 
   Future<void> _seedDefaultBoard(Migrator m) {
     return into(boards).insert(
@@ -180,6 +183,9 @@ class AppDatabase extends _$AppDatabase {
                 .write(FramesCompanion(sortOrder: Value(i)));
           }
         }
+      }
+      if (from < 24) {
+        await m.createTable(appSettings);
       }
     },
   );

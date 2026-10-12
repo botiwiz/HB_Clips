@@ -34,17 +34,13 @@ SimpleFileFormat? matchImageFormat(DataReader reader) {
 /// file exists yet - the OS/browser generates one on demand).
 Future<Uint8List?> readImageFileBytes(DataReader reader, FileFormat format) {
   final completer = Completer<Uint8List?>();
-  final progress = reader.getFile(
-    format,
-    (file) async {
-      try {
-        completer.complete(await file.readAll());
-      } catch (error) {
-        completer.completeError(error);
-      }
-    },
-    onError: completer.completeError,
-  );
+  final progress = reader.getFile(format, (file) async {
+    try {
+      completer.complete(await file.readAll());
+    } catch (error) {
+      completer.completeError(error);
+    }
+  }, onError: completer.completeError);
   if (progress == null) completer.complete(null);
   return completer.future;
 }

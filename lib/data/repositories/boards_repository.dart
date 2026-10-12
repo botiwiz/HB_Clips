@@ -27,6 +27,16 @@ class BoardsRepository {
     return query.watch();
   }
 
+  /// One-shot lookup by id - used by Load (`backup_folder_service.dart`)
+  /// to decide whether a `.hbbackup` file's embedded board id matches an
+  /// existing board, without depending on `boardsProvider`'s possibly-
+  /// stale watched snapshot.
+  Future<BoardRow?> getBoard(String id) {
+    return (_db.select(
+      _db.boards,
+    )..where((b) => b.id.equals(id))).getSingleOrNull();
+  }
+
   Future<int> _nextSortOrder() async {
     final query = _db.selectOnly(_db.boards)
       ..addColumns([_db.boards.sortOrder.max()]);
@@ -111,6 +121,44 @@ class BoardsRepository {
     );
   }
 
+  /// Deletes every frame/clip/connector/stroke belonging to [boardId],
+  /// WITHOUT deleting the board row itself or checking
+  /// [LastBoardException] - shared by [deleteBoard] (which deletes the
+  /// row right after) and Load's update-in-place path
+  /// (`board_backup_service.dart`'s `updateBoardFromBackup`, which wipes
+  /// an existing board clean before repopulating it from a newer
+  /// `.hbbackup` export of the same board).
+  Future<void> _wipeContents(String boardId) async {
+    final clipIds = await (_db.select(
+      _db.clips,
+    )..where((c) => c.boardId.equals(boardId))).map((row) => row.id).get();
+    for (final clipId in clipIds) {
+      await (_db.delete(
+        _db.strokes,
+      )..where((s) => s.clipId.equals(clipId))).go();
+    }
+    await (_db.delete(
+      _db.strokes,
+    )..where((s) => s.boardId.equals(boardId) & s.clipId.isNull())).go();
+    for (final clipId in clipIds) {
+      await (_db.delete(_db.connectors)..where(
+            (c) => c.fromClipId.equals(clipId) | c.toClipId.equals(clipId),
+          ))
+          .go();
+    }
+    await (_db.delete(_db.clips)..where((c) => c.boardId.equals(boardId))).go();
+    await (_db.delete(
+      _db.frames,
+    )..where((f) => f.boardId.equals(boardId))).go();
+  }
+
+  /// Wipes [boardId]'s contents (see [_wipeContents]) and leaves the
+  /// board row itself (and its id) untouched - the "clear it out" half
+  /// of overwriting an existing board from a newer `.hbbackup` export.
+  Future<void> wipeBoardContents(String boardId) {
+    return _db.transaction(() => _wipeContents(boardId));
+  }
+
   /// Deletes [id] along with every clip on it and their strokes/connectors.
   /// Throws [LastBoardException] instead of deleting the only remaining
   /// board.
@@ -122,25 +170,7 @@ class BoardsRepository {
     if (count <= 1) throw const LastBoardException();
 
     await _db.transaction(() async {
-      final clipIds = await (_db.select(
-        _db.clips,
-      )..where((c) => c.boardId.equals(id))).map((row) => row.id).get();
-      for (final clipId in clipIds) {
-        await (_db.delete(
-          _db.strokes,
-        )..where((s) => s.clipId.equals(clipId))).go();
-      }
-      await (_db.delete(
-        _db.strokes,
-      )..where((s) => s.boardId.equals(id) & s.clipId.isNull())).go();
-      for (final clipId in clipIds) {
-        await (_db.delete(_db.connectors)..where(
-              (c) => c.fromClipId.equals(clipId) | c.toClipId.equals(clipId),
-            ))
-            .go();
-      }
-      await (_db.delete(_db.clips)..where((c) => c.boardId.equals(id))).go();
-      await (_db.delete(_db.frames)..where((f) => f.boardId.equals(id))).go();
+      await _wipeContents(id);
       await (_db.delete(_db.boards)..where((b) => b.id.equals(id))).go();
     });
   }

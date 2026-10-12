@@ -6,10 +6,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/constants.dart'
     show kAutoBackupInitialDelay, kAutoBackupInterval, kAutoBackupMinGap;
-import '../services/auto_backup_service.dart';
+import '../services/backup_folder_service.dart';
 
 /// Zero-footprint widget (renders nothing) that periodically writes a
-/// fresh backup of every board to disk - see `auto_backup_service.dart`.
+/// fresh backup of every board to disk - see `backup_folder_service.dart`.
 /// Mirrors `BoardViewPersistence`'s shape exactly: a `ConsumerStatefulWidget`
 /// whose `Timer`/`WidgetsBindingObserver` are held as real `State`
 /// instance fields, inserted once as a plain `Stack` child of

@@ -28,18 +28,20 @@ class StrokesRepository {
     bool dashed = false,
     bool arrowEnd = false,
   }) {
-    return _db.into(_db.strokes).insert(
-      StrokesCompanion.insert(
-        id: id,
-        boardId: boardId,
-        clipId: Value(clipId),
-        color: Value(colorHex),
-        strokeWidth: Value(strokeWidth),
-        pointsJson: Stroke.encodePoints(points),
-        dashed: Value(dashed),
-        arrowEnd: Value(arrowEnd),
-      ),
-    );
+    return _db
+        .into(_db.strokes)
+        .insert(
+          StrokesCompanion.insert(
+            id: id,
+            boardId: boardId,
+            clipId: Value(clipId),
+            color: Value(colorHex),
+            strokeWidth: Value(strokeWidth),
+            pointsJson: Stroke.encodePoints(points),
+            dashed: Value(dashed),
+            arrowEnd: Value(arrowEnd),
+          ),
+        );
   }
 
   /// Removes the single most recently drawn stroke on the board, if any -

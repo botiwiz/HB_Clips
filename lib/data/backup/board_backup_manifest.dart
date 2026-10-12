@@ -393,6 +393,15 @@ class BoardBackupManifest {
   final String appVersion;
   final DateTime exportedAt;
   final String boardName;
+
+  /// The exporting board's own id, carried along so a later Load of the
+  /// same (or a synced copy of the same) file can tell "this is a newer
+  /// export of a board I already have" apart from "this is a brand-new
+  /// board" - see `backup_folder_service.dart`'s `decideLoadAction`.
+  /// Null for a v1 file (this field didn't exist yet) or anything else
+  /// that never set it - those always import as a new board, exactly
+  /// like before this field was added.
+  final String? boardId;
   final List<BackupFrame> frames;
   final List<BackupClip> clips;
   final List<BackupConnector> connectors;
@@ -403,6 +412,7 @@ class BoardBackupManifest {
     required this.appVersion,
     required this.exportedAt,
     required this.boardName,
+    this.boardId,
     required this.frames,
     required this.clips,
     required this.connectors,
@@ -414,6 +424,7 @@ class BoardBackupManifest {
     'appVersion': appVersion,
     'exportedAt': exportedAt.toIso8601String(),
     'boardName': boardName,
+    'boardId': boardId,
     'frames': frames.map((f) => f.toJson()).toList(),
     'clips': clips.map((c) => c.toJson()).toList(),
     'connectors': connectors.map((c) => c.toJson()).toList(),
@@ -426,6 +437,7 @@ class BoardBackupManifest {
         appVersion: json['appVersion'] as String,
         exportedAt: DateTime.parse(json['exportedAt'] as String),
         boardName: json['boardName'] as String,
+        boardId: json['boardId'] as String?,
         frames: (json['frames'] as List<dynamic>)
             .map((e) => BackupFrame.fromJson(e as Map<String, dynamic>))
             .toList(),

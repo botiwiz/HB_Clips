@@ -15,12 +15,30 @@ final Uint8List _jpegSoiPrefix = Uint8List.fromList([0xFF, 0xD8, 0xFF]);
 const _graphicsImageItem = 34;
 const _graphicsTextItem = 32;
 
-final Uint8List _pngHead = Uint8List.fromList(
-  [137, 80, 78, 71, 13, 10, 26, 10],
-);
-final Uint8List _pngFoot = Uint8List.fromList(
-  [0, 0, 0, 0, 73, 69, 78, 68, 174, 66, 96, 130],
-);
+final Uint8List _pngHead = Uint8List.fromList([
+  137,
+  80,
+  78,
+  71,
+  13,
+  10,
+  26,
+  10,
+]);
+final Uint8List _pngFoot = Uint8List.fromList([
+  0,
+  0,
+  0,
+  0,
+  73,
+  69,
+  78,
+  68,
+  174,
+  66,
+  96,
+  130,
+]);
 
 class _RawImage {
   final List<int> address;
@@ -274,14 +292,8 @@ class PurReader {
           );
         }
         final end = (footIdx - _pos) + 12;
-        final data = Uint8List.sublistView(
-          _bytes,
-          _pos + start,
-          _pos + end,
-        );
-        images.add(
-          _RawImage(address: [_pos + start, _pos + end], data: data),
-        );
+        final data = Uint8List.sublistView(_bytes, _pos + start, _pos + end);
+        images.add(_RawImage(address: [_pos + start, _pos + end], data: data));
         _pos += end;
       }
     }
@@ -443,7 +455,10 @@ class PurReader {
 
   // ---- trailer: image <-> transform references --------------------------
 
-  void _readReferences(List<PurImageItem> imageTransforms, List<_RawImage> rawImages) {
+  void _readReferences(
+    List<PurImageItem> imageTransforms,
+    List<_RawImage> rawImages,
+  ) {
     for (var i = 0; i < imageTransforms.length; i++) {
       if (_pos + 20 > _bytes.length) break;
       final refId = _peekUint32(0);
@@ -464,9 +479,12 @@ class PurReader {
   void _mergeDuplicates(List<_RawImage> rawImages) {
     for (final image in rawImages) {
       if (image.isMarker && !image.isMissingLink) {
-        final linkedId = ByteData.sublistView(image.data).getUint32(0, Endian.big);
+        final linkedId = ByteData.sublistView(
+          image.data,
+        ).getUint32(0, Endian.big);
         for (final other in rawImages) {
-          if (other.transforms.isNotEmpty && other.transforms.first.id == linkedId) {
+          if (other.transforms.isNotEmpty &&
+              other.transforms.first.id == linkedId) {
             other.transforms = [...other.transforms, ...image.transforms];
           }
         }
@@ -534,7 +552,8 @@ class PurReader {
       intPkColumnIndex: 2,
     );
 
-    final itemTransforms = <int, ({double scale, double dx, double dy, double zLayer})>{};
+    final itemTransforms =
+        <int, ({double scale, double dx, double dy, double zLayer})>{};
     for (final row in itemRows) {
       if (row.length < 6) continue;
       final id = row[1];

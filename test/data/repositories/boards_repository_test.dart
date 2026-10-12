@@ -158,4 +158,44 @@ void main() {
       expect(remainingStrokes, isEmpty);
     },
   );
+
+  test(
+    'getBoard returns the matching row, or null for an unknown id',
+    () async {
+      await boards.createBoard('board-2', 'Second board');
+      final found = await boards.getBoard('board-2');
+      expect(found?.name, 'Second board');
+      expect(await boards.getBoard('nonexistent'), isNull);
+    },
+  );
+
+  test('wipeBoardContents clears frames/clips/strokes but leaves the board '
+      'row itself (and its id) untouched', () async {
+    await boards.createBoard('board-2', 'Second board');
+    final clip = await clips.addTextNote(
+      id: _uuid.v4(),
+      boardId: 'board-2',
+      textContent: 'hello',
+      x: 0,
+      y: 0,
+    );
+    await strokes.addStroke(
+      id: _uuid.v4(),
+      boardId: 'board-2',
+      clipId: clip.id,
+      colorHex: '#FF3B30',
+      strokeWidth: 3,
+      points: const [Offset(0, 0), Offset(1, 1)],
+    );
+
+    await boards.wipeBoardContents('board-2');
+
+    final stillThere = await boards.getBoard('board-2');
+    expect(stillThere, isNotNull);
+    expect(stillThere!.name, 'Second board');
+    final remainingClips = await clips.watchActiveClips('board-2').first;
+    expect(remainingClips, isEmpty);
+    final remainingStrokes = await strokes.watchStrokes('board-2').first;
+    expect(remainingStrokes, isEmpty);
+  });
 }

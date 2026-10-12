@@ -49,7 +49,8 @@ class DotGridPainter extends CustomPainter {
     // board's most zoomed-out level - otherwise they round down to
     // sub-pixel and the grid effectively (not just intentionally) vanishes.
     final radius = (_baseDotRadius * scale).clamp(1.0, 6.0);
-    final paint = Paint()..color = AppTheme.gridDot.withValues(alpha: 0.5 * opacity);
+    final paint = Paint()
+      ..color = AppTheme.gridDot.withValues(alpha: 0.5 * opacity);
 
     for (var col = startCol; col <= endCol; col++) {
       final sx = col * spacing * scale + view.panOffset.dx;

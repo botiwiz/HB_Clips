@@ -1,20 +1,14 @@
 import 'dart:typed_data';
 
-import 'package:file_picker/file_picker.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
-import 'package:path/path.dart' as p;
 import 'package:uuid/uuid.dart';
 
-import '../../../core/constants.dart'
-    show kBoardBackupExtension, kBoardBackupFormatVersion;
-import '../../../core/theme/app_theme.dart';
+import '../../../core/constants.dart' show kBoardBackupFormatVersion;
 import '../../../data/backup/board_backup_manifest.dart';
-import '../../../data/local/database.dart' show BoardRow, FrameRow;
+import '../../../data/local/database.dart' show FrameRow;
 import '../../../data/models/clip.dart';
 import '../../../data/providers.dart';
-import 'save_file_service.dart';
 
 const _uuid = Uuid();
 
@@ -22,18 +16,43 @@ const _uuid = Uuid();
 /// - never binned - clips, connectors, strokes, plus every image clip's
 /// real bytes via [LocalBlobStore]) and packs it into one self-contained
 /// `.hbbackup` archive's bytes, ready to hand to a file-save dialog.
-/// Deliberately operates on whichever board is passed in, read via the
-/// same one-shot `ref.read(...).valueOrNull` pattern `_exportPdfFile`
-/// already uses - callers switch boards first (via the existing board
-/// switcher) rather than this function taking a selection of its own.
+///
+/// Reads every board-scoped collection directly from its repository by
+/// [boardId] (`watchXxx(boardId).first` - a one-shot read of a Drift
+/// stream query's current snapshot, which it emits immediately on
+/// subscription), NOT via `boardFramesProvider`/`activeClipsProvider`/
+/// `activeConnectorsProvider`/`boardStrokesProvider` - those providers
+/// are all scoped to `currentBoardIdProvider` (whichever board is
+/// currently open in the UI), not to this function's [boardId]
+/// parameter. Using them here was a real, shipped bug: exporting every
+/// board in a loop (the old auto-backup, and now `saveAllBoardsToBackupFolder`
+/// in `backup_folder_service.dart`) produced one correctly-named
+/// `.hbbackup` file per board, but every single one actually contained
+/// whichever board happened to be open at the time, not its own content.
+/// Only a single export of the currently-open board (the old manual
+/// "Save") ever happened to look correct, which is why this went
+/// unnoticed until the multi-board Save-all/auto-backup path actually
+/// exercised a [boardId] different from the active one.
 Future<Uint8List> exportBoardBackup(WidgetRef ref, String boardId) async {
   final boardName = (ref.read(boardsProvider).valueOrNull ?? [])
       .firstWhere((b) => b.id == boardId)
       .name;
-  final frames = ref.read(boardFramesProvider).valueOrNull ?? [];
-  final clips = ref.read(activeClipsProvider).valueOrNull ?? [];
-  final connectors = ref.read(activeConnectorsProvider).valueOrNull ?? [];
-  final strokes = ref.read(boardStrokesProvider).valueOrNull ?? [];
+  final frames = await ref
+      .read(framesRepositoryProvider)
+      .watchFrames(boardId)
+      .first;
+  final clips = await ref
+      .read(clipsRepositoryProvider)
+      .watchActiveClips(boardId)
+      .first;
+  final connectors = await ref
+      .read(connectorsRepositoryProvider)
+      .watchConnectors(boardId)
+      .first;
+  final strokes = await ref
+      .read(strokesRepositoryProvider)
+      .watchStrokes(boardId)
+      .first;
   final blobStore = ref.read(localBlobStoreProvider);
 
   final blobsByClipId = <String, Uint8List>{};
@@ -49,6 +68,7 @@ Future<Uint8List> exportBoardBackup(WidgetRef ref, String boardId) async {
     appVersion: packageInfo.version,
     exportedAt: DateTime.now(),
     boardName: boardName,
+    boardId: boardId,
     frames: frames.map(BackupFrame.fromRow).toList(),
     clips: clips
         .map(
@@ -62,10 +82,10 @@ Future<Uint8List> exportBoardBackup(WidgetRef ref, String boardId) async {
   return encodeBackupArchive(manifest, blobsByClipId);
 }
 
-/// Counts from one `.hbbackup` import, shown to the user in a summary
-/// dialog - mirrors `PurImportSummary`'s role for `.pur` imports.
+/// Counts from one `.hbbackup` import/update, shown to the user in a Load
+/// summary dialog - mirrors `PurImportSummary`'s role for `.pur` imports.
 class BoardBackupSummary {
-  final String newBoardId;
+  final String boardId;
   final String boardName;
   final int framesImported;
   final int clipsImported;
@@ -82,8 +102,14 @@ class BoardBackupSummary {
   /// gone," not "this clip never had an image."
   final int imagesMissing;
 
+  /// True if this overwrote an existing board in place
+  /// ([updateBoardFromBackup]), false if it created a brand-new one
+  /// ([importBoardBackup]) - lets Load's summary dialog report
+  /// "created N, updated M" instead of just a flat count.
+  final bool wasUpdate;
+
   const BoardBackupSummary({
-    required this.newBoardId,
+    required this.boardId,
     required this.boardName,
     required this.framesImported,
     required this.clipsImported,
@@ -91,22 +117,22 @@ class BoardBackupSummary {
     required this.strokesImported,
     required this.imagesRestored,
     required this.imagesMissing,
+    required this.wasUpdate,
   });
 }
 
 /// Imports a `.hbbackup` file's raw [bytes] as a brand-new board -
-/// never overwrites or merges into an existing one. Every id in the
-/// archive is freshly regenerated (frames, clips, connectors, strokes),
-/// with every cross-reference (a clip's `groupId`/`frameId`, a
-/// connector's `fromClipId`/`toClipId`, a stroke's `clipId`) remapped
-/// through the id this import just minted for it - see the inline id
-/// maps below. Reuses the exact same repository primitives Alt-drag-
-/// duplicate/Ctrl+C-V already rely on (`ClipsRepository.duplicateClip`,
-/// `FramesRepository.duplicateFrame`) rather than any new "restore"
-/// method - both already copy every field of a passed-in `BoardClip`/
-/// `FrameRow` except `boardId`/`id`/`groupId`/`frameId`, which is
-/// exactly what's needed here too, just fed a `BoardClip`/`FrameRow`
-/// reconstructed from the manifest instead of a live board object.
+/// never overwrites or merges into an existing one. Creates the board
+/// row (minting a fresh id if the manifest has none - a legacy v1 file -
+/// or reusing its embedded [BoardBackupManifest.boardId] otherwise, so
+/// a later re-Load of this same export can recognize it via
+/// [updateBoardFromBackup] instead of creating a duplicate), then
+/// populates it via [_populateBoardFromManifest].
+///
+/// Callers are expected to have already confirmed (e.g. via
+/// `backup_folder_service.dart`'s `decideLoadAction`) that no board
+/// with this id already exists - this is a precondition, not
+/// re-checked defensively here.
 ///
 /// Throws a [FormatException] (from `decodeBackupArchive`) for
 /// anything that isn't a valid, readable `.hbbackup` file - callers
@@ -118,11 +144,63 @@ Future<BoardBackupSummary> importBoardBackup(
   final decoded = decodeBackupArchive(bytes);
   final manifest = decoded.manifest;
 
-  final newBoardId = _uuid.v4();
+  final boardId = manifest.boardId ?? _uuid.v4();
   await ref
       .read(boardsRepositoryProvider)
-      .createBoard(newBoardId, manifest.boardName);
+      .createBoard(boardId, manifest.boardName);
 
+  return _populateBoardFromManifest(ref, boardId, decoded, wasUpdate: false);
+}
+
+/// Overwrites an existing board ([existingBoardId]) in place from a
+/// newer `.hbbackup` export of the same board (matched by
+/// [BoardBackupManifest.boardId] - see `backup_folder_service.dart`'s
+/// `decideLoadAction`): renames it to the manifest's current name,
+/// wipes its contents ([BoardsRepository.wipeBoardContents]), then
+/// repopulates it via [_populateBoardFromManifest] using the *same*
+/// board id so frames/clips/etc regenerate fresh under the existing
+/// board rather than spawning a duplicate one.
+///
+/// Throws a [FormatException] for the same reasons [importBoardBackup]
+/// does.
+Future<BoardBackupSummary> updateBoardFromBackup(
+  WidgetRef ref,
+  String existingBoardId,
+  Uint8List bytes,
+) async {
+  final decoded = decodeBackupArchive(bytes);
+  await ref
+      .read(boardsRepositoryProvider)
+      .renameBoard(existingBoardId, decoded.manifest.boardName);
+  await ref.read(boardsRepositoryProvider).wipeBoardContents(existingBoardId);
+  return _populateBoardFromManifest(
+    ref,
+    existingBoardId,
+    decoded,
+    wasUpdate: true,
+  );
+}
+
+/// Shared by [importBoardBackup] (a fresh board) and
+/// [updateBoardFromBackup] (an existing board just wiped clean): builds
+/// every frame/clip/connector/stroke under [boardId] from [decoded],
+/// with every cross-reference (a clip's `groupId`/`frameId`, a
+/// connector's `fromClipId`/`toClipId`, a stroke's `clipId`) remapped
+/// through the id this pass mints for it - see the inline id maps
+/// below. Reuses the exact same repository primitives Alt-drag-
+/// duplicate/Ctrl+C-V already rely on (`ClipsRepository.duplicateClip`,
+/// `FramesRepository.duplicateFrame`) rather than any new "restore"
+/// method - both already copy every field of a passed-in `BoardClip`/
+/// `FrameRow` except `boardId`/`id`/`groupId`/`frameId`, which is
+/// exactly what's needed here too, just fed a `BoardClip`/`FrameRow`
+/// reconstructed from the manifest instead of a live board object.
+Future<BoardBackupSummary> _populateBoardFromManifest(
+  WidgetRef ref,
+  String boardId,
+  DecodedBackupArchive decoded, {
+  required bool wasUpdate,
+}) async {
+  final manifest = decoded.manifest;
   final frameIdMap = <String, String>{};
   for (final f in manifest.frames) {
     final newId = _uuid.v4();
@@ -131,7 +209,7 @@ Future<BoardBackupSummary> importBoardBackup(
         .duplicateFrame(
           FrameRow(
             id: f.id,
-            boardId: newBoardId,
+            boardId: boardId,
             name: f.name,
             x: f.x,
             y: f.y,
@@ -173,7 +251,7 @@ Future<BoardBackupSummary> importBoardBackup(
     await ref
         .read(clipsRepositoryProvider)
         .duplicateClip(
-          c.toBoardClip(boardId: newBoardId, localFilePath: newLocalFilePath),
+          c.toBoardClip(boardId: boardId, localFilePath: newLocalFilePath),
           newId: newId,
           groupId: newGroupId,
           frameId: newFrameId,
@@ -190,7 +268,7 @@ Future<BoardBackupSummary> importBoardBackup(
         .read(connectorsRepositoryProvider)
         .addConnector(
           id: _uuid.v4(),
-          boardId: newBoardId,
+          boardId: boardId,
           fromClipId: from,
           fromSide: conn.fromSide,
           toClipId: to,
@@ -210,7 +288,7 @@ Future<BoardBackupSummary> importBoardBackup(
         .read(strokesRepositoryProvider)
         .addStroke(
           id: _uuid.v4(),
-          boardId: newBoardId,
+          boardId: boardId,
           clipId: mappedClipId,
           colorHex: s.colorHex,
           strokeWidth: s.strokeWidth,
@@ -222,7 +300,8 @@ Future<BoardBackupSummary> importBoardBackup(
   }
 
   return BoardBackupSummary(
-    newBoardId: newBoardId,
+    boardId: boardId,
+    wasUpdate: wasUpdate,
     boardName: manifest.boardName,
     framesImported: frameIdMap.length,
     clipsImported: clipIdMap.length,
@@ -230,173 +309,5 @@ Future<BoardBackupSummary> importBoardBackup(
     strokesImported: strokesImported,
     imagesRestored: imagesRestored,
     imagesMissing: imagesMissing,
-  );
-}
-
-/// Looks up [boardId]'s current row from the already-loaded
-/// [boardsProvider] snapshot, or null if it isn't there (e.g. the
-/// stream hasn't emitted yet).
-BoardRow? _findBoard(WidgetRef ref, String boardId) {
-  for (final board in ref.read(boardsProvider).valueOrNull ?? []) {
-    if (board.id == boardId) return board;
-  }
-  return null;
-}
-
-/// Plain "Save" - writes the current board's backup straight back to
-/// whichever file it was last opened from/saved to, with no dialog at
-/// all. Falls back to [saveBoardBackupAs] (which always shows the
-/// dialog) when no file is known yet, or when writing to the known
-/// path fails (e.g. it was moved/deleted since) - same "first save
-/// behaves like Save As" convention every document editor uses.
-Future<void> saveBoardBackup(BuildContext context, WidgetRef ref) async {
-  final boardId = ref.read(currentBoardIdProvider);
-  final knownPath = _findBoard(ref, boardId)?.backupFilePath;
-  if (knownPath == null) {
-    await saveBoardBackupAs(context, ref);
-    return;
-  }
-
-  final bytes = await exportBoardBackup(ref, boardId);
-  if (!context.mounted) return;
-  try {
-    await writeBytesToPath(knownPath, bytes);
-  } catch (error) {
-    if (!context.mounted) return;
-    await saveBoardBackupAs(context, ref);
-    return;
-  }
-  if (!context.mounted) return;
-  ScaffoldMessenger.of(
-    context,
-  ).showSnackBar(SnackBar(content: Text('Saved to $knownPath')));
-}
-
-/// "Save backup as..." - always shows the save dialog, then records
-/// the chosen file on the board so a later plain [saveBoardBackup]
-/// targets it directly.
-Future<void> saveBoardBackupAs(BuildContext context, WidgetRef ref) async {
-  final boardId = ref.read(currentBoardIdProvider);
-  final bytes = await exportBoardBackup(ref, boardId);
-  if (!context.mounted) return;
-
-  final board = _findBoard(ref, boardId);
-  final suggestedName = board?.backupFilePath != null
-      ? p.basename(board!.backupFilePath!)
-      : 'board.$kBoardBackupExtension';
-
-  String? savePath;
-  try {
-    savePath = await FilePicker.platform.saveFile(
-      dialogTitle: 'Save board backup as',
-      fileName: suggestedName,
-      type: FileType.custom,
-      allowedExtensions: [kBoardBackupExtension],
-      bytes: bytes,
-    );
-  } catch (error) {
-    if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text(
-          "Couldn't open the save dialog. On Linux this needs zenity "
-          '(or kdialog) installed.',
-        ),
-        backgroundColor: AppTheme.danger,
-      ),
-    );
-    return;
-  }
-  if (savePath == null) return;
-  if (!savePath.toLowerCase().endsWith('.$kBoardBackupExtension')) {
-    savePath = '$savePath.$kBoardBackupExtension';
-  }
-  await writeBytesToPath(savePath, bytes);
-  await ref
-      .read(boardsRepositoryProvider)
-      .updateBackupFilePath(boardId, savePath);
-}
-
-/// "Open..." - picks a `.hbbackup` file and imports it as a brand-new
-/// board (see [importBoardBackup]), then records the picked file's
-/// path on that board so a plain [saveBoardBackup] right afterward
-/// writes back to this exact file with no dialog.
-Future<void> openBoardBackup(BuildContext context, WidgetRef ref) async {
-  final FilePickerResult? result;
-  try {
-    result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: [kBoardBackupExtension],
-      withData: true,
-    );
-  } catch (error) {
-    if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text(
-          "Couldn't open the file picker. On Linux this needs zenity "
-          '(or kdialog) installed.',
-        ),
-        backgroundColor: AppTheme.danger,
-      ),
-    );
-    return;
-  }
-  final pickedFile = result?.files.single;
-  final pickedBytes = pickedFile?.bytes;
-  if (pickedBytes == null) return;
-  if (!context.mounted) return;
-
-  BoardBackupSummary summary;
-  try {
-    summary = await importBoardBackup(ref, pickedBytes);
-  } catch (error) {
-    if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text("Couldn't read this backup file: $error"),
-        backgroundColor: AppTheme.danger,
-      ),
-    );
-    return;
-  }
-  if (!context.mounted) return;
-  ref.read(currentBoardIdProvider.notifier).state = summary.newBoardId;
-  // pickedFile.path is the real filesystem path on native platforms
-  // (null on web, where there's no ambient filesystem to write back
-  // to) - recording it is what lets a plain Save on this freshly
-  // opened board write straight back to this exact file.
-  await ref
-      .read(boardsRepositoryProvider)
-      .updateBackupFilePath(summary.newBoardId, pickedFile?.path);
-
-  final parts = <String>[
-    '${summary.framesImported} frame${summary.framesImported == 1 ? '' : 's'}',
-    '${summary.clipsImported} clip${summary.clipsImported == 1 ? '' : 's'}',
-    '${summary.connectorsImported} connector${summary.connectorsImported == 1 ? '' : 's'}',
-    '${summary.strokesImported} stroke${summary.strokesImported == 1 ? '' : 's'}',
-  ];
-  if (summary.imagesMissing > 0) {
-    parts.add(
-      "${summary.imagesMissing} image${summary.imagesMissing == 1 ? '' : 's'} "
-      "couldn't be recovered (missing from this backup file)",
-    );
-  }
-
-  if (!context.mounted) return;
-  await showDialog<void>(
-    context: context,
-    builder: (context) => AlertDialog(
-      title: const Text('Backup restored'),
-      content: Text(
-        "Restored '${summary.boardName}' as a new board: ${parts.join(', ')}.",
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('OK'),
-        ),
-      ],
-    ),
   );
 }

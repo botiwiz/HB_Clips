@@ -60,7 +60,9 @@ void main() {
       'detected as an axis-aligned inset rectangle', () {
     final transform = file.images
         .expand((image) => image.transforms)
-        .firstWhere((t) => (t.x - 0.0).abs() < 0.01 && (t.y - (-100.0)).abs() < 0.01);
+        .firstWhere(
+          (t) => (t.x - 0.0).abs() < 0.01 && (t.y - (-100.0)).abs() < 0.01,
+        );
     expect(transform.width, closeTo(32.0, 0.01));
     expect(transform.height, closeTo(32.0, 0.01));
     expect(transform.isAxisAlignedRectangle, isTrue);
@@ -89,18 +91,15 @@ void main() {
     );
   });
 
-  test(
-    'a PureRef 2.x file (magic 6) with no readable embedded database gets '
-    'a clear message instead of the generic "not a .pur file" one',
-    () {
-      final bytes = Uint8List(300);
-      ByteData.view(bytes.buffer).setUint32(0, 6, Endian.big);
-      try {
-        PurReader(bytes).read();
-        fail('expected a PurFormatException');
-      } on PurFormatException catch (e) {
-        expect(e.message, contains("doesn't contain a readable"));
-      }
-    },
-  );
+  test('a PureRef 2.x file (magic 6) with no readable embedded database gets '
+      'a clear message instead of the generic "not a .pur file" one', () {
+    final bytes = Uint8List(300);
+    ByteData.view(bytes.buffer).setUint32(0, 6, Endian.big);
+    try {
+      PurReader(bytes).read();
+      fail('expected a PurFormatException');
+    } on PurFormatException catch (e) {
+      expect(e.message, contains("doesn't contain a readable"));
+    }
+  });
 }

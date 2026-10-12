@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:hb_clips/features/board/services/auto_backup_service.dart';
+import 'package:hb_clips/features/board/services/backup_folder_service.dart';
 
 void main() {
   group('sanitizedBackupFileName', () {
@@ -24,16 +24,29 @@ void main() {
     });
   });
 
-  group('backupRunFolderName', () {
-    test('contains no colons', () {
-      final name = backupRunFolderName(DateTime(2026, 10, 7, 13, 5, 30));
-      expect(name.contains(':'), isFalse);
+  group('decideLoadAction', () {
+    test('creates new when the manifest has no board id', () {
+      expect(
+        decideLoadAction(manifestBoardId: null, existingBoardIds: {'a'}),
+        LoadFileAction.createNew,
+      );
     });
 
-    test('sorts lexicographically in chronological order', () {
-      final earlier = backupRunFolderName(DateTime(2026, 10, 7, 9, 0, 0));
-      final later = backupRunFolderName(DateTime(2026, 10, 7, 9, 0, 1));
-      expect(earlier.compareTo(later), lessThan(0));
+    test('creates new when the board id is not already known', () {
+      expect(
+        decideLoadAction(
+          manifestBoardId: 'unseen',
+          existingBoardIds: {'a', 'b'},
+        ),
+        LoadFileAction.createNew,
+      );
+    });
+
+    test('updates existing when the board id is already known', () {
+      expect(
+        decideLoadAction(manifestBoardId: 'a', existingBoardIds: {'a', 'b'}),
+        LoadFileAction.updateExisting,
+      );
     });
   });
 }
