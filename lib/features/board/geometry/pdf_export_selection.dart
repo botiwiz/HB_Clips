@@ -1,7 +1,11 @@
+import 'package:flutter/rendering.dart';
+
 import '../../../data/local/database.dart' show FrameRow;
 import '../../../data/models/clip.dart';
 import '../../../data/models/connector.dart';
 import '../../../data/models/stroke.dart';
+import 'frame_geometry.dart';
+import 'selection_geometry.dart';
 
 /// The exact subset of the board to hand to `writePdfFile` for a
 /// selection-only export - see [resolveExportSelection]'s doc comment
@@ -23,21 +27,31 @@ class PdfExportSelection {
 }
 
 /// Filters the full board down to exactly what a selection-only PDF
-/// export should contain:
-/// - A selected frame (`selectedFrameIds`) brings ALL its children
-///   (every clip with `clip.frameId == frame.id`), unconditionally -
-///   same all-or-nothing semantics every other frame operation
-///   (delete, duplicate, move) already has.
-/// - A selected clip (`selectedClipIds`) that lives inside a frame NOT
-///   itself in `selectedFrameIds` is dropped entirely - frame-content
-///   inclusion is driven only by `selectedFrameIds`, never a loose
-///   clip-level override.
-/// - A selected clip with no frame (`frameId == null`) is kept as a
-///   loose/overview-page clip, same as today's "every loose clip" rule,
-///   just filtered to the selection.
+/// export should contain, by SCREEN AREA rather than parentage:
+/// - A selected frame (`selectedFrameIds`) contributes its own board rect
+///   as one "target rect" of the export.
+/// - Any explicitly multi-selected clips (`selectedClipIds`) together
+///   contribute one more target rect - the bounding box of just those
+///   clips - regardless of whether any of them happen to have a
+///   `frameId` or not.
+/// - A clip is included in the export if its own board rect overlaps
+///   ANY target rect (`ClipGeometry.marqueeIntersects` - the same
+///   AABB-overlap test live marquee selection already uses) - whether or
+///   not that clip was itself selected, and whether or not it's parented
+///   to a selected frame. This is what lets a clip that was never grouped
+///   into a frame (e.g. a callout text note just placed near it, not
+///   dragged into it) still export as part of that frame's area, exactly
+///   as it appears on the live board - the direct fix for a real report
+///   where such a clip, and its connector to a real frame child, were
+///   both silently dropped from the export.
+/// - A clip explicitly selected but sitting inside an UNselected frame is
+///   now included too (its own rect still counts as part of "the
+///   selection's screen area") - a deliberate change from this
+///   function's old frameId-membership-only rule, which used to drop it
+///   silently.
 /// - `strokes`/`connectors` are NOT filtered here - `writePdfFile`/
 ///   `_buildPage` already derives which strokes/connectors are
-///   "relevant" per page from the page's own clip set (and, for
+///   "relevant" per page from that page's own clip set (and, for
 ///   strokes, board rect), so both full lists are passed through
 ///   unfiltered and that existing logic does the rest.
 PdfExportSelection resolveExportSelection({
@@ -52,16 +66,23 @@ PdfExportSelection resolveExportSelection({
     for (final f in frames)
       if (selectedFrameIds.contains(f.id)) f,
   ];
-  final selectedFrameIdSet = selectedFrames.map((f) => f.id).toSet();
+  final explicitlySelectedClips = [
+    for (final c in clips)
+      if (selectedClipIds.contains(c.id)) c,
+  ];
 
-  final exportClips = <BoardClip>[];
-  for (final c in clips) {
-    if (c.frameId != null) {
-      if (selectedFrameIdSet.contains(c.frameId)) exportClips.add(c);
-    } else if (selectedClipIds.contains(c.id)) {
-      exportClips.add(c);
-    }
-  }
+  final targetRects = <Rect>[
+    for (final f in selectedFrames) FrameGeometry.boardRect(f),
+    if (explicitlySelectedClips.isNotEmpty)
+      ClipGeometry.boardBoundingBox(explicitlySelectedClips),
+  ];
+
+  final exportClips = targetRects.isEmpty
+      ? const <BoardClip>[]
+      : [
+          for (final c in clips)
+            if (targetRects.any((r) => ClipGeometry.marqueeIntersects(r, c))) c,
+        ];
 
   return PdfExportSelection(
     frames: selectedFrames,

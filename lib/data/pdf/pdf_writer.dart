@@ -20,10 +20,10 @@ import '../../features/annotation/controllers/annotation_controller.dart'
     show kDefaultStrokeWidth;
 import '../../features/annotation/stroke_painter.dart' show hexToColor;
 import '../../features/board/geometry/connector_geometry.dart';
-import '../../features/board/geometry/frame_geometry.dart';
 import '../../features/board/geometry/highlight_geometry.dart';
 import '../../features/board/geometry/image_pan_zoom_geometry.dart';
 import '../../features/board/geometry/page_crop_settings.dart';
+import '../../features/board/geometry/pdf_page_grouping.dart';
 import '../../features/board/geometry/selection_geometry.dart';
 import '../../features/board/geometry/shape_geometry.dart';
 import '../../features/board/geometry/text_note_geometry.dart';
@@ -72,10 +72,13 @@ class _PageResult {
 }
 
 /// Writes the board out as a multi-page PDF - one page per frame, plus a
-/// leading "overview" page for any clips not parented to a frame. The key
-/// design choice: **1 board unit = 1 PDF point**, so a frame's own
-/// `width`/`height` becomes that page's exact `PdfPageFormat` with zero
-/// scaling - a frame set to an A4 preset (`frame_presets.dart`) exports as a
+/// leading "overview" page for any clips not captured by a frame's area
+/// (see [buildPdfExportPages] - page membership is by board-space overlap,
+/// not `frameId` parentage, so a clip near/on a frame but never grouped
+/// into it still exports on that frame's own page). The key design
+/// choice: **1 board unit = 1 PDF point**, so a frame's own `width`/
+/// `height` becomes that page's exact `PdfPageFormat` with zero scaling -
+/// a frame set to an A4 preset (`frame_presets.dart`) exports as a
 /// literal, exact A4 page.
 ///
 /// Every clip is drawn fresh from its stored board-space geometry rather
@@ -103,45 +106,20 @@ Future<PdfWriteResult?> writePdfFile({
   var imagesSkipped = 0;
   final skippedFileNames = <String>[];
 
-  final looseClips = clips.where((c) => c.frameId == null).toList()
-    ..sort((a, b) => a.zIndex.compareTo(b.zIndex));
+  final pages = buildPdfExportPages(frames: frames, clips: clips);
   var hasOverview = false;
-  if (looseClips.isNotEmpty) {
-    hasOverview = true;
-    final rect = ClipGeometry.boardBoundingBox(looseClips);
+  for (final page in pages) {
+    if (page.cropKey == kOverviewPageCropKey) hasOverview = true;
     final result = await _buildPage(
       doc: doc,
-      origin: rect.topLeft,
-      size: rect.size,
+      origin: page.rect.topLeft,
+      size: page.rect.size,
       pageSize: pageFormat == null
-          ? rect.size
+          ? page.rect.size
           : Size(pageFormat.width, pageFormat.height),
-      crop: pageCrops?[kOverviewPageCropKey] ?? PageCropSettings.initial,
-      backgroundColorHex: null,
-      clips: looseClips,
-      strokes: strokes,
-      connectors: connectors,
-      readBytes: readBytes,
-    );
-    imagesDrawn += result.drawn;
-    imagesSkipped += result.skipped;
-    skippedFileNames.addAll(result.skippedFileNames);
-  }
-
-  for (final frame in frames) {
-    final frameRect = FrameGeometry.boardRect(frame);
-    final children = clips.where((c) => c.frameId == frame.id).toList()
-      ..sort((a, b) => a.zIndex.compareTo(b.zIndex));
-    final result = await _buildPage(
-      doc: doc,
-      origin: frameRect.topLeft,
-      size: frameRect.size,
-      pageSize: pageFormat == null
-          ? frameRect.size
-          : Size(pageFormat.width, pageFormat.height),
-      crop: pageCrops?[frame.id] ?? PageCropSettings.initial,
-      backgroundColorHex: frame.backgroundColorHex,
-      clips: children,
+      crop: pageCrops?[page.cropKey] ?? PageCropSettings.initial,
+      backgroundColorHex: page.backgroundColorHex,
+      clips: page.clips,
       strokes: strokes,
       connectors: connectors,
       readBytes: readBytes,
@@ -314,10 +292,14 @@ Future<_PageResult> _buildPage({
   // per-clip/freestanding strokes) - mirrors ConnectorsOverlay's own
   // "always on top of every clip" stacking on the live board. Relevant
   // to this page exactly when BOTH of a connector's endpoint clips are
-  // among this page's own clips - a connector whose endpoints span two
-  // different pages (different frames, or a frame and a loose clip) has
-  // nowhere sensible to render and is simply dropped, same "page-local
-  // relevance" idea relevantStrokes already applies per-clip above.
+  // among this page's own clips - clipIds now comes from
+  // buildPdfExportPages's spatial (not frameId-based) grouping, so a
+  // connector between a frame's real child and a nearby clip that was
+  // never parented to it survives correctly, as long as both landed on
+  // this same page. A connector whose endpoints genuinely span two
+  // separate, non-overlapping export areas still has nowhere sensible to
+  // render and is simply dropped, same "page-local relevance" idea
+  // relevantStrokes already applies per-clip above.
   final relevantConnectors = connectors
       .where(
         (c) => clipIds.contains(c.fromClipId) && clipIds.contains(c.toClipId),

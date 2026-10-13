@@ -4,16 +4,15 @@ import 'package:flutter/services.dart' show HardwareKeyboard;
 
 import '../../../core/constants.dart' show kBoardGridSpacing;
 import '../../../core/theme/app_theme.dart';
-import '../../../data/local/database.dart' show FrameRow;
 import '../../../data/models/clip.dart';
 import '../../../data/models/connector.dart';
 import '../../annotation/stroke_painter.dart' show hexToColor;
 import '../geometry/connector_geometry.dart';
-import '../geometry/frame_geometry.dart';
 import '../geometry/frame_presets.dart';
 import '../geometry/image_pan_zoom_geometry.dart';
 import '../geometry/page_crop_settings.dart';
 import '../geometry/pdf_export_selection.dart';
+import '../geometry/pdf_page_grouping.dart';
 import '../geometry/selection_geometry.dart';
 import 'clip_widget.dart';
 import 'connector_painter.dart';
@@ -84,28 +83,12 @@ class _PdfExportWizardScreenState extends State<PdfExportWizardScreen> {
         .toList();
   }
 
-  _PageCropSection _frameSection(FrameRow frame, double previewMaxHeight) {
-    final frameClips =
-        widget.selection.clips.where((c) => c.frameId == frame.id).toList()
-          ..sort((a, b) => a.zIndex.compareTo(b.zIndex));
-    return _PageCropSection(
-      label: frame.name,
-      pageSize: _pageSize,
-      contentRect: FrameGeometry.boardRect(frame),
-      clips: frameClips,
-      connectors: _connectorsFor(frameClips),
-      backgroundColorHex: frame.backgroundColorHex,
-      crop: _cropFor(frame.id),
-      onChanged: (c) => _setCrop(frame.id, c),
-      previewMaxHeight: previewMaxHeight,
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
-    final looseClips = widget.selection.clips
-        .where((c) => c.frameId == null)
-        .toList();
+    final pages = buildPdfExportPages(
+      frames: widget.selection.frames,
+      clips: widget.selection.clips,
+    );
     return Scaffold(
       appBar: AppBar(title: const Text('Export settings')),
       body: Column(
@@ -128,20 +111,18 @@ class _PdfExportWizardScreenState extends State<PdfExportWizardScreen> {
                 return ListView(
                   padding: const EdgeInsets.all(16),
                   children: [
-                    if (looseClips.isNotEmpty)
+                    for (final page in pages)
                       _PageCropSection(
-                        label: 'Overview',
+                        label: page.label,
                         pageSize: _pageSize,
-                        contentRect: ClipGeometry.boardBoundingBox(looseClips),
-                        clips: looseClips,
-                        connectors: _connectorsFor(looseClips),
-                        backgroundColorHex: null,
-                        crop: _cropFor(kOverviewPageCropKey),
-                        onChanged: (c) => _setCrop(kOverviewPageCropKey, c),
+                        contentRect: page.rect,
+                        clips: page.clips,
+                        connectors: _connectorsFor(page.clips),
+                        backgroundColorHex: page.backgroundColorHex,
+                        crop: _cropFor(page.cropKey),
+                        onChanged: (c) => _setCrop(page.cropKey, c),
                         previewMaxHeight: previewMaxHeight,
                       ),
-                    for (final frame in widget.selection.frames)
-                      _frameSection(frame, previewMaxHeight),
                   ],
                 );
               },

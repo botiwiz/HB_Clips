@@ -5,14 +5,14 @@ import 'package:hb_clips/data/models/connector.dart';
 import 'package:hb_clips/data/models/stroke.dart';
 import 'package:hb_clips/features/board/geometry/pdf_export_selection.dart';
 
-FrameRow _frame(String id) {
+FrameRow _frame(String id, {double x = 0, double y = 0}) {
   final now = DateTime.now();
   return FrameRow(
     id: id,
     boardId: 'board-1',
     name: id,
-    x: 0,
-    y: 0,
+    x: x,
+    y: y,
     width: 200,
     height: 200,
     sortOrder: 0,
@@ -21,15 +21,15 @@ FrameRow _frame(String id) {
   );
 }
 
-BoardClip _clip(String id, {String? frameId}) {
+BoardClip _clip(String id, {String? frameId, double x = 0, double y = 0}) {
   final now = DateTime.now();
   return BoardClip(
     id: id,
     boardId: 'board-1',
     type: ClipType.image,
     frameId: frameId,
-    x: 0,
-    y: 0,
+    x: x,
+    y: y,
     width: 50,
     height: 50,
     createdAt: now,
@@ -91,10 +91,11 @@ void main() {
     },
   );
 
-  test('a clip belonging to a different, unselected frame is excluded', () {
-    final selectedFrame = _frame('f1');
-    final otherFrame = _frame('f2');
-    final otherChild = _clip('c1', frameId: 'f2');
+  test('a clip belonging to a different, unselected frame is excluded when '
+      "it doesn't spatially overlap the selected frame", () {
+    final selectedFrame = _frame('f1', x: 0, y: 0);
+    final otherFrame = _frame('f2', x: 1000, y: 1000);
+    final otherChild = _clip('c1', frameId: 'f2', x: 1000, y: 1000);
 
     final result = resolveExportSelection(
       selectedFrameIds: {'f1'},
@@ -126,8 +127,9 @@ void main() {
     expect(result.isEmpty, isFalse);
   });
 
-  test('a clip selected inside an UNselected frame is excluded entirely, '
-      'even though the clip itself is in selectedClipIds', () {
+  test('a clip explicitly selected inside an UNselected frame is now '
+      "included - its own rect still counts as the selection's screen "
+      'area, even though its frame was never selected', () {
     final frame = _frame('f1');
     final child = _clip('c1', frameId: 'f1');
 
@@ -141,8 +143,28 @@ void main() {
     );
 
     expect(result.frames, isEmpty);
-    expect(result.clips, isEmpty);
-    expect(result.isEmpty, isTrue);
+    expect(result.clips, [child]);
+    expect(result.isEmpty, isFalse);
+  });
+
+  test('a loose clip never explicitly selected is still included because it '
+      "spatially overlaps a selected frame's rect - the direct fix for an "
+      'element mocked up near a frame without being grouped into it', () {
+    final frame = _frame('f1', x: 0, y: 0);
+    // Never selected, never parented to f1 - just physically overlapping
+    // its rect (0,0,200,200).
+    final nearbyLoose = _clip('c1', x: 50, y: 50);
+
+    final result = resolveExportSelection(
+      selectedFrameIds: {'f1'},
+      selectedClipIds: {},
+      frames: [frame],
+      clips: [nearbyLoose],
+      strokes: const [],
+      connectors: const [],
+    );
+
+    expect(result.clips, [nearbyLoose]);
   });
 
   test('both selection sets empty resolves to an empty selection', () {

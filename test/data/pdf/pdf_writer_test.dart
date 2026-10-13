@@ -453,4 +453,33 @@ void main() {
     // 1 frame page + 1 overview page for the loose clip.
     expect(_mediaBoxes(result!.bytes).length, 2);
   });
+
+  test('a loose clip whose rect overlaps a frame is swept onto that '
+      "frame's own page instead of a separate overview page, and a "
+      'connector to a real frame child survives', () async {
+    final frames = [_frame(id: 'f1', x: 0, y: 0, width: 300, height: 200)];
+    final clips = [
+      _textClip(id: 't1', frameId: 'f1', text: 'hi', x: 10, y: 10),
+      // Never parented to f1 (frameId: null), but its rect
+      // (50,50,220,140) overlaps the frame's own rect (0,0,300,200) -
+      // this is the exact "mocked up without using a frame" scenario
+      // that was silently dropping the connector below before this fix.
+      _textClip(id: 't2', text: 'callout', x: 50, y: 50),
+    ];
+    final connectors = [_connector(id: 'c1', fromClipId: 't1', toClipId: 't2')];
+
+    final result = await writePdfFile(
+      frames: frames,
+      clips: clips,
+      strokes: const [],
+      connectors: connectors,
+      readBytes: _fakeReadBytes,
+    );
+
+    expect(result, isNotNull);
+    expect(result!.summary.hasOverviewPage, isFalse);
+    // Both clips landed on the one frame page - no separate overview page.
+    expect(_mediaBoxes(result.bytes).length, 1);
+    expect(_mediaBoxes(result.bytes)[0], '0 0 300 200');
+  });
 }
