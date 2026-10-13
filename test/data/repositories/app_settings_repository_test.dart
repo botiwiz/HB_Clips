@@ -49,4 +49,46 @@ void main() {
       expect(values, [null, '/tmp/my-backups']);
     },
   );
+
+  test('a fresh database has no active theme set yet', () async {
+    expect(await settings.getActiveThemeId(), isNull);
+  });
+
+  test('setActiveThemeId round-trips, and null clears it back out', () async {
+    await settings.setActiveThemeId('builtin-hot-pink');
+    expect(await settings.getActiveThemeId(), 'builtin-hot-pink');
+
+    await settings.setActiveThemeId(null);
+    expect(await settings.getActiveThemeId(), isNull);
+  });
+
+  test('setActiveThemeId overwrites a previously set value', () async {
+    await settings.setActiveThemeId('builtin-hot-pink');
+    await settings.setActiveThemeId('builtin-neon-green');
+    expect(await settings.getActiveThemeId(), 'builtin-neon-green');
+  });
+
+  test(
+    'watchActiveThemeId emits the current value and later updates',
+    () async {
+      final values = <String?>[];
+      final subscription = settings.watchActiveThemeId().listen(values.add);
+      await Future<void>.delayed(Duration.zero);
+
+      await settings.setActiveThemeId('builtin-hot-pink');
+      await Future<void>.delayed(Duration.zero);
+
+      await subscription.cancel();
+      expect(values, [null, 'builtin-hot-pink']);
+    },
+  );
+
+  test('setBackupFolderPath and setActiveThemeId are independent columns on '
+      'the same settings row', () async {
+    await settings.setBackupFolderPath('/tmp/my-backups');
+    await settings.setActiveThemeId('builtin-hot-pink');
+
+    expect(await settings.getBackupFolderPath(), '/tmp/my-backups');
+    expect(await settings.getActiveThemeId(), 'builtin-hot-pink');
+  });
 }

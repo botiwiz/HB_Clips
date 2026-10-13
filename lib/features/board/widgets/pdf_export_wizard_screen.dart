@@ -2,7 +2,8 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show HardwareKeyboard;
 
-import '../../../core/constants.dart' show kBoardGridSpacing;
+import '../../../core/constants.dart'
+    show kBoardGridSpacing, kGridCrossHalfLength, kGridCrossInterval;
 import '../../../core/theme/app_theme.dart';
 import '../../../data/models/clip.dart';
 import '../../../data/models/connector.dart';
@@ -673,7 +674,7 @@ class _CropMarksOverlay extends StatelessWidget {
             height: pageSize.height,
             child: Container(
               decoration: BoxDecoration(
-                border: Border.all(color: Colors.red, width: borderWidth),
+                border: Border.all(color: AppTheme.danger, width: borderWidth),
               ),
             ),
           ),
@@ -787,17 +788,36 @@ class _ExportDotGridPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     const spacing = kBoardGridSpacing;
     final radius = 1.5 * scale;
+    final crossHalfLength = (kGridCrossHalfLength * scale).clamp(4.0, 16.0);
     final startCol = (origin.dx / spacing).floor();
     final endCol = ((origin.dx + contentSize.width) / spacing).ceil();
     final startRow = (origin.dy / spacing).floor();
     final endRow = ((origin.dy + contentSize.height) / spacing).ceil();
 
     final paint = Paint()..color = AppTheme.gridDot.withValues(alpha: 0.5);
+    final crossPaint = Paint()
+      ..color = AppTheme.gridDot.withValues(alpha: 0.5)
+      ..strokeWidth = 1
+      ..style = PaintingStyle.stroke;
     for (var col = startCol; col <= endCol; col++) {
       final x = (col * spacing - origin.dx) * scale;
+      final colIsCrossColumn = col % kGridCrossInterval == 0;
       for (var row = startRow; row <= endRow; row++) {
         final y = (row * spacing - origin.dy) * scale;
-        canvas.drawCircle(Offset(x, y), radius, paint);
+        if (colIsCrossColumn && row % kGridCrossInterval == 0) {
+          canvas.drawLine(
+            Offset(x - crossHalfLength, y),
+            Offset(x + crossHalfLength, y),
+            crossPaint,
+          );
+          canvas.drawLine(
+            Offset(x, y - crossHalfLength),
+            Offset(x, y + crossHalfLength),
+            crossPaint,
+          );
+        } else {
+          canvas.drawCircle(Offset(x, y), radius, paint);
+        }
       }
     }
   }

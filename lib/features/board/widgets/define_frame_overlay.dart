@@ -29,8 +29,8 @@ class DefineFrameOverlay extends ConsumerWidget {
       child: IgnorePointer(
         child: DecoratedBox(
           decoration: BoxDecoration(
-            color: AppTheme.red.withValues(alpha: 0.15),
-            border: Border.all(color: AppTheme.red, width: 1),
+            color: AppTheme.accent.withValues(alpha: 0.15),
+            border: Border.all(color: AppTheme.accent, width: 1),
           ),
         ),
       ),

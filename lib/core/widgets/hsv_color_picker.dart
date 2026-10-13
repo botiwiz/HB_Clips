@@ -42,7 +42,7 @@ class InlineColorPickerSwatch extends StatelessWidget {
             color: color,
             shape: BoxShape.circle,
             border: Border.all(
-              color: open ? AppTheme.red : AppTheme.border,
+              color: open ? AppTheme.accent : AppTheme.border,
               width: open ? 2 : 1,
             ),
           ),

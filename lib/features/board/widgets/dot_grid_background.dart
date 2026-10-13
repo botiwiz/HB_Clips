@@ -51,12 +51,34 @@ class DotGridPainter extends CustomPainter {
     final radius = (_baseDotRadius * scale).clamp(1.0, 6.0);
     final paint = Paint()
       ..color = AppTheme.gridDot.withValues(alpha: 0.5 * opacity);
+    final crossHalfLength = (kGridCrossHalfLength * scale).clamp(4.0, 16.0);
+    final crossPaint = Paint()
+      ..color = AppTheme.gridDot.withValues(alpha: 0.5 * opacity)
+      ..strokeWidth = 1
+      ..style = PaintingStyle.stroke;
 
     for (var col = startCol; col <= endCol; col++) {
       final sx = col * spacing * scale + view.panOffset.dx;
+      // Dart's `%` on ints is Euclidean (always non-negative for a
+      // positive divisor), so this is correct for negative columns/rows
+      // too - a plain `col % N == 0` check, no extra sign handling needed.
+      final colIsCrossColumn = col % kGridCrossInterval == 0;
       for (var row = startRow; row <= endRow; row++) {
         final sy = row * spacing * scale + view.panOffset.dy;
-        canvas.drawCircle(Offset(sx, sy), radius, paint);
+        if (colIsCrossColumn && row % kGridCrossInterval == 0) {
+          canvas.drawLine(
+            Offset(sx - crossHalfLength, sy),
+            Offset(sx + crossHalfLength, sy),
+            crossPaint,
+          );
+          canvas.drawLine(
+            Offset(sx, sy - crossHalfLength),
+            Offset(sx, sy + crossHalfLength),
+            crossPaint,
+          );
+        } else {
+          canvas.drawCircle(Offset(sx, sy), radius, paint);
+        }
       }
     }
   }

@@ -31,7 +31,7 @@ class ColorSwatchButton extends StatelessWidget {
             color: color,
             shape: BoxShape.circle,
             border: Border.all(
-              color: selected ? AppTheme.red : AppTheme.border,
+              color: selected ? AppTheme.accent : AppTheme.border,
               width: selected ? 3 : 1,
             ),
           ),

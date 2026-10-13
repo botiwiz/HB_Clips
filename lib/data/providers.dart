@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/constants.dart';
+import '../core/theme/theme_settings.dart';
 import 'local/database.dart';
 import 'local_blob_store.dart';
 import 'models/clip.dart';
@@ -12,6 +13,7 @@ import 'repositories/clips_repository.dart';
 import 'repositories/connectors_repository.dart';
 import 'repositories/frames_repository.dart';
 import 'repositories/strokes_repository.dart';
+import 'repositories/themes_repository.dart';
 
 final databaseProvider = Provider<AppDatabase>((ref) {
   final db = AppDatabase();
@@ -86,4 +88,39 @@ final connectorsRepositoryProvider = Provider<ConnectorsRepository>((ref) {
 final activeConnectorsProvider = StreamProvider<List<Connector>>((ref) {
   final boardId = ref.watch(currentBoardIdProvider);
   return ref.watch(connectorsRepositoryProvider).watchConnectors(boardId);
+});
+
+final themesRepositoryProvider = Provider<ThemesRepository>((ref) {
+  return ThemesRepository(ref.watch(databaseProvider));
+});
+
+final themesProvider = StreamProvider<List<ThemeRow>>((ref) {
+  return ref.watch(themesRepositoryProvider).watchThemes();
+});
+
+/// Which theme (by id - a `kBuiltInThemes` key, a saved `ThemeRow.id`, or
+/// null for the built-in default) is currently applied app-wide. See
+/// `settings_dialog.dart`.
+final activeThemeIdProvider = StreamProvider<String?>((ref) {
+  return ref.watch(appSettingsRepositoryProvider).watchActiveThemeId();
+});
+
+/// The actual `ThemeSettings` to render right now - resolves
+/// [activeThemeIdProvider] against [kBuiltInThemes] first, then the saved
+/// [themesProvider] list, then falls back to [ThemeSettings.builtInDefault]
+/// if the id is null or references a since-deleted theme. `lib/app.dart`
+/// is this provider's one real consumer - every other color/font call site
+/// in the app reads the mutable `AppTheme` statics it drives instead.
+final resolvedThemeSettingsProvider = Provider<ThemeSettings>((ref) {
+  final activeId = ref.watch(activeThemeIdProvider).valueOrNull;
+  if (activeId == null) return ThemeSettings.builtInDefault;
+
+  final builtIn = kBuiltInThemes[activeId];
+  if (builtIn != null) return builtIn;
+
+  final themes = ref.watch(themesProvider).valueOrNull ?? const [];
+  for (final row in themes) {
+    if (row.id == activeId) return ThemeSettings.fromRow(row);
+  }
+  return ThemeSettings.builtInDefault;
 });

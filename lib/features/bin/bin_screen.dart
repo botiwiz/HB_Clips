@@ -83,7 +83,7 @@ class BinScreen extends ConsumerWidget {
           if (binned.isNotEmpty)
             TextButton.icon(
               onPressed: () => _emptyBin(context, ref, binned),
-              style: TextButton.styleFrom(foregroundColor: AppTheme.red),
+              style: TextButton.styleFrom(foregroundColor: AppTheme.danger),
               icon: const Icon(Icons.delete_forever_outlined, size: 20),
               label: const Text('Empty Bin'),
             ),
@@ -91,7 +91,7 @@ class BinScreen extends ConsumerWidget {
         ],
       ),
       body: binned.isEmpty
-          ? const Center(
+          ? Center(
               child: Text(
                 'Nothing in the bin.',
                 style: TextStyle(color: AppTheme.textSecondary),

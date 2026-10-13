@@ -4517,8 +4517,19 @@ class $AppSettingsTable extends AppSettings
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _activeThemeIdMeta = const VerificationMeta(
+    'activeThemeId',
+  );
   @override
-  List<GeneratedColumn> get $columns => [id, backupFolderPath];
+  late final GeneratedColumn<String> activeThemeId = GeneratedColumn<String>(
+    'active_theme_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, backupFolderPath, activeThemeId];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -4545,6 +4556,15 @@ class $AppSettingsTable extends AppSettings
         ),
       );
     }
+    if (data.containsKey('active_theme_id')) {
+      context.handle(
+        _activeThemeIdMeta,
+        activeThemeId.isAcceptableOrUnknown(
+          data['active_theme_id']!,
+          _activeThemeIdMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -4561,6 +4581,10 @@ class $AppSettingsTable extends AppSettings
       backupFolderPath: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}backup_folder_path'],
+      ),
+      activeThemeId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}active_theme_id'],
       ),
     );
   }
@@ -4579,13 +4603,27 @@ class AppSettingsRow extends DataClass implements Insertable<AppSettingsRow> {
   /// first-run prompt (`BackupFolderPromptController`) and makes the
   /// periodic auto-backup/manual Save silently no-op until it's set.
   final String? backupFolderPath;
-  const AppSettingsRow({required this.id, this.backupFolderPath});
+
+  /// Which saved `Themes` row (by id) is currently applied app-wide, or a
+  /// `kBuiltInThemes` well-known id - null means "the built-in default"
+  /// (`ThemeSettings.builtInDefault`), the app's original look. See
+  /// `lib/core/theme/theme_settings.dart` and `lib/app.dart`'s
+  /// `resolvedThemeSettingsProvider` resolution.
+  final String? activeThemeId;
+  const AppSettingsRow({
+    required this.id,
+    this.backupFolderPath,
+    this.activeThemeId,
+  });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     map['id'] = Variable<String>(id);
     if (!nullToAbsent || backupFolderPath != null) {
       map['backup_folder_path'] = Variable<String>(backupFolderPath);
+    }
+    if (!nullToAbsent || activeThemeId != null) {
+      map['active_theme_id'] = Variable<String>(activeThemeId);
     }
     return map;
   }
@@ -4596,6 +4634,9 @@ class AppSettingsRow extends DataClass implements Insertable<AppSettingsRow> {
       backupFolderPath: backupFolderPath == null && nullToAbsent
           ? const Value.absent()
           : Value(backupFolderPath),
+      activeThemeId: activeThemeId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(activeThemeId),
     );
   }
 
@@ -4607,6 +4648,7 @@ class AppSettingsRow extends DataClass implements Insertable<AppSettingsRow> {
     return AppSettingsRow(
       id: serializer.fromJson<String>(json['id']),
       backupFolderPath: serializer.fromJson<String?>(json['backupFolderPath']),
+      activeThemeId: serializer.fromJson<String?>(json['activeThemeId']),
     );
   }
   @override
@@ -4615,17 +4657,22 @@ class AppSettingsRow extends DataClass implements Insertable<AppSettingsRow> {
     return <String, dynamic>{
       'id': serializer.toJson<String>(id),
       'backupFolderPath': serializer.toJson<String?>(backupFolderPath),
+      'activeThemeId': serializer.toJson<String?>(activeThemeId),
     };
   }
 
   AppSettingsRow copyWith({
     String? id,
     Value<String?> backupFolderPath = const Value.absent(),
+    Value<String?> activeThemeId = const Value.absent(),
   }) => AppSettingsRow(
     id: id ?? this.id,
     backupFolderPath: backupFolderPath.present
         ? backupFolderPath.value
         : this.backupFolderPath,
+    activeThemeId: activeThemeId.present
+        ? activeThemeId.value
+        : this.activeThemeId,
   );
   AppSettingsRow copyWithCompanion(AppSettingsCompanion data) {
     return AppSettingsRow(
@@ -4633,6 +4680,9 @@ class AppSettingsRow extends DataClass implements Insertable<AppSettingsRow> {
       backupFolderPath: data.backupFolderPath.present
           ? data.backupFolderPath.value
           : this.backupFolderPath,
+      activeThemeId: data.activeThemeId.present
+          ? data.activeThemeId.value
+          : this.activeThemeId,
     );
   }
 
@@ -4640,43 +4690,50 @@ class AppSettingsRow extends DataClass implements Insertable<AppSettingsRow> {
   String toString() {
     return (StringBuffer('AppSettingsRow(')
           ..write('id: $id, ')
-          ..write('backupFolderPath: $backupFolderPath')
+          ..write('backupFolderPath: $backupFolderPath, ')
+          ..write('activeThemeId: $activeThemeId')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, backupFolderPath);
+  int get hashCode => Object.hash(id, backupFolderPath, activeThemeId);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is AppSettingsRow &&
           other.id == this.id &&
-          other.backupFolderPath == this.backupFolderPath);
+          other.backupFolderPath == this.backupFolderPath &&
+          other.activeThemeId == this.activeThemeId);
 }
 
 class AppSettingsCompanion extends UpdateCompanion<AppSettingsRow> {
   final Value<String> id;
   final Value<String?> backupFolderPath;
+  final Value<String?> activeThemeId;
   final Value<int> rowid;
   const AppSettingsCompanion({
     this.id = const Value.absent(),
     this.backupFolderPath = const Value.absent(),
+    this.activeThemeId = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   AppSettingsCompanion.insert({
     required String id,
     this.backupFolderPath = const Value.absent(),
+    this.activeThemeId = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id);
   static Insertable<AppSettingsRow> custom({
     Expression<String>? id,
     Expression<String>? backupFolderPath,
+    Expression<String>? activeThemeId,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (backupFolderPath != null) 'backup_folder_path': backupFolderPath,
+      if (activeThemeId != null) 'active_theme_id': activeThemeId,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -4684,11 +4741,13 @@ class AppSettingsCompanion extends UpdateCompanion<AppSettingsRow> {
   AppSettingsCompanion copyWith({
     Value<String>? id,
     Value<String?>? backupFolderPath,
+    Value<String?>? activeThemeId,
     Value<int>? rowid,
   }) {
     return AppSettingsCompanion(
       id: id ?? this.id,
       backupFolderPath: backupFolderPath ?? this.backupFolderPath,
+      activeThemeId: activeThemeId ?? this.activeThemeId,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -4702,6 +4761,9 @@ class AppSettingsCompanion extends UpdateCompanion<AppSettingsRow> {
     if (backupFolderPath.present) {
       map['backup_folder_path'] = Variable<String>(backupFolderPath.value);
     }
+    if (activeThemeId.present) {
+      map['active_theme_id'] = Variable<String>(activeThemeId.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -4713,6 +4775,896 @@ class AppSettingsCompanion extends UpdateCompanion<AppSettingsRow> {
     return (StringBuffer('AppSettingsCompanion(')
           ..write('id: $id, ')
           ..write('backupFolderPath: $backupFolderPath, ')
+          ..write('activeThemeId: $activeThemeId, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $ThemesTable extends Themes with TableInfo<$ThemesTable, ThemeRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $ThemesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _accentHexMeta = const VerificationMeta(
+    'accentHex',
+  );
+  @override
+  late final GeneratedColumn<String> accentHex = GeneratedColumn<String>(
+    'accent_hex',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _dangerHexMeta = const VerificationMeta(
+    'dangerHex',
+  );
+  @override
+  late final GeneratedColumn<String> dangerHex = GeneratedColumn<String>(
+    'danger_hex',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _canvasBackgroundHexMeta =
+      const VerificationMeta('canvasBackgroundHex');
+  @override
+  late final GeneratedColumn<String> canvasBackgroundHex =
+      GeneratedColumn<String>(
+        'canvas_background_hex',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: true,
+      );
+  static const VerificationMeta _surfaceCardHexMeta = const VerificationMeta(
+    'surfaceCardHex',
+  );
+  @override
+  late final GeneratedColumn<String> surfaceCardHex = GeneratedColumn<String>(
+    'surface_card_hex',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _surfaceElevatedHexMeta =
+      const VerificationMeta('surfaceElevatedHex');
+  @override
+  late final GeneratedColumn<String> surfaceElevatedHex =
+      GeneratedColumn<String>(
+        'surface_elevated_hex',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: true,
+      );
+  static const VerificationMeta _borderHexMeta = const VerificationMeta(
+    'borderHex',
+  );
+  @override
+  late final GeneratedColumn<String> borderHex = GeneratedColumn<String>(
+    'border_hex',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _textPrimaryHexMeta = const VerificationMeta(
+    'textPrimaryHex',
+  );
+  @override
+  late final GeneratedColumn<String> textPrimaryHex = GeneratedColumn<String>(
+    'text_primary_hex',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _textSecondaryHexMeta = const VerificationMeta(
+    'textSecondaryHex',
+  );
+  @override
+  late final GeneratedColumn<String> textSecondaryHex = GeneratedColumn<String>(
+    'text_secondary_hex',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _fontFamilyMeta = const VerificationMeta(
+    'fontFamily',
+  );
+  @override
+  late final GeneratedColumn<String> fontFamily = GeneratedColumn<String>(
+    'font_family',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _fontSizeScaleMeta = const VerificationMeta(
+    'fontSizeScale',
+  );
+  @override
+  late final GeneratedColumn<double> fontSizeScale = GeneratedColumn<double>(
+    'font_size_scale',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(1.0),
+  );
+  static const VerificationMeta _sortOrderMeta = const VerificationMeta(
+    'sortOrder',
+  );
+  @override
+  late final GeneratedColumn<int> sortOrder = GeneratedColumn<int>(
+    'sort_order',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    name,
+    accentHex,
+    dangerHex,
+    canvasBackgroundHex,
+    surfaceCardHex,
+    surfaceElevatedHex,
+    borderHex,
+    textPrimaryHex,
+    textSecondaryHex,
+    fontFamily,
+    fontSizeScale,
+    sortOrder,
+    createdAt,
+    updatedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'themes';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<ThemeRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_nameMeta);
+    }
+    if (data.containsKey('accent_hex')) {
+      context.handle(
+        _accentHexMeta,
+        accentHex.isAcceptableOrUnknown(data['accent_hex']!, _accentHexMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_accentHexMeta);
+    }
+    if (data.containsKey('danger_hex')) {
+      context.handle(
+        _dangerHexMeta,
+        dangerHex.isAcceptableOrUnknown(data['danger_hex']!, _dangerHexMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_dangerHexMeta);
+    }
+    if (data.containsKey('canvas_background_hex')) {
+      context.handle(
+        _canvasBackgroundHexMeta,
+        canvasBackgroundHex.isAcceptableOrUnknown(
+          data['canvas_background_hex']!,
+          _canvasBackgroundHexMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_canvasBackgroundHexMeta);
+    }
+    if (data.containsKey('surface_card_hex')) {
+      context.handle(
+        _surfaceCardHexMeta,
+        surfaceCardHex.isAcceptableOrUnknown(
+          data['surface_card_hex']!,
+          _surfaceCardHexMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_surfaceCardHexMeta);
+    }
+    if (data.containsKey('surface_elevated_hex')) {
+      context.handle(
+        _surfaceElevatedHexMeta,
+        surfaceElevatedHex.isAcceptableOrUnknown(
+          data['surface_elevated_hex']!,
+          _surfaceElevatedHexMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_surfaceElevatedHexMeta);
+    }
+    if (data.containsKey('border_hex')) {
+      context.handle(
+        _borderHexMeta,
+        borderHex.isAcceptableOrUnknown(data['border_hex']!, _borderHexMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_borderHexMeta);
+    }
+    if (data.containsKey('text_primary_hex')) {
+      context.handle(
+        _textPrimaryHexMeta,
+        textPrimaryHex.isAcceptableOrUnknown(
+          data['text_primary_hex']!,
+          _textPrimaryHexMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_textPrimaryHexMeta);
+    }
+    if (data.containsKey('text_secondary_hex')) {
+      context.handle(
+        _textSecondaryHexMeta,
+        textSecondaryHex.isAcceptableOrUnknown(
+          data['text_secondary_hex']!,
+          _textSecondaryHexMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_textSecondaryHexMeta);
+    }
+    if (data.containsKey('font_family')) {
+      context.handle(
+        _fontFamilyMeta,
+        fontFamily.isAcceptableOrUnknown(data['font_family']!, _fontFamilyMeta),
+      );
+    }
+    if (data.containsKey('font_size_scale')) {
+      context.handle(
+        _fontSizeScaleMeta,
+        fontSizeScale.isAcceptableOrUnknown(
+          data['font_size_scale']!,
+          _fontSizeScaleMeta,
+        ),
+      );
+    }
+    if (data.containsKey('sort_order')) {
+      context.handle(
+        _sortOrderMeta,
+        sortOrder.isAcceptableOrUnknown(data['sort_order']!, _sortOrderMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  ThemeRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return ThemeRow(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      )!,
+      accentHex: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}accent_hex'],
+      )!,
+      dangerHex: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}danger_hex'],
+      )!,
+      canvasBackgroundHex: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}canvas_background_hex'],
+      )!,
+      surfaceCardHex: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}surface_card_hex'],
+      )!,
+      surfaceElevatedHex: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}surface_elevated_hex'],
+      )!,
+      borderHex: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}border_hex'],
+      )!,
+      textPrimaryHex: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}text_primary_hex'],
+      )!,
+      textSecondaryHex: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}text_secondary_hex'],
+      )!,
+      fontFamily: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}font_family'],
+      ),
+      fontSizeScale: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}font_size_scale'],
+      )!,
+      sortOrder: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}sort_order'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+    );
+  }
+
+  @override
+  $ThemesTable createAlias(String alias) {
+    return $ThemesTable(attachedDatabase, alias);
+  }
+}
+
+class ThemeRow extends DataClass implements Insertable<ThemeRow> {
+  final String id;
+  final String name;
+  final String accentHex;
+  final String dangerHex;
+  final String canvasBackgroundHex;
+  final String surfaceCardHex;
+  final String surfaceElevatedHex;
+  final String borderHex;
+  final String textPrimaryHex;
+  final String textSecondaryHex;
+
+  /// A `google_fonts` family name (e.g. `'Chakra Petch'`), or null for the
+  /// platform's default font - see `theme_fonts.dart`'s `kThemeFontChoices`.
+  final String? fontFamily;
+
+  /// Applied as a `MediaQuery` text-scale factor (1.0 = today's sizes,
+  /// unchanged) - not baked into individual `TextStyle` literals, so this
+  /// scales every piece of text in the app uniformly regardless of how its
+  /// own font size was set. See `lib/app.dart`.
+  final double fontSizeScale;
+
+  /// User-controlled display order in the Settings dialog's saved-themes
+  /// list - lower sorts first, same convention as `Boards.sortOrder`.
+  final int sortOrder;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  const ThemeRow({
+    required this.id,
+    required this.name,
+    required this.accentHex,
+    required this.dangerHex,
+    required this.canvasBackgroundHex,
+    required this.surfaceCardHex,
+    required this.surfaceElevatedHex,
+    required this.borderHex,
+    required this.textPrimaryHex,
+    required this.textSecondaryHex,
+    this.fontFamily,
+    required this.fontSizeScale,
+    required this.sortOrder,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['name'] = Variable<String>(name);
+    map['accent_hex'] = Variable<String>(accentHex);
+    map['danger_hex'] = Variable<String>(dangerHex);
+    map['canvas_background_hex'] = Variable<String>(canvasBackgroundHex);
+    map['surface_card_hex'] = Variable<String>(surfaceCardHex);
+    map['surface_elevated_hex'] = Variable<String>(surfaceElevatedHex);
+    map['border_hex'] = Variable<String>(borderHex);
+    map['text_primary_hex'] = Variable<String>(textPrimaryHex);
+    map['text_secondary_hex'] = Variable<String>(textSecondaryHex);
+    if (!nullToAbsent || fontFamily != null) {
+      map['font_family'] = Variable<String>(fontFamily);
+    }
+    map['font_size_scale'] = Variable<double>(fontSizeScale);
+    map['sort_order'] = Variable<int>(sortOrder);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    return map;
+  }
+
+  ThemesCompanion toCompanion(bool nullToAbsent) {
+    return ThemesCompanion(
+      id: Value(id),
+      name: Value(name),
+      accentHex: Value(accentHex),
+      dangerHex: Value(dangerHex),
+      canvasBackgroundHex: Value(canvasBackgroundHex),
+      surfaceCardHex: Value(surfaceCardHex),
+      surfaceElevatedHex: Value(surfaceElevatedHex),
+      borderHex: Value(borderHex),
+      textPrimaryHex: Value(textPrimaryHex),
+      textSecondaryHex: Value(textSecondaryHex),
+      fontFamily: fontFamily == null && nullToAbsent
+          ? const Value.absent()
+          : Value(fontFamily),
+      fontSizeScale: Value(fontSizeScale),
+      sortOrder: Value(sortOrder),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory ThemeRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return ThemeRow(
+      id: serializer.fromJson<String>(json['id']),
+      name: serializer.fromJson<String>(json['name']),
+      accentHex: serializer.fromJson<String>(json['accentHex']),
+      dangerHex: serializer.fromJson<String>(json['dangerHex']),
+      canvasBackgroundHex: serializer.fromJson<String>(
+        json['canvasBackgroundHex'],
+      ),
+      surfaceCardHex: serializer.fromJson<String>(json['surfaceCardHex']),
+      surfaceElevatedHex: serializer.fromJson<String>(
+        json['surfaceElevatedHex'],
+      ),
+      borderHex: serializer.fromJson<String>(json['borderHex']),
+      textPrimaryHex: serializer.fromJson<String>(json['textPrimaryHex']),
+      textSecondaryHex: serializer.fromJson<String>(json['textSecondaryHex']),
+      fontFamily: serializer.fromJson<String?>(json['fontFamily']),
+      fontSizeScale: serializer.fromJson<double>(json['fontSizeScale']),
+      sortOrder: serializer.fromJson<int>(json['sortOrder']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'name': serializer.toJson<String>(name),
+      'accentHex': serializer.toJson<String>(accentHex),
+      'dangerHex': serializer.toJson<String>(dangerHex),
+      'canvasBackgroundHex': serializer.toJson<String>(canvasBackgroundHex),
+      'surfaceCardHex': serializer.toJson<String>(surfaceCardHex),
+      'surfaceElevatedHex': serializer.toJson<String>(surfaceElevatedHex),
+      'borderHex': serializer.toJson<String>(borderHex),
+      'textPrimaryHex': serializer.toJson<String>(textPrimaryHex),
+      'textSecondaryHex': serializer.toJson<String>(textSecondaryHex),
+      'fontFamily': serializer.toJson<String?>(fontFamily),
+      'fontSizeScale': serializer.toJson<double>(fontSizeScale),
+      'sortOrder': serializer.toJson<int>(sortOrder),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+    };
+  }
+
+  ThemeRow copyWith({
+    String? id,
+    String? name,
+    String? accentHex,
+    String? dangerHex,
+    String? canvasBackgroundHex,
+    String? surfaceCardHex,
+    String? surfaceElevatedHex,
+    String? borderHex,
+    String? textPrimaryHex,
+    String? textSecondaryHex,
+    Value<String?> fontFamily = const Value.absent(),
+    double? fontSizeScale,
+    int? sortOrder,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+  }) => ThemeRow(
+    id: id ?? this.id,
+    name: name ?? this.name,
+    accentHex: accentHex ?? this.accentHex,
+    dangerHex: dangerHex ?? this.dangerHex,
+    canvasBackgroundHex: canvasBackgroundHex ?? this.canvasBackgroundHex,
+    surfaceCardHex: surfaceCardHex ?? this.surfaceCardHex,
+    surfaceElevatedHex: surfaceElevatedHex ?? this.surfaceElevatedHex,
+    borderHex: borderHex ?? this.borderHex,
+    textPrimaryHex: textPrimaryHex ?? this.textPrimaryHex,
+    textSecondaryHex: textSecondaryHex ?? this.textSecondaryHex,
+    fontFamily: fontFamily.present ? fontFamily.value : this.fontFamily,
+    fontSizeScale: fontSizeScale ?? this.fontSizeScale,
+    sortOrder: sortOrder ?? this.sortOrder,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+  ThemeRow copyWithCompanion(ThemesCompanion data) {
+    return ThemeRow(
+      id: data.id.present ? data.id.value : this.id,
+      name: data.name.present ? data.name.value : this.name,
+      accentHex: data.accentHex.present ? data.accentHex.value : this.accentHex,
+      dangerHex: data.dangerHex.present ? data.dangerHex.value : this.dangerHex,
+      canvasBackgroundHex: data.canvasBackgroundHex.present
+          ? data.canvasBackgroundHex.value
+          : this.canvasBackgroundHex,
+      surfaceCardHex: data.surfaceCardHex.present
+          ? data.surfaceCardHex.value
+          : this.surfaceCardHex,
+      surfaceElevatedHex: data.surfaceElevatedHex.present
+          ? data.surfaceElevatedHex.value
+          : this.surfaceElevatedHex,
+      borderHex: data.borderHex.present ? data.borderHex.value : this.borderHex,
+      textPrimaryHex: data.textPrimaryHex.present
+          ? data.textPrimaryHex.value
+          : this.textPrimaryHex,
+      textSecondaryHex: data.textSecondaryHex.present
+          ? data.textSecondaryHex.value
+          : this.textSecondaryHex,
+      fontFamily: data.fontFamily.present
+          ? data.fontFamily.value
+          : this.fontFamily,
+      fontSizeScale: data.fontSizeScale.present
+          ? data.fontSizeScale.value
+          : this.fontSizeScale,
+      sortOrder: data.sortOrder.present ? data.sortOrder.value : this.sortOrder,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ThemeRow(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('accentHex: $accentHex, ')
+          ..write('dangerHex: $dangerHex, ')
+          ..write('canvasBackgroundHex: $canvasBackgroundHex, ')
+          ..write('surfaceCardHex: $surfaceCardHex, ')
+          ..write('surfaceElevatedHex: $surfaceElevatedHex, ')
+          ..write('borderHex: $borderHex, ')
+          ..write('textPrimaryHex: $textPrimaryHex, ')
+          ..write('textSecondaryHex: $textSecondaryHex, ')
+          ..write('fontFamily: $fontFamily, ')
+          ..write('fontSizeScale: $fontSizeScale, ')
+          ..write('sortOrder: $sortOrder, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    name,
+    accentHex,
+    dangerHex,
+    canvasBackgroundHex,
+    surfaceCardHex,
+    surfaceElevatedHex,
+    borderHex,
+    textPrimaryHex,
+    textSecondaryHex,
+    fontFamily,
+    fontSizeScale,
+    sortOrder,
+    createdAt,
+    updatedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is ThemeRow &&
+          other.id == this.id &&
+          other.name == this.name &&
+          other.accentHex == this.accentHex &&
+          other.dangerHex == this.dangerHex &&
+          other.canvasBackgroundHex == this.canvasBackgroundHex &&
+          other.surfaceCardHex == this.surfaceCardHex &&
+          other.surfaceElevatedHex == this.surfaceElevatedHex &&
+          other.borderHex == this.borderHex &&
+          other.textPrimaryHex == this.textPrimaryHex &&
+          other.textSecondaryHex == this.textSecondaryHex &&
+          other.fontFamily == this.fontFamily &&
+          other.fontSizeScale == this.fontSizeScale &&
+          other.sortOrder == this.sortOrder &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt);
+}
+
+class ThemesCompanion extends UpdateCompanion<ThemeRow> {
+  final Value<String> id;
+  final Value<String> name;
+  final Value<String> accentHex;
+  final Value<String> dangerHex;
+  final Value<String> canvasBackgroundHex;
+  final Value<String> surfaceCardHex;
+  final Value<String> surfaceElevatedHex;
+  final Value<String> borderHex;
+  final Value<String> textPrimaryHex;
+  final Value<String> textSecondaryHex;
+  final Value<String?> fontFamily;
+  final Value<double> fontSizeScale;
+  final Value<int> sortOrder;
+  final Value<DateTime> createdAt;
+  final Value<DateTime> updatedAt;
+  final Value<int> rowid;
+  const ThemesCompanion({
+    this.id = const Value.absent(),
+    this.name = const Value.absent(),
+    this.accentHex = const Value.absent(),
+    this.dangerHex = const Value.absent(),
+    this.canvasBackgroundHex = const Value.absent(),
+    this.surfaceCardHex = const Value.absent(),
+    this.surfaceElevatedHex = const Value.absent(),
+    this.borderHex = const Value.absent(),
+    this.textPrimaryHex = const Value.absent(),
+    this.textSecondaryHex = const Value.absent(),
+    this.fontFamily = const Value.absent(),
+    this.fontSizeScale = const Value.absent(),
+    this.sortOrder = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  ThemesCompanion.insert({
+    required String id,
+    required String name,
+    required String accentHex,
+    required String dangerHex,
+    required String canvasBackgroundHex,
+    required String surfaceCardHex,
+    required String surfaceElevatedHex,
+    required String borderHex,
+    required String textPrimaryHex,
+    required String textSecondaryHex,
+    this.fontFamily = const Value.absent(),
+    this.fontSizeScale = const Value.absent(),
+    this.sortOrder = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       name = Value(name),
+       accentHex = Value(accentHex),
+       dangerHex = Value(dangerHex),
+       canvasBackgroundHex = Value(canvasBackgroundHex),
+       surfaceCardHex = Value(surfaceCardHex),
+       surfaceElevatedHex = Value(surfaceElevatedHex),
+       borderHex = Value(borderHex),
+       textPrimaryHex = Value(textPrimaryHex),
+       textSecondaryHex = Value(textSecondaryHex);
+  static Insertable<ThemeRow> custom({
+    Expression<String>? id,
+    Expression<String>? name,
+    Expression<String>? accentHex,
+    Expression<String>? dangerHex,
+    Expression<String>? canvasBackgroundHex,
+    Expression<String>? surfaceCardHex,
+    Expression<String>? surfaceElevatedHex,
+    Expression<String>? borderHex,
+    Expression<String>? textPrimaryHex,
+    Expression<String>? textSecondaryHex,
+    Expression<String>? fontFamily,
+    Expression<double>? fontSizeScale,
+    Expression<int>? sortOrder,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? updatedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (name != null) 'name': name,
+      if (accentHex != null) 'accent_hex': accentHex,
+      if (dangerHex != null) 'danger_hex': dangerHex,
+      if (canvasBackgroundHex != null)
+        'canvas_background_hex': canvasBackgroundHex,
+      if (surfaceCardHex != null) 'surface_card_hex': surfaceCardHex,
+      if (surfaceElevatedHex != null)
+        'surface_elevated_hex': surfaceElevatedHex,
+      if (borderHex != null) 'border_hex': borderHex,
+      if (textPrimaryHex != null) 'text_primary_hex': textPrimaryHex,
+      if (textSecondaryHex != null) 'text_secondary_hex': textSecondaryHex,
+      if (fontFamily != null) 'font_family': fontFamily,
+      if (fontSizeScale != null) 'font_size_scale': fontSizeScale,
+      if (sortOrder != null) 'sort_order': sortOrder,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  ThemesCompanion copyWith({
+    Value<String>? id,
+    Value<String>? name,
+    Value<String>? accentHex,
+    Value<String>? dangerHex,
+    Value<String>? canvasBackgroundHex,
+    Value<String>? surfaceCardHex,
+    Value<String>? surfaceElevatedHex,
+    Value<String>? borderHex,
+    Value<String>? textPrimaryHex,
+    Value<String>? textSecondaryHex,
+    Value<String?>? fontFamily,
+    Value<double>? fontSizeScale,
+    Value<int>? sortOrder,
+    Value<DateTime>? createdAt,
+    Value<DateTime>? updatedAt,
+    Value<int>? rowid,
+  }) {
+    return ThemesCompanion(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      accentHex: accentHex ?? this.accentHex,
+      dangerHex: dangerHex ?? this.dangerHex,
+      canvasBackgroundHex: canvasBackgroundHex ?? this.canvasBackgroundHex,
+      surfaceCardHex: surfaceCardHex ?? this.surfaceCardHex,
+      surfaceElevatedHex: surfaceElevatedHex ?? this.surfaceElevatedHex,
+      borderHex: borderHex ?? this.borderHex,
+      textPrimaryHex: textPrimaryHex ?? this.textPrimaryHex,
+      textSecondaryHex: textSecondaryHex ?? this.textSecondaryHex,
+      fontFamily: fontFamily ?? this.fontFamily,
+      fontSizeScale: fontSizeScale ?? this.fontSizeScale,
+      sortOrder: sortOrder ?? this.sortOrder,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (accentHex.present) {
+      map['accent_hex'] = Variable<String>(accentHex.value);
+    }
+    if (dangerHex.present) {
+      map['danger_hex'] = Variable<String>(dangerHex.value);
+    }
+    if (canvasBackgroundHex.present) {
+      map['canvas_background_hex'] = Variable<String>(
+        canvasBackgroundHex.value,
+      );
+    }
+    if (surfaceCardHex.present) {
+      map['surface_card_hex'] = Variable<String>(surfaceCardHex.value);
+    }
+    if (surfaceElevatedHex.present) {
+      map['surface_elevated_hex'] = Variable<String>(surfaceElevatedHex.value);
+    }
+    if (borderHex.present) {
+      map['border_hex'] = Variable<String>(borderHex.value);
+    }
+    if (textPrimaryHex.present) {
+      map['text_primary_hex'] = Variable<String>(textPrimaryHex.value);
+    }
+    if (textSecondaryHex.present) {
+      map['text_secondary_hex'] = Variable<String>(textSecondaryHex.value);
+    }
+    if (fontFamily.present) {
+      map['font_family'] = Variable<String>(fontFamily.value);
+    }
+    if (fontSizeScale.present) {
+      map['font_size_scale'] = Variable<double>(fontSizeScale.value);
+    }
+    if (sortOrder.present) {
+      map['sort_order'] = Variable<int>(sortOrder.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ThemesCompanion(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('accentHex: $accentHex, ')
+          ..write('dangerHex: $dangerHex, ')
+          ..write('canvasBackgroundHex: $canvasBackgroundHex, ')
+          ..write('surfaceCardHex: $surfaceCardHex, ')
+          ..write('surfaceElevatedHex: $surfaceElevatedHex, ')
+          ..write('borderHex: $borderHex, ')
+          ..write('textPrimaryHex: $textPrimaryHex, ')
+          ..write('textSecondaryHex: $textSecondaryHex, ')
+          ..write('fontFamily: $fontFamily, ')
+          ..write('fontSizeScale: $fontSizeScale, ')
+          ..write('sortOrder: $sortOrder, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -4729,6 +5681,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $FramesTable frames = $FramesTable(this);
   late final $ConnectorsTable connectors = $ConnectorsTable(this);
   late final $AppSettingsTable appSettings = $AppSettingsTable(this);
+  late final $ThemesTable themes = $ThemesTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -4741,6 +5694,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     frames,
     connectors,
     appSettings,
+    themes,
   ];
 }
 
@@ -6803,12 +7757,14 @@ typedef $$AppSettingsTableCreateCompanionBuilder =
     AppSettingsCompanion Function({
       required String id,
       Value<String?> backupFolderPath,
+      Value<String?> activeThemeId,
       Value<int> rowid,
     });
 typedef $$AppSettingsTableUpdateCompanionBuilder =
     AppSettingsCompanion Function({
       Value<String> id,
       Value<String?> backupFolderPath,
+      Value<String?> activeThemeId,
       Value<int> rowid,
     });
 
@@ -6828,6 +7784,11 @@ class $$AppSettingsTableFilterComposer
 
   ColumnFilters<String> get backupFolderPath => $composableBuilder(
     column: $table.backupFolderPath,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get activeThemeId => $composableBuilder(
+    column: $table.activeThemeId,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -6850,6 +7811,11 @@ class $$AppSettingsTableOrderingComposer
     column: $table.backupFolderPath,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get activeThemeId => $composableBuilder(
+    column: $table.activeThemeId,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$AppSettingsTableAnnotationComposer
@@ -6866,6 +7832,11 @@ class $$AppSettingsTableAnnotationComposer
 
   GeneratedColumn<String> get backupFolderPath => $composableBuilder(
     column: $table.backupFolderPath,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get activeThemeId => $composableBuilder(
+    column: $table.activeThemeId,
     builder: (column) => column,
   );
 }
@@ -6903,20 +7874,24 @@ class $$AppSettingsTableTableManager
               ({
                 Value<String> id = const Value.absent(),
                 Value<String?> backupFolderPath = const Value.absent(),
+                Value<String?> activeThemeId = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => AppSettingsCompanion(
                 id: id,
                 backupFolderPath: backupFolderPath,
+                activeThemeId: activeThemeId,
                 rowid: rowid,
               ),
           createCompanionCallback:
               ({
                 required String id,
                 Value<String?> backupFolderPath = const Value.absent(),
+                Value<String?> activeThemeId = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => AppSettingsCompanion.insert(
                 id: id,
                 backupFolderPath: backupFolderPath,
+                activeThemeId: activeThemeId,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
@@ -6944,6 +7919,404 @@ typedef $$AppSettingsTableProcessedTableManager =
       AppSettingsRow,
       PrefetchHooks Function()
     >;
+typedef $$ThemesTableCreateCompanionBuilder =
+    ThemesCompanion Function({
+      required String id,
+      required String name,
+      required String accentHex,
+      required String dangerHex,
+      required String canvasBackgroundHex,
+      required String surfaceCardHex,
+      required String surfaceElevatedHex,
+      required String borderHex,
+      required String textPrimaryHex,
+      required String textSecondaryHex,
+      Value<String?> fontFamily,
+      Value<double> fontSizeScale,
+      Value<int> sortOrder,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+      Value<int> rowid,
+    });
+typedef $$ThemesTableUpdateCompanionBuilder =
+    ThemesCompanion Function({
+      Value<String> id,
+      Value<String> name,
+      Value<String> accentHex,
+      Value<String> dangerHex,
+      Value<String> canvasBackgroundHex,
+      Value<String> surfaceCardHex,
+      Value<String> surfaceElevatedHex,
+      Value<String> borderHex,
+      Value<String> textPrimaryHex,
+      Value<String> textSecondaryHex,
+      Value<String?> fontFamily,
+      Value<double> fontSizeScale,
+      Value<int> sortOrder,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+      Value<int> rowid,
+    });
+
+class $$ThemesTableFilterComposer
+    extends Composer<_$AppDatabase, $ThemesTable> {
+  $$ThemesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get accentHex => $composableBuilder(
+    column: $table.accentHex,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get dangerHex => $composableBuilder(
+    column: $table.dangerHex,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get canvasBackgroundHex => $composableBuilder(
+    column: $table.canvasBackgroundHex,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get surfaceCardHex => $composableBuilder(
+    column: $table.surfaceCardHex,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get surfaceElevatedHex => $composableBuilder(
+    column: $table.surfaceElevatedHex,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get borderHex => $composableBuilder(
+    column: $table.borderHex,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get textPrimaryHex => $composableBuilder(
+    column: $table.textPrimaryHex,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get textSecondaryHex => $composableBuilder(
+    column: $table.textSecondaryHex,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get fontFamily => $composableBuilder(
+    column: $table.fontFamily,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get fontSizeScale => $composableBuilder(
+    column: $table.fontSizeScale,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get sortOrder => $composableBuilder(
+    column: $table.sortOrder,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$ThemesTableOrderingComposer
+    extends Composer<_$AppDatabase, $ThemesTable> {
+  $$ThemesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get accentHex => $composableBuilder(
+    column: $table.accentHex,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get dangerHex => $composableBuilder(
+    column: $table.dangerHex,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get canvasBackgroundHex => $composableBuilder(
+    column: $table.canvasBackgroundHex,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get surfaceCardHex => $composableBuilder(
+    column: $table.surfaceCardHex,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get surfaceElevatedHex => $composableBuilder(
+    column: $table.surfaceElevatedHex,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get borderHex => $composableBuilder(
+    column: $table.borderHex,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get textPrimaryHex => $composableBuilder(
+    column: $table.textPrimaryHex,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get textSecondaryHex => $composableBuilder(
+    column: $table.textSecondaryHex,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get fontFamily => $composableBuilder(
+    column: $table.fontFamily,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get fontSizeScale => $composableBuilder(
+    column: $table.fontSizeScale,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get sortOrder => $composableBuilder(
+    column: $table.sortOrder,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$ThemesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $ThemesTable> {
+  $$ThemesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<String> get accentHex =>
+      $composableBuilder(column: $table.accentHex, builder: (column) => column);
+
+  GeneratedColumn<String> get dangerHex =>
+      $composableBuilder(column: $table.dangerHex, builder: (column) => column);
+
+  GeneratedColumn<String> get canvasBackgroundHex => $composableBuilder(
+    column: $table.canvasBackgroundHex,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get surfaceCardHex => $composableBuilder(
+    column: $table.surfaceCardHex,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get surfaceElevatedHex => $composableBuilder(
+    column: $table.surfaceElevatedHex,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get borderHex =>
+      $composableBuilder(column: $table.borderHex, builder: (column) => column);
+
+  GeneratedColumn<String> get textPrimaryHex => $composableBuilder(
+    column: $table.textPrimaryHex,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get textSecondaryHex => $composableBuilder(
+    column: $table.textSecondaryHex,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get fontFamily => $composableBuilder(
+    column: $table.fontFamily,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<double> get fontSizeScale => $composableBuilder(
+    column: $table.fontSizeScale,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get sortOrder =>
+      $composableBuilder(column: $table.sortOrder, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+}
+
+class $$ThemesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $ThemesTable,
+          ThemeRow,
+          $$ThemesTableFilterComposer,
+          $$ThemesTableOrderingComposer,
+          $$ThemesTableAnnotationComposer,
+          $$ThemesTableCreateCompanionBuilder,
+          $$ThemesTableUpdateCompanionBuilder,
+          (ThemeRow, BaseReferences<_$AppDatabase, $ThemesTable, ThemeRow>),
+          ThemeRow,
+          PrefetchHooks Function()
+        > {
+  $$ThemesTableTableManager(_$AppDatabase db, $ThemesTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$ThemesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$ThemesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$ThemesTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<String> accentHex = const Value.absent(),
+                Value<String> dangerHex = const Value.absent(),
+                Value<String> canvasBackgroundHex = const Value.absent(),
+                Value<String> surfaceCardHex = const Value.absent(),
+                Value<String> surfaceElevatedHex = const Value.absent(),
+                Value<String> borderHex = const Value.absent(),
+                Value<String> textPrimaryHex = const Value.absent(),
+                Value<String> textSecondaryHex = const Value.absent(),
+                Value<String?> fontFamily = const Value.absent(),
+                Value<double> fontSizeScale = const Value.absent(),
+                Value<int> sortOrder = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => ThemesCompanion(
+                id: id,
+                name: name,
+                accentHex: accentHex,
+                dangerHex: dangerHex,
+                canvasBackgroundHex: canvasBackgroundHex,
+                surfaceCardHex: surfaceCardHex,
+                surfaceElevatedHex: surfaceElevatedHex,
+                borderHex: borderHex,
+                textPrimaryHex: textPrimaryHex,
+                textSecondaryHex: textSecondaryHex,
+                fontFamily: fontFamily,
+                fontSizeScale: fontSizeScale,
+                sortOrder: sortOrder,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String name,
+                required String accentHex,
+                required String dangerHex,
+                required String canvasBackgroundHex,
+                required String surfaceCardHex,
+                required String surfaceElevatedHex,
+                required String borderHex,
+                required String textPrimaryHex,
+                required String textSecondaryHex,
+                Value<String?> fontFamily = const Value.absent(),
+                Value<double> fontSizeScale = const Value.absent(),
+                Value<int> sortOrder = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => ThemesCompanion.insert(
+                id: id,
+                name: name,
+                accentHex: accentHex,
+                dangerHex: dangerHex,
+                canvasBackgroundHex: canvasBackgroundHex,
+                surfaceCardHex: surfaceCardHex,
+                surfaceElevatedHex: surfaceElevatedHex,
+                borderHex: borderHex,
+                textPrimaryHex: textPrimaryHex,
+                textSecondaryHex: textSecondaryHex,
+                fontFamily: fontFamily,
+                fontSizeScale: fontSizeScale,
+                sortOrder: sortOrder,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$ThemesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $ThemesTable,
+      ThemeRow,
+      $$ThemesTableFilterComposer,
+      $$ThemesTableOrderingComposer,
+      $$ThemesTableAnnotationComposer,
+      $$ThemesTableCreateCompanionBuilder,
+      $$ThemesTableUpdateCompanionBuilder,
+      (ThemeRow, BaseReferences<_$AppDatabase, $ThemesTable, ThemeRow>),
+      ThemeRow,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -6962,4 +8335,6 @@ class $AppDatabaseManager {
       $$ConnectorsTableTableManager(_db, _db.connectors);
   $$AppSettingsTableTableManager get appSettings =>
       $$AppSettingsTableTableManager(_db, _db.appSettings);
+  $$ThemesTableTableManager get themes =>
+      $$ThemesTableTableManager(_db, _db.themes);
 }

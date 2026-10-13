@@ -15,6 +15,20 @@ const String kLocalBoardId = 'local-board';
 /// grid and what dragging/resizing snaps to always agree.
 const double kBoardGridSpacing = 32;
 
+/// Every `kGridCrossInterval`-th dot (in both grid axes) renders as a small
+/// "+" cross instead of a plain dot - sparser spatial landmarks scattered
+/// through the grid, inspired by the tactical-HUD reference screenshots.
+/// Shared by the live board's `DotGridPainter` and both PDF-export grid
+/// mirrors (`pdf_writer.dart`, `pdf_export_wizard_screen.dart`) so the
+/// exported page always matches the live canvas exactly.
+const int kGridCrossInterval = 5;
+
+/// Fixed screen-space half-length (logical pixels, before the min/max
+/// clamp each renderer applies) of a grid cross's two arms - quiet
+/// background texture, not accent-colored, same neutral `gridDot`/border
+/// color the plain dots already use.
+const double kGridCrossHalfLength = 6;
+
 /// Maximum zoom multiplier for panning/zooming an image within its fixed
 /// on-board frame (double-click a clip to enter this mode). Never below
 /// 1.0 - see `ImagePanZoomGeometry`.

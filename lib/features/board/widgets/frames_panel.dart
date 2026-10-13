@@ -59,8 +59,8 @@ class FramesPanel extends ConsumerWidget {
         ],
       ),
       child: frames.isEmpty
-          ? const Padding(
-              padding: EdgeInsets.all(16),
+          ? Padding(
+              padding: const EdgeInsets.all(16),
               child: Text(
                 'No frames yet',
                 style: TextStyle(color: AppTheme.textSecondary),
@@ -83,13 +83,13 @@ class FramesPanel extends ConsumerWidget {
                   key: ValueKey(frame.id),
                   dense: true,
                   selected: selected,
-                  selectedTileColor: AppTheme.red.withValues(alpha: 0.12),
+                  selectedTileColor: AppTheme.accent.withValues(alpha: 0.12),
                   leading: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       ReorderableDragStartListener(
                         index: index,
-                        child: const Icon(
+                        child: Icon(
                           Icons.drag_handle,
                           size: 16,
                           color: AppTheme.textSecondary,
@@ -109,7 +109,7 @@ class FramesPanel extends ConsumerWidget {
                   title: Text(
                     frame.name,
                     style: TextStyle(
-                      color: selected ? AppTheme.red : AppTheme.textPrimary,
+                      color: selected ? AppTheme.accent : AppTheme.textPrimary,
                       fontWeight: selected
                           ? FontWeight.w600
                           : FontWeight.normal,

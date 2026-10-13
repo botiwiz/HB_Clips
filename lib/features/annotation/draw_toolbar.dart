@@ -77,26 +77,26 @@ class DrawToolbar extends ConsumerWidget {
                 PillIconButton(
                   tooltip: 'Pen',
                   icon: Icons.edit,
-                  color: tool == DrawTool.pen ? AppTheme.red : null,
+                  color: tool == DrawTool.pen ? AppTheme.accent : null,
                   onPressed: () =>
                       ref.read(drawToolProvider.notifier).state = DrawTool.pen,
                 ),
                 PillIconButton(
                   tooltip: 'Eraser',
                   icon: Icons.auto_fix_off_outlined,
-                  color: tool == DrawTool.eraser ? AppTheme.red : null,
+                  color: tool == DrawTool.eraser ? AppTheme.accent : null,
                   onPressed: () => ref.read(drawToolProvider.notifier).state =
                       DrawTool.eraser,
                 ),
                 PillIconButton(
                   tooltip: 'Eyedropper',
                   icon: Icons.colorize,
-                  color: tool == DrawTool.eyedropper ? AppTheme.red : null,
+                  color: tool == DrawTool.eyedropper ? AppTheme.accent : null,
                   onPressed: () => ref.read(drawToolProvider.notifier).state =
                       DrawTool.eyedropper,
                 ),
                 const SizedBox(width: 8),
-                const VerticalDivider(color: AppTheme.border, width: 1),
+                VerticalDivider(color: AppTheme.border, width: 1),
                 const SizedBox(width: 8),
                 InlineColorPickerSwatch(
                   color: hexToColor(selectedColor),
@@ -108,12 +108,12 @@ class DrawToolbar extends ConsumerWidget {
                           !pickerOpen,
                 ),
                 const SizedBox(width: 8),
-                const VerticalDivider(color: AppTheme.border, width: 1),
+                VerticalDivider(color: AppTheme.border, width: 1),
                 const SizedBox(width: 8),
                 PillIconButton(
                   tooltip: 'Dashed line',
                   icon: Icons.more_horiz,
-                  color: dashed ? AppTheme.red : null,
+                  color: dashed ? AppTheme.accent : null,
                   onPressed: () => ref
                       .read(strokeDashedProvider.notifier)
                       .update((value) => !value),
@@ -121,13 +121,13 @@ class DrawToolbar extends ConsumerWidget {
                 PillIconButton(
                   tooltip: 'Arrow end',
                   icon: Icons.arrow_right_alt,
-                  color: arrowEnd ? AppTheme.red : null,
+                  color: arrowEnd ? AppTheme.accent : null,
                   onPressed: () => ref
                       .read(strokeArrowProvider.notifier)
                       .update((value) => !value),
                 ),
                 const SizedBox(width: 8),
-                const Icon(
+                Icon(
                   Icons.line_weight,
                   size: 16,
                   color: AppTheme.textSecondary,

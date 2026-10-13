@@ -43,6 +43,7 @@ import 'widgets/file_menu_button.dart';
 import 'widgets/gif_playback_toolbar.dart';
 import 'widgets/pdf_export_wizard_screen.dart';
 import 'widgets/pinterest_search_dialog.dart';
+import 'widgets/settings_dialog.dart';
 import 'widgets/shape_tool_button.dart';
 
 const _uuid = Uuid();
@@ -73,7 +74,7 @@ class BoardScreen extends ConsumerWidget {
       // instead of returning null, so it needs its own handling.
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
+        SnackBar(
           content: Text(
             "Couldn't open the file picker. On Linux this needs zenity "
             '(or kdialog) installed.',
@@ -123,7 +124,7 @@ class BoardScreen extends ConsumerWidget {
     } catch (error) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
+        SnackBar(
           content: Text(
             "Couldn't open the file picker. On Linux this needs zenity "
             '(or kdialog) installed.',
@@ -254,7 +255,7 @@ class BoardScreen extends ConsumerWidget {
     } catch (error) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
+        SnackBar(
           content: Text(
             "Couldn't open the save dialog. On Linux this needs zenity "
             '(or kdialog) installed.',
@@ -1257,7 +1258,7 @@ class BoardScreen extends ConsumerWidget {
                                 ? 'Exit draw mode'
                                 : 'Draw / annotate',
                             icon: isDrawMode ? Icons.edit : Icons.edit_outlined,
-                            color: isDrawMode ? AppTheme.red : null,
+                            color: isDrawMode ? AppTheme.accent : null,
                             onPressed: () => _toggleDrawMode(ref),
                           ),
                           PillIconButton(
@@ -1265,7 +1266,7 @@ class BoardScreen extends ConsumerWidget {
                                 ? 'Cancel text tool'
                                 : 'Text tool',
                             icon: Icons.text_fields,
-                            color: isTextToolActive ? AppTheme.red : null,
+                            color: isTextToolActive ? AppTheme.accent : null,
                             onPressed: () => _toggleTextTool(ref),
                           ),
                           const ShapeToolButton(),
@@ -1274,7 +1275,7 @@ class BoardScreen extends ConsumerWidget {
                                 ? 'Disable snap to grid'
                                 : 'Snap to grid',
                             icon: snapToGrid ? Icons.grid_on : Icons.grid_off,
-                            color: snapToGrid ? AppTheme.red : null,
+                            color: snapToGrid ? AppTheme.accent : null,
                             onPressed: () =>
                                 ref.read(snapToGridProvider.notifier).state =
                                     !snapToGrid,
@@ -1373,7 +1374,7 @@ class BoardScreen extends ConsumerWidget {
                                 ? 'Hide frames panel'
                                 : 'Show frames panel',
                             icon: Icons.view_list_outlined,
-                            color: framesPanelOpen ? AppTheme.red : null,
+                            color: framesPanelOpen ? AppTheme.accent : null,
                             onPressed: () =>
                                 ref
                                         .read(framesPanelOpenProvider.notifier)
@@ -1412,6 +1413,12 @@ class BoardScreen extends ConsumerWidget {
                 right: 16,
                 child: PillGroup(
                   children: [
+                    PillIconButton(
+                      tooltip: 'Settings',
+                      icon: Icons.settings_outlined,
+                      visualDensity: VisualDensity.standard,
+                      onPressed: () => showSettingsDialog(context, ref),
+                    ),
                     PillIconButton(
                       tooltip: 'Bin',
                       icon: Icons.delete_outline,

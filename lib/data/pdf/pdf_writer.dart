@@ -11,6 +11,8 @@ import '../../core/constants.dart'
     show
         kBoardGridSpacing,
         kDefaultHighlightColorHex,
+        kGridCrossHalfLength,
+        kGridCrossInterval,
         kHighlightCornerRadius,
         kTextCaretReservedWidth,
         kTextNoteFontSize,
@@ -538,16 +540,17 @@ Future<Uint8List> rasterizeTextClip(
 }
 
 /// Replicates `DotGridPainter`'s board-space dot grid (fixed spacing,
-/// 1.5pt base radius, 0.5 alpha) onto a PDF page - unlike the live board,
-/// there's no zoom to fade/thin it for, so it's always drawn at the base
-/// density. [origin]/[size] are the board-space rect to cover (same
-/// values `_buildPage` already uses to position clips when [scale] is
-/// the default 1.0; the `needsFit` branch instead passes the full
-/// visible board-space window at that page's own fit scale). [scale]
-/// defaults to 1.0 (board unit == PDF point, byte-identical to this
-/// function's pre-Part-57 behavior) and otherwise scales both dot radius
-/// and position, so a page drawn at some zoom still gets a
-/// correctly-sized grid.
+/// 1.5pt base radius, 0.5 alpha, every `kGridCrossInterval`-th point
+/// rendered as a small "+" cross instead of a dot) onto a PDF page -
+/// unlike the live board, there's no zoom to fade/thin it for, so it's
+/// always drawn at the base density. [origin]/[size] are the board-space
+/// rect to cover (same values `_buildPage` already uses to position clips
+/// when [scale] is the default 1.0; the `needsFit` branch instead passes
+/// the full visible board-space window at that page's own fit scale).
+/// [scale] defaults to 1.0 (board unit == PDF point, byte-identical to
+/// this function's pre-Part-57 behavior) and otherwise scales dot
+/// radius/cross length and position, so a page drawn at some zoom still
+/// gets a correctly-sized grid.
 void _drawDotGrid(
   PdfGraphics canvas,
   Offset origin,
@@ -556,6 +559,7 @@ void _drawDotGrid(
 }) {
   const spacing = kBoardGridSpacing;
   final radius = 1.5 * scale;
+  final crossHalfLength = (kGridCrossHalfLength * scale).clamp(4.0, 16.0);
   final startCol = (origin.dx / spacing).floor();
   final endCol = ((origin.dx + size.width) / spacing).ceil();
   final startRow = (origin.dy / spacing).floor();
@@ -564,14 +568,27 @@ void _drawDotGrid(
   canvas
     ..saveContext()
     ..setGraphicState(const PdfGraphicState(opacity: 0.5))
-    ..setFillColor(PdfColor.fromHex(_kGridDotHex));
+    ..setFillColor(PdfColor.fromHex(_kGridDotHex))
+    ..setStrokeColor(PdfColor.fromHex(_kGridDotHex))
+    ..setLineWidth(1);
   for (var col = startCol; col <= endCol; col++) {
     final x = (col * spacing - origin.dx) * scale;
+    final colIsCrossColumn = col % kGridCrossInterval == 0;
     for (var row = startRow; row <= endRow; row++) {
       final y = (row * spacing - origin.dy) * scale;
-      canvas
-        ..drawEllipse(x, y, radius, radius)
-        ..fillPath();
+      if (colIsCrossColumn && row % kGridCrossInterval == 0) {
+        canvas
+          ..moveTo(x - crossHalfLength, y)
+          ..lineTo(x + crossHalfLength, y)
+          ..strokePath()
+          ..moveTo(x, y - crossHalfLength)
+          ..lineTo(x, y + crossHalfLength)
+          ..strokePath();
+      } else {
+        canvas
+          ..drawEllipse(x, y, radius, radius)
+          ..fillPath();
+      }
     }
   }
   canvas.restoreContext();

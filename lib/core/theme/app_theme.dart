@@ -1,47 +1,81 @@
 import 'package:flutter/material.dart';
 
 import '../constants.dart' show kCornerRadius;
+import 'theme_fonts.dart';
+import 'theme_settings.dart';
 
-/// HB_Clips theme: Miro-style dark grayscale canvas with a single pure-red
-/// accent reserved for selection/highlight/critical states. Every other
-/// surface, border, and text color is a shade of gray - deliberately, so
-/// red always reads as "this is the one thing that matters right now."
+/// HB_Clips theme: a dark canvas whose chrome colors and typography are
+/// driven by a [ThemeSettings] value (see that class and `Themes`/
+/// `AppSettings.activeThemeId`) rather than fixed constants - a user can
+/// pick/edit/save their own theme via the Settings dialog. Every field
+/// below is a mutable static (not `const`) precisely so it can be updated
+/// at runtime; [themeFor] is the one place that happens, called from
+/// `lib/app.dart` whenever the resolved theme changes. Every other call
+/// site across the app keeps reading these fields exactly as before -
+/// `AppTheme.accent`/`AppTheme.border`/etc. - unaware that their value can
+/// now vary, since Dart doesn't distinguish a `static const` read from a
+/// mutable `static` read at the call site.
 class AppTheme {
   AppTheme._();
 
-  static const Color canvasBackground = Color(0xFF18181A);
-  static const Color surfaceCard = Color(0xFF26262A);
-  static const Color surfaceElevated = Color(0xFF313136);
-  static const Color border = Color(0xFF3A3A40);
-  static const Color gridDot = border;
+  static Color canvasBackground = ThemeSettings.builtInDefault.canvasBackground;
+  static Color surfaceCard = ThemeSettings.builtInDefault.surfaceCard;
+  static Color surfaceElevated = ThemeSettings.builtInDefault.surfaceElevated;
+  static Color border = ThemeSettings.builtInDefault.border;
+  static Color get gridDot => border;
 
-  static const Color textPrimary = Color(0xFFF5F5F5);
-  static const Color textSecondary = Color(0xFF9B9BA1);
+  static Color textPrimary = ThemeSettings.builtInDefault.textPrimary;
+  static Color textSecondary = ThemeSettings.builtInDefault.textSecondary;
   static const Color textDisabled = Color(0xFF5C5C62);
 
-  /// The one accent color in the whole app. Used unmixed (never darkened)
-  /// for borders/handles/icons; use `.withValues(alpha: ...)` rather than a
-  /// different hex when a larger fill area needs a lighter touch.
-  static const Color red = Color(0xFFFF0000);
+  /// The one color reserved for selection/highlight/active-state chrome -
+  /// independently editable from [danger] (they happen to share a value in
+  /// [ThemeSettings.builtInDefault], but that's no longer guaranteed).
+  static Color accent = ThemeSettings.builtInDefault.accent;
 
-  /// Aliases so call sites read by intent rather than repeating `red`.
-  static const Color accent = red;
-  static const Color danger = red;
+  /// Reserved for destructive/delete actions specifically - kept visually
+  /// distinct from [accent] so "this is the one thing that matters right
+  /// now" and "this is destructive" never collide just because a user
+  /// picked an accent color that happens to look alarming.
+  static Color danger = ThemeSettings.builtInDefault.danger;
 
   /// Text notes have no background card by default - just white text
   /// floating directly on the canvas - so they read as annotations rather
   /// than image-like tiles. A custom `backgroundColorHex` still overrides
-  /// this per-note via the style popover's swatches.
+  /// this per-note via the style popover's swatches. Deliberately NOT
+  /// themed - this is about canvas *content* legibility, not UI chrome, so
+  /// it stays fixed regardless of the active theme.
   static const Color textNoteSurface = Color(0x00000000);
   static const Color textNoteText = Colors.white;
 
-  static ThemeData get dark {
+  /// Black or white, whichever reads better on [background] - used
+  /// wherever a color the user picked (a theme's accent, a board's custom
+  //// tint, a filled button's background) needs legible text/icons on top
+  /// of it, regardless of how light or dark that pick turns out to be.
+  static Color readableOn(Color background) =>
+      background.computeLuminance() > 0.5 ? Colors.black : Colors.white;
+
+  /// Builds the app's [ThemeData] from [settings], first updating every
+  /// mutable field above so every other `AppTheme.*` call site across the
+  /// app (none of which know about [ThemeSettings] at all) immediately
+  /// reflects it too. Call this, then rebuild, whenever the resolved theme
+  /// changes - see `lib/app.dart`'s `resolvedThemeSettingsProvider` watch.
+  static ThemeData themeFor(ThemeSettings settings) {
+    canvasBackground = settings.canvasBackground;
+    surfaceCard = settings.surfaceCard;
+    surfaceElevated = settings.surfaceElevated;
+    border = settings.border;
+    textPrimary = settings.textPrimary;
+    textSecondary = settings.textSecondary;
+    accent = settings.accent;
+    danger = settings.danger;
+
     final scheme = ColorScheme.dark(
       primary: textPrimary,
       onPrimary: canvasBackground,
       secondary: textSecondary,
       onSecondary: canvasBackground,
-      error: red,
+      error: danger,
       onError: Colors.white,
       surface: surfaceCard,
       onSurface: textPrimary,
@@ -54,47 +88,52 @@ class AppTheme {
       colorScheme: scheme,
     );
 
+    final borderedShape = RoundedRectangleBorder(
+      borderRadius: const BorderRadius.all(Radius.circular(kCornerRadius)),
+      side: BorderSide(color: border, width: 1),
+    );
+
     return base.copyWith(
       scaffoldBackgroundColor: canvasBackground,
-      iconTheme: const IconThemeData(color: textPrimary),
-      textTheme: base.textTheme.apply(
-        bodyColor: textPrimary,
-        displayColor: textPrimary,
-      ),
+      iconTheme: IconThemeData(color: textPrimary),
+      textTheme: resolveFontTextTheme(
+        settings.fontFamily,
+        base.textTheme,
+      ).apply(bodyColor: textPrimary, displayColor: textPrimary),
       appBarTheme: base.appBarTheme.copyWith(
         backgroundColor: surfaceCard,
         foregroundColor: textPrimary,
         elevation: 0,
         surfaceTintColor: Colors.transparent,
       ),
-      cardTheme: const CardThemeData(
+      cardTheme: CardThemeData(
         color: surfaceElevated,
         elevation: 4,
         shadowColor: Colors.black87,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.all(Radius.circular(kCornerRadius)),
-        ),
+        shape: borderedShape,
       ),
       // Material 3's AlertDialog/PopupMenuButton default to a built-in
       // 28px-radius shape with no override anywhere in this app - these
       // two are the one place that needs to change to make every
-      // existing/future dialog and popup menu sharp, without touching
-      // each individual showDialog/PopupMenuButton call site.
-      dialogTheme: const DialogThemeData(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.all(Radius.circular(kCornerRadius)),
-        ),
-      ),
-      popupMenuTheme: const PopupMenuThemeData(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.all(Radius.circular(kCornerRadius)),
-        ),
-      ),
+      // existing/future dialog and popup menu sharp (and, now, thinly
+      // bordered), without touching each individual showDialog/
+      // PopupMenuButton call site.
+      dialogTheme: DialogThemeData(shape: borderedShape),
+      popupMenuTheme: PopupMenuThemeData(shape: borderedShape),
       sliderTheme: base.sliderTheme.copyWith(
-        activeTrackColor: red,
+        activeTrackColor: accent,
         inactiveTrackColor: border,
-        thumbColor: red,
-        overlayColor: red.withValues(alpha: 0.15),
+        thumbColor: accent,
+        overlayColor: accent.withValues(alpha: 0.15),
+      ),
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+          backgroundColor: accent,
+          foregroundColor: readableOn(accent),
+          shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.all(Radius.circular(kCornerRadius)),
+          ),
+        ),
       ),
     );
   }

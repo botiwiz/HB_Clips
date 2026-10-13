@@ -10,6 +10,7 @@ import 'tables/connectors_table.dart';
 import 'tables/frames_table.dart';
 import 'tables/local_blobs_table.dart';
 import 'tables/strokes_table.dart';
+import 'tables/themes_table.dart';
 
 part 'database.g.dart';
 
@@ -38,7 +39,16 @@ Future<void> _addColumnIfMissing(
 }
 
 @DriftDatabase(
-  tables: [Clips, Strokes, Boards, LocalBlobs, Frames, Connectors, AppSettings],
+  tables: [
+    Clips,
+    Strokes,
+    Boards,
+    LocalBlobs,
+    Frames,
+    Connectors,
+    AppSettings,
+    Themes,
+  ],
 )
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
@@ -47,7 +57,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 24;
+  int get schemaVersion => 25;
 
   Future<void> _seedDefaultBoard(Migrator m) {
     return into(boards).insert(
@@ -186,6 +196,10 @@ class AppDatabase extends _$AppDatabase {
       }
       if (from < 24) {
         await m.createTable(appSettings);
+      }
+      if (from < 25) {
+        await m.createTable(themes);
+        await _addColumnIfMissing(m, appSettings, appSettings.activeThemeId);
       }
     },
   );

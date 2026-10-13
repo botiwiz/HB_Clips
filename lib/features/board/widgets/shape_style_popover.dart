@@ -494,11 +494,11 @@ class _NoFillButton extends StatelessWidget {
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             border: Border.all(
-              color: selected ? AppTheme.red : AppTheme.border,
+              color: selected ? AppTheme.accent : AppTheme.border,
               width: selected ? 3 : 1,
             ),
           ),
-          child: const Icon(
+          child: Icon(
             Icons.format_color_reset,
             size: 14,
             color: AppTheme.textSecondary,

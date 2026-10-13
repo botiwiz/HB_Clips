@@ -38,7 +38,7 @@ class FrameWidget extends StatelessWidget {
     // Selection always reads as red, matching every other selectable object
     // on the board - a custom frame color only shows up while unselected.
     final accentColor = selected
-        ? AppTheme.red
+        ? AppTheme.accent
         : (customColor ?? AppTheme.textSecondary);
     return IgnorePointer(
       child: Stack(
@@ -52,7 +52,7 @@ class FrameWidget extends StatelessWidget {
                     : null,
                 border: Border.all(
                   color: selected
-                      ? AppTheme.red
+                      ? AppTheme.accent
                       : (customColor ?? AppTheme.border),
                   width: selected ? 2 : 1.5,
                 ),
@@ -80,7 +80,7 @@ class FrameWidget extends StatelessWidget {
                 width: 10,
                 height: 10,
                 decoration: BoxDecoration(
-                  color: AppTheme.red,
+                  color: AppTheme.accent,
                   border: Border.all(
                     color: AppTheme.canvasBackground,
                     width: 1,

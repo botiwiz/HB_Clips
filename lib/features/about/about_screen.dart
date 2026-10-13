@@ -21,7 +21,7 @@ class AboutScreen extends StatelessWidget {
               style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 4),
-            const Text(
+            Text(
               'Created by Boti Harko',
               style: TextStyle(color: AppTheme.textSecondary),
             ),

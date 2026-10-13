@@ -31,7 +31,7 @@ class ShapeToolButton extends ConsumerWidget {
       return PillIconButton(
         tooltip: 'Cancel shape tool',
         icon: Icons.category_outlined,
-        color: AppTheme.red,
+        color: AppTheme.accent,
         onPressed: () =>
             ref.read(isShapeToolActiveProvider.notifier).state = false,
       );

@@ -729,7 +729,7 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
                 key: _boxKey,
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(kCornerRadius),
-                  border: Border.all(color: AppTheme.red, width: 2.5),
+                  border: Border.all(color: AppTheme.accent, width: 2.5),
                   // Opaque even when the note has no custom background
                   // color - AppTheme.textNoteSurface (the static, non-
                   // editing look) is fully transparent by design, and
@@ -906,7 +906,7 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
                         padding: const EdgeInsets.symmetric(horizontal: 4),
                         child: Text(
                           '${(clip.fontSize ?? kTextNoteFontSize).round()}',
-                          style: const TextStyle(
+                          style: TextStyle(
                             color: AppTheme.textSecondary,
                             fontSize: 12,
                           ),
@@ -933,7 +933,7 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
                             _selectionHasStyle(
                               _controller?.formatting.bold ?? const [],
                             )
-                            ? AppTheme.red
+                            ? AppTheme.accent
                             : null,
                         onPressed: _toggleBold,
                       ),
@@ -944,7 +944,7 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
                             _selectionHasStyle(
                               _controller?.formatting.italic ?? const [],
                             )
-                            ? AppTheme.red
+                            ? AppTheme.accent
                             : null,
                         onPressed: _toggleItalic,
                       ),
@@ -955,7 +955,7 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
                             _selectionHasStyle(
                               _controller?.formatting.underline ?? const [],
                             )
-                            ? AppTheme.red
+                            ? AppTheme.accent
                             : null,
                         onPressed: _toggleUnderline,
                       ),
@@ -966,7 +966,7 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
                             _selectionHasStyle(
                               _controller?.formatting.strikethrough ?? const [],
                             )
-                            ? AppTheme.red
+                            ? AppTheme.accent
                             : null,
                         onPressed: _toggleStrikethrough,
                       ),
@@ -977,7 +977,7 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
                             _selectionHasStyle(
                               _controller?.formatting.highlight ?? const [],
                             )
-                            ? AppTheme.red
+                            ? AppTheme.accent
                             : null,
                         onPressed: _toggleHighlight,
                       ),
@@ -1006,7 +1006,7 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
                       PillIconButton(
                         tooltip: locked ? 'Unlock size' : 'Lock size',
                         icon: Icons.push_pin_outlined,
-                        color: locked ? AppTheme.red : null,
+                        color: locked ? AppTheme.accent : null,
                         onPressed: () => _toggleSizeLock(clip, view.scale),
                       ),
                     ],

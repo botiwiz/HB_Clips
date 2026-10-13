@@ -68,7 +68,7 @@ class SelectionHandles extends ConsumerWidget {
         child: DecoratedBox(
           decoration: BoxDecoration(
             color: kind == HandleKind.rotate
-                ? AppTheme.red
+                ? AppTheme.accent
                 : AppTheme.textPrimary,
             shape: kind == HandleKind.rotate
                 ? BoxShape.circle

@@ -35,4 +35,27 @@ class AppSettingsRepository {
           ),
         );
   }
+
+  Stream<String?> watchActiveThemeId() {
+    final query = _db.select(_db.appSettings)
+      ..where((s) => s.id.equals(kAppSettingsRowId));
+    return query.watchSingleOrNull().map((row) => row?.activeThemeId);
+  }
+
+  Future<String?> getActiveThemeId() async {
+    final query = _db.select(_db.appSettings)
+      ..where((s) => s.id.equals(kAppSettingsRowId));
+    return (await query.getSingleOrNull())?.activeThemeId;
+  }
+
+  Future<void> setActiveThemeId(String? id) {
+    return _db
+        .into(_db.appSettings)
+        .insertOnConflictUpdate(
+          AppSettingsCompanion(
+            id: const Value(kAppSettingsRowId),
+            activeThemeId: Value(id),
+          ),
+        );
+  }
 }

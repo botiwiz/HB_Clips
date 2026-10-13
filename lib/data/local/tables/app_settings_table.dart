@@ -15,6 +15,13 @@ class AppSettings extends Table {
   /// periodic auto-backup/manual Save silently no-op until it's set.
   TextColumn get backupFolderPath => text().nullable()();
 
+  /// Which saved `Themes` row (by id) is currently applied app-wide, or a
+  /// `kBuiltInThemes` well-known id - null means "the built-in default"
+  /// (`ThemeSettings.builtInDefault`), the app's original look. See
+  /// `lib/core/theme/theme_settings.dart` and `lib/app.dart`'s
+  /// `resolvedThemeSettingsProvider` resolution.
+  TextColumn get activeThemeId => text().nullable()();
+
   @override
   Set<Column> get primaryKey => {id};
 }

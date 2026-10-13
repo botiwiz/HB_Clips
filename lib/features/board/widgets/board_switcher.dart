@@ -21,12 +21,6 @@ BoardRow? _findBoard(List<BoardRow> boards, String id) {
   return null;
 }
 
-/// Black or white, whichever reads better on [background] - used for the
-/// switcher's full-row board colors, which are arbitrary user picks (see
-/// `InlineHsvPickerBar`) that can land anywhere from very light to very dark.
-Color _readableTextColor(Color background) =>
-    background.computeLuminance() > 0.5 ? Colors.black : Colors.white;
-
 /// Compact board-name button (matches the app's pill chrome) that opens a
 /// dropdown menu for switching boards, creating a new one, or opening the
 /// full rename/delete "Manage boards" dialog - the board-switcher UI called
@@ -116,14 +110,14 @@ class BoardSwitcher extends ConsumerWidget {
                             : Icons.circle_outlined,
                         size: 16,
                         color: board.id == currentId
-                            ? AppTheme.red
+                            ? AppTheme.accent
                             : AppTheme.textSecondary,
                       )
                     else if (board.id == currentId)
                       Icon(
                         Icons.check,
                         size: 16,
-                        color: _readableTextColor(hexToColor(board.colorHex!)),
+                        color: AppTheme.readableOn(hexToColor(board.colorHex!)),
                       )
                     else
                       const SizedBox(width: 16),
@@ -136,7 +130,7 @@ class BoardSwitcher extends ConsumerWidget {
                           fontSize: 13,
                           fontWeight: FontWeight.w400,
                           color: board.colorHex != null
-                              ? _readableTextColor(hexToColor(board.colorHex!))
+                              ? AppTheme.readableOn(hexToColor(board.colorHex!))
                               : null,
                         ),
                       ),
@@ -152,7 +146,7 @@ class BoardSwitcher extends ConsumerWidget {
               children: [
                 Icon(Icons.add, size: 20),
                 SizedBox(width: 8),
-                Text('New board'),
+                Text('NEW BOARD'),
               ],
             ),
           ),
@@ -162,7 +156,7 @@ class BoardSwitcher extends ConsumerWidget {
               children: [
                 Icon(Icons.settings_outlined, size: 20),
                 SizedBox(width: 8),
-                Text('Manage boards...'),
+                Text('MANAGE BOARDS...'),
               ],
             ),
           ),

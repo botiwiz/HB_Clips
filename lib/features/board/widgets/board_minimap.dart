@@ -182,7 +182,7 @@ class _MinimapPainter extends CustomPainter {
     }
 
     final viewportPaint = Paint()
-      ..color = AppTheme.red
+      ..color = AppTheme.accent
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.5;
     final vTopLeft = transform.boardToPanel(viewportRect.topLeft);

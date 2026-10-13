@@ -179,10 +179,7 @@ class _PinterestSearchDialogState
             const SizedBox(height: 12),
             if (_searching) const Center(child: CircularProgressIndicator()),
             if (_errorMessage != null)
-              Text(
-                _errorMessage!,
-                style: const TextStyle(color: AppTheme.danger),
-              ),
+              Text(_errorMessage!, style: TextStyle(color: AppTheme.danger)),
             if (_results != null && _results!.isEmpty)
               const Text('No boards found.'),
             if (_results != null && _results!.isNotEmpty)

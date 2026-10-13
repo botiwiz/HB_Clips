@@ -67,7 +67,7 @@ class ClipWidget extends StatelessWidget {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(cardRadius),
           border: selected
-              ? Border.all(color: AppTheme.red, width: 1.0)
+              ? Border.all(color: AppTheme.accent, width: 1.0)
               : (isShape || clip.type == ClipType.text
                     ? null
                     : Border.all(color: AppTheme.border, width: 1)),

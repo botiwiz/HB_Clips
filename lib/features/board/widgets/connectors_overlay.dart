@@ -80,7 +80,7 @@ class ConnectorsOverlay extends ConsumerWidget {
       specs.add(
         ConnectorSpec(
           points: [for (final point in route) toScreen(point)],
-          color: selected ? AppTheme.red : hexToColor(connector.colorHex),
+          color: selected ? AppTheme.accent : hexToColor(connector.colorHex),
           width: kConnectorStrokeWidth,
         ),
       );

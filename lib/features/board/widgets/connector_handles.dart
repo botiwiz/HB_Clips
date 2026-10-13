@@ -104,7 +104,7 @@ class ConnectorHandles extends ConsumerWidget {
             _handle(
               p3Screen,
               ConnectorGeometry.handleVisualSize + 4,
-              AppTheme.red,
+              AppTheme.accent,
             ),
           );
         }

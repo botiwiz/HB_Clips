@@ -38,8 +38,8 @@ Future<String?> pickBackupFolder(BuildContext context) async {
   } catch (error) {
     if (!context.mounted) return null;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text(
+      SnackBar(
+        content: const Text(
           "Couldn't open the folder picker. On Linux this needs zenity "
           '(or kdialog) installed.',
         ),
@@ -364,53 +364,14 @@ Future<void> loadBackupFolder(BuildContext context, WidgetRef ref) async {
   );
 }
 
-/// File menu "Backup folder..." - shows the current path (or "Not set
-/// yet"), lets the user change it, and opens it in the OS file manager.
-/// Same construction style as `board_switcher.dart`'s `_ManageBoardsDialog`.
-Future<void> showBackupFolderDialog(BuildContext context, WidgetRef ref) async {
-  var currentPath = await ref
-      .read(appSettingsRepositoryProvider)
-      .getBackupFolderPath();
-  if (!context.mounted) return;
-
-  await showDialog<void>(
-    context: context,
-    builder: (dialogContext) => StatefulBuilder(
-      builder: (dialogContext, setState) => AlertDialog(
-        title: const Text('Backup folder'),
-        content: Text(currentPath ?? 'Not set yet'),
-        actions: [
-          TextButton(
-            onPressed: () async {
-              final picked = await pickBackupFolder(dialogContext);
-              if (picked == null) return;
-              await ref
-                  .read(appSettingsRepositoryProvider)
-                  .setBackupFolderPath(picked);
-              setState(() => currentPath = picked);
-            },
-            child: const Text('Change folder...'),
-          ),
-          TextButton(
-            onPressed: currentPath == null
-                ? null
-                : () => _openInFileManager(dialogContext, currentPath!),
-            child: const Text('Open in file manager'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('Close'),
-          ),
-        ],
-      ),
-    ),
-  );
-}
-
 /// Opens [path] in the OS file manager, falling back to a SnackBar with
 /// the raw path if the OS launch itself fails - same pattern the old
-/// "Show Backups..." used.
-Future<void> _openInFileManager(BuildContext context, String path) async {
+/// "Show Backups..." used. Public - also called directly from the
+/// Settings dialog's General section.
+Future<void> openBackupFolderInFileManager(
+  BuildContext context,
+  String path,
+) async {
   bool opened;
   try {
     opened = await launchUrl(Uri.file(path));

@@ -119,11 +119,11 @@ class _FrameOptionsButton extends ConsumerWidget {
           width: FrameOptionsMenu.buttonSize,
           height: FrameOptionsMenu.buttonSize,
           alignment: Alignment.center,
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             color: AppTheme.surfaceElevated,
             shape: BoxShape.circle,
           ),
-          child: const Icon(
+          child: Icon(
             Icons.more_horiz,
             size: 14,
             color: AppTheme.textSecondary,

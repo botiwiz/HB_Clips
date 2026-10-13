@@ -15,7 +15,15 @@ import '../services/backup_folder_service.dart';
 /// miss and hard to tell apart from PDF export/PureRef import.
 ///
 /// "Load..."/"Save" both operate on one configured backup folder rather
-/// than a per-board file dialog - see `backup_folder_service.dart`.
+/// than a per-board file dialog - see `backup_folder_service.dart`. The
+/// backup folder itself is configured from Settings > General now, not
+/// here - this menu is scoped purely to Load/Save.
+///
+/// Every short, author-written UI-chrome label in this app (button text,
+/// menu items, dialog/panel titles) renders uppercase, as part of the
+/// tactical-HUD re-theme - but never anything read from a user's own data
+/// (a board/frame/clip name, file path, typed text), and never long-form
+/// body/explainer text, where shouting-case would hurt readability.
 class FileMenuButton extends ConsumerWidget {
   const FileMenuButton({super.key});
 
@@ -36,7 +44,7 @@ class FileMenuButton extends ConsumerWidget {
               children: [
                 Icon(Icons.folder_open, size: 20),
                 SizedBox(width: 8),
-                Text('Load...'),
+                Text('LOAD...'),
               ],
             ),
           ),
@@ -46,18 +54,7 @@ class FileMenuButton extends ConsumerWidget {
               children: [
                 Icon(Icons.save_outlined, size: 20),
                 SizedBox(width: 8),
-                Text('Save'),
-              ],
-            ),
-          ),
-          PopupMenuDivider(),
-          PopupMenuItem<String>(
-            value: 'backup_folder',
-            child: Row(
-              children: [
-                Icon(Icons.folder_outlined, size: 20),
-                SizedBox(width: 8),
-                Text('Backup folder...'),
+                Text('SAVE'),
               ],
             ),
           ),
@@ -69,7 +66,7 @@ class FileMenuButton extends ConsumerWidget {
             children: [
               Icon(Icons.insert_drive_file_outlined, size: 20),
               SizedBox(width: 6),
-              Text('File'),
+              Text('FILE'),
             ],
           ),
         ),
@@ -81,8 +78,8 @@ class FileMenuButton extends ConsumerWidget {
 /// Routes a selected menu value to its action and makes sure it can never
 /// fail completely silently. `PopupMenuButton.onSelected` is a synchronous
 /// callback, so without this wrapper any exception thrown anywhere inside
-/// `loadBackupFolder`/`saveAllBoards`/`showBackupFolderDialog`'s await
-/// chains (a desynced settings-table read, an unwritable folder a file
+/// `loadBackupFolder`/`saveAllBoards`'s await chains (a desynced
+/// settings-table read, an unwritable folder a file
 /// picker handed back, anything else) becomes an unhandled Future
 /// rejection - logged to stderr only, invisible in a packaged release
 /// build, which is exactly what made an earlier real-world report ("I
@@ -100,8 +97,6 @@ Future<void> _handleSelection(
         await loadBackupFolder(context, ref);
       case 'save':
         await saveAllBoards(context, ref);
-      case 'backup_folder':
-        await showBackupFolderDialog(context, ref);
     }
   } catch (e, st) {
     debugPrint('[file-menu] "$value" failed: $e\n$st');
