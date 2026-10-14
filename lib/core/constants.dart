@@ -6,6 +6,12 @@ const double kDefaultTextNoteHeight = 140;
 const double kDefaultShapeWidth = 160;
 const double kDefaultShapeHeight = 120;
 
+/// Default size for a newly pasted link clip - a compact horizontal
+/// "button" footprint: a small square thumbnail on the left, title text
+/// filling the rest.
+const double kDefaultLinkClipWidth = 260;
+const double kDefaultLinkClipHeight = 72;
+
 /// Placeholder board id used before auth/multi-board support (Phase 5+)
 /// exists. Every local clip belongs to this single implicit board.
 const String kLocalBoardId = 'local-board';
@@ -15,19 +21,24 @@ const String kLocalBoardId = 'local-board';
 /// grid and what dragging/resizing snaps to always agree.
 const double kBoardGridSpacing = 32;
 
-/// Every `kGridCrossInterval`-th dot (in both grid axes) renders as a small
-/// "+" cross instead of a plain dot - sparser spatial landmarks scattered
-/// through the grid, inspired by the tactical-HUD reference screenshots.
-/// Shared by the live board's `DotGridPainter` and both PDF-export grid
-/// mirrors (`pdf_writer.dart`, `pdf_export_wizard_screen.dart`) so the
-/// exported page always matches the live canvas exactly.
-const int kGridCrossInterval = 5;
+/// Default "every Nth dot" cross-mark cadence (see `ThemeSettings
+/// .gridCrossInterval`) for a theme that hasn't customized it - sparser
+/// spatial landmarks scattered through the grid, inspired by the
+/// tactical-HUD reference screenshots. The live interval/scale are
+/// per-theme, user-adjustable settings (Settings > Theming > Grid) read
+/// from `AppTheme.gridCrossInterval`/`gridCrossScale` at render time, not
+/// this constant directly - this is only the value a theme starts at.
+const int kDefaultGridCrossInterval = 10;
 
 /// Fixed screen-space half-length (logical pixels, before the min/max
-/// clamp each renderer applies) of a grid cross's two arms - quiet
-/// background texture, not accent-colored, same neutral `gridDot`/border
-/// color the plain dots already use.
-const double kGridCrossHalfLength = 6;
+/// clamp each renderer applies, and before `AppTheme.gridCrossScale`'s
+/// per-theme multiplier) of a grid cross's two arms at the default 1.0
+/// scale - quiet background texture, not accent-colored, same neutral
+/// `gridDot`/border color the plain dots already use. Shared by the live
+/// board's `DotGridPainter` and both PDF-export grid mirrors
+/// (`pdf_writer.dart`, `pdf_export_wizard_screen.dart`) so the exported
+/// page always matches the live canvas exactly.
+const double kGridCrossBaseHalfLength = 6;
 
 /// Maximum zoom multiplier for panning/zooming an image within its fixed
 /// on-board frame (double-click a clip to enter this mode). Never below

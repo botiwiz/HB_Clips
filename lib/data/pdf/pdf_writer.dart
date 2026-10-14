@@ -11,8 +11,7 @@ import '../../core/constants.dart'
     show
         kBoardGridSpacing,
         kDefaultHighlightColorHex,
-        kGridCrossHalfLength,
-        kGridCrossInterval,
+        kGridCrossBaseHalfLength,
         kHighlightCornerRadius,
         kTextCaretReservedWidth,
         kTextNoteFontSize,
@@ -212,6 +211,8 @@ Future<_PageResult> _buildPage({
       );
     } else if (clip.type == ClipType.shape) {
       content = _buildShapeWidget(clip);
+    } else if (clip.type == ClipType.link) {
+      content = await _buildLinkWidget(clip, readBytes);
     } else {
       content = await _buildImageWidget(clip, readBytes);
       if (content == null) {
@@ -540,8 +541,8 @@ Future<Uint8List> rasterizeTextClip(
 }
 
 /// Replicates `DotGridPainter`'s board-space dot grid (fixed spacing,
-/// 1.5pt base radius, 0.5 alpha, every `kGridCrossInterval`-th point
-/// rendered as a small "+" cross instead of a dot) onto a PDF page -
+/// 1.5pt base radius, 0.5 alpha, every `AppTheme.gridCrossInterval`-th
+/// point rendered as a small "+" cross instead of a dot) onto a PDF page -
 /// unlike the live board, there's no zoom to fade/thin it for, so it's
 /// always drawn at the base density. [origin]/[size] are the board-space
 /// rect to cover (same values `_buildPage` already uses to position clips
@@ -559,7 +560,11 @@ void _drawDotGrid(
 }) {
   const spacing = kBoardGridSpacing;
   final radius = 1.5 * scale;
-  final crossHalfLength = (kGridCrossHalfLength * scale).clamp(4.0, 16.0);
+  final crossHalfLength =
+      (kGridCrossBaseHalfLength * AppTheme.gridCrossScale * scale).clamp(
+        2.0,
+        28.0,
+      );
   final startCol = (origin.dx / spacing).floor();
   final endCol = ((origin.dx + size.width) / spacing).ceil();
   final startRow = (origin.dy / spacing).floor();
@@ -573,10 +578,10 @@ void _drawDotGrid(
     ..setLineWidth(1);
   for (var col = startCol; col <= endCol; col++) {
     final x = (col * spacing - origin.dx) * scale;
-    final colIsCrossColumn = col % kGridCrossInterval == 0;
+    final colIsCrossColumn = col % AppTheme.gridCrossInterval == 0;
     for (var row = startRow; row <= endRow; row++) {
       final y = (row * spacing - origin.dy) * scale;
-      if (colIsCrossColumn && row % kGridCrossInterval == 0) {
+      if (colIsCrossColumn && row % AppTheme.gridCrossInterval == 0) {
         canvas
           ..moveTo(x - crossHalfLength, y)
           ..lineTo(x + crossHalfLength, y)
@@ -642,6 +647,71 @@ pw.Widget _buildShapeWidget(BoardClip clip) {
           ..strokePath();
       }
     },
+  );
+}
+
+/// A link clip's exported fallback: a bordered box with its title (or
+/// hostname) and, if a thumbnail was cached by the time export ran, a
+/// small square preview image - mirrors `ClipWidget._buildLink`'s on-board
+/// "button" layout. Never returns null (unlike `_buildImageWidget`) - a
+/// link clip always exports as a labeled box, with or without a
+/// thumbnail, rather than being silently skipped.
+Future<pw.Widget> _buildLinkWidget(
+  BoardClip clip,
+  Future<Uint8List?> Function(String key) readBytes,
+) async {
+  pw.Widget? thumbnail;
+  final path = clip.localFilePath;
+  if (path != null) {
+    try {
+      final bytes = await readBytes(path);
+      if (bytes != null) {
+        final decoded =
+            img.decodeImage(bytes) ?? await _decodeViaFlutterCodec(bytes);
+        if (decoded != null) {
+          thumbnail = pw.Image(
+            pw.MemoryImage(img.encodePng(decoded)),
+            fit: pw.BoxFit.cover,
+          );
+        }
+      }
+    } catch (_) {
+      thumbnail = null;
+    }
+  }
+
+  final title =
+      clip.linkTitle ?? (Uri.tryParse(clip.linkUrl ?? '')?.host ?? '');
+  final thumbSize = (clip.height - 16).clamp(16.0, 64.0);
+
+  return pw.Container(
+    width: clip.width,
+    height: clip.height,
+    padding: const pw.EdgeInsets.all(8),
+    decoration: pw.BoxDecoration(
+      border: pw.Border.all(color: PdfColor.fromHex(_kGridDotHex)),
+    ),
+    child: pw.Row(
+      crossAxisAlignment: pw.CrossAxisAlignment.center,
+      children: [
+        pw.Container(
+          width: thumbSize,
+          height: thumbSize,
+          color: PdfColor.fromHex(_kCanvasBackgroundHex),
+          child: thumbnail == null ? null : pw.ClipRect(child: thumbnail),
+        ),
+        pw.SizedBox(width: 10),
+        pw.Expanded(
+          child: pw.Text(
+            title,
+            style: pw.TextStyle(
+              color: PdfColor.fromHex('#F5F5F5'),
+              fontSize: 11,
+            ),
+          ),
+        ),
+      ],
+    ),
   );
 }
 

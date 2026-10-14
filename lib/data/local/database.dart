@@ -57,7 +57,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 25;
+  int get schemaVersion => 26;
 
   Future<void> _seedDefaultBoard(Migrator m) {
     return into(boards).insert(
@@ -200,6 +200,12 @@ class AppDatabase extends _$AppDatabase {
       if (from < 25) {
         await m.createTable(themes);
         await _addColumnIfMissing(m, appSettings, appSettings.activeThemeId);
+      }
+      if (from < 26) {
+        await _addColumnIfMissing(m, clips, clips.linkUrl);
+        await _addColumnIfMissing(m, clips, clips.linkTitle);
+        await _addColumnIfMissing(m, themes, themes.gridCrossInterval);
+        await _addColumnIfMissing(m, themes, themes.gridCrossScale);
       }
     },
   );

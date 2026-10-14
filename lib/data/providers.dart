@@ -98,29 +98,52 @@ final themesProvider = StreamProvider<List<ThemeRow>>((ref) {
   return ref.watch(themesRepositoryProvider).watchThemes();
 });
 
-/// Which theme (by id - a `kBuiltInThemes` key, a saved `ThemeRow.id`, or
-/// null for the built-in default) is currently applied app-wide. See
+/// Which saved theme (a `themesProvider` row's id, or null for the
+/// code-level fallback look) is currently applied app-wide. See
 /// `settings_dialog.dart`.
 final activeThemeIdProvider = StreamProvider<String?>((ref) {
   return ref.watch(appSettingsRepositoryProvider).watchActiveThemeId();
 });
 
 /// The actual `ThemeSettings` to render right now - resolves
-/// [activeThemeIdProvider] against [kBuiltInThemes] first, then the saved
-/// [themesProvider] list, then falls back to [ThemeSettings.builtInDefault]
-/// if the id is null or references a since-deleted theme. `lib/app.dart`
-/// is this provider's one real consumer - every other color/font call site
-/// in the app reads the mutable `AppTheme` statics it drives instead.
+/// [activeThemeIdProvider] against the saved [themesProvider] list, falling
+/// back to [ThemeSettings.builtInDefault] if the id is null or references a
+/// since-deleted theme. `lib/app.dart` is this provider's one real
+/// consumer - every other color/font call site in the app reads the
+/// mutable `AppTheme` statics it drives instead.
 final resolvedThemeSettingsProvider = Provider<ThemeSettings>((ref) {
   final activeId = ref.watch(activeThemeIdProvider).valueOrNull;
   if (activeId == null) return ThemeSettings.builtInDefault;
-
-  final builtIn = kBuiltInThemes[activeId];
-  if (builtIn != null) return builtIn;
 
   final themes = ref.watch(themesProvider).valueOrNull ?? const [];
   for (final row in themes) {
     if (row.id == activeId) return ThemeSettings.fromRow(row);
   }
   return ThemeSettings.builtInDefault;
+});
+
+/// Seeds `kSeedThemePresets` as real saved themes on first run (see
+/// `ThemesRepository.ensureSeeded`), then makes one of them active so the
+/// app always opens into a real, named, user-editable preset rather than
+/// the bare code-level fallback look. If the active theme id was one of
+/// the old hardcoded built-in ids from before presets became plain saved
+/// themes, remaps it to the matching newly-seeded row instead of losing
+/// the user's prior pink/green choice. `lib/app.dart` watches this once at
+/// startup purely for its side effect; its own `ThemeSettings` value comes
+/// from [resolvedThemeSettingsProvider] as always.
+final themeSeedProvider = FutureProvider<void>((ref) async {
+  final themesRepo = ref.watch(themesRepositoryProvider);
+  final appSettings = ref.watch(appSettingsRepositoryProvider);
+  final seededIds = await themesRepo.ensureSeeded();
+  if (seededIds == null) return;
+
+  final currentActive = await appSettings.getActiveThemeId();
+  const legacyBuiltInIndex = {'builtin-hot-pink': 1, 'builtin-neon-green': 2};
+  if (currentActive == null) {
+    await appSettings.setActiveThemeId(seededIds[0]);
+  } else if (legacyBuiltInIndex.containsKey(currentActive)) {
+    await appSettings.setActiveThemeId(
+      seededIds[legacyBuiltInIndex[currentActive]!],
+    );
+  }
 });

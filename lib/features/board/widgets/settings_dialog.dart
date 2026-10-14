@@ -107,14 +107,11 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
     });
   }
 
-  /// Whether [_draftSourceThemeId] refers to a user-saved theme (not the
-  /// built-in default, not a `kBuiltInThemes` preset) - "Save changes"
-  /// only makes sense for that case; a built-in/default draft has no row
-  /// of its own to overwrite.
-  bool get _isEditableSavedTheme {
-    final id = _draftSourceThemeId;
-    return id != null && !kBuiltInThemes.containsKey(id);
-  }
+  /// Whether [_draftSourceThemeId] refers to a real saved theme row -
+  /// "Save changes" only makes sense for that case; the bare code-level
+  /// fallback look (id null - see `ThemeSettings.builtInDefault`) has no
+  /// row of its own to overwrite.
+  bool get _isEditableSavedTheme => _draftSourceThemeId != null;
 
   Future<void> _applyTheme(String? id, ThemeSettings settings) async {
     await ref.read(appSettingsRepositoryProvider).setActiveThemeId(id);
@@ -212,7 +209,21 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
 
     await ref.read(themesRepositoryProvider).deleteTheme(theme.id);
     if (_draftSourceThemeId == theme.id) {
-      await _applyTheme(null, ThemeSettings.builtInDefault);
+      // Fall back to whichever saved theme now sorts first, if any remain -
+      // there's no more fixed "DEFAULT" to land on. Only an empty list (the
+      // user deleted every preset) falls through to the bare code-level
+      // look, and that's never shown as a selectable row any more either.
+      final remaining = (ref.read(themesProvider).valueOrNull ?? const [])
+          .where((t) => t.id != theme.id)
+          .toList();
+      if (remaining.isNotEmpty) {
+        await _applyTheme(
+          remaining.first.id,
+          ThemeSettings.fromRow(remaining.first),
+        );
+      } else {
+        await _applyTheme(null, ThemeSettings.builtInDefault);
+      }
     }
   }
 
@@ -336,17 +347,6 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
             ),
           ),
           const SizedBox(height: 8),
-          _ThemeListRow(
-            label: 'DEFAULT',
-            active: _draftSourceThemeId == null,
-            onApply: () => _applyTheme(null, ThemeSettings.builtInDefault),
-          ),
-          for (final entry in kBuiltInThemes.entries)
-            _ThemeListRow(
-              label: kBuiltInThemeNames[entry.key] ?? entry.key,
-              active: _draftSourceThemeId == entry.key,
-              onApply: () => _applyTheme(entry.key, entry.value),
-            ),
           for (final theme in themes)
             _ThemeListRow(
               label: theme.name,
@@ -418,6 +418,63 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
             ],
           ),
           const SizedBox(height: 16),
+          Text(
+            'GRID',
+            style: TextStyle(
+              color: AppTheme.textSecondary,
+              fontWeight: FontWeight.w600,
+              fontSize: 12,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              const Text('Cross density'),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Slider(
+                  value: _draft.gridCrossInterval.toDouble().clamp(4, 20),
+                  min: 4,
+                  max: 20,
+                  divisions: 16,
+                  label: 'every ${_draft.gridCrossInterval}',
+                  onChanged: (value) => setState(
+                    () => _draft = _draft.copyWith(
+                      gridCrossInterval: value.round(),
+                    ),
+                  ),
+                ),
+              ),
+              SizedBox(
+                width: 48,
+                child: Text('every ${_draft.gridCrossInterval}'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              const Text('Cross size'),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Slider(
+                  value: _draft.gridCrossScale.clamp(0.5, 2.0),
+                  min: 0.5,
+                  max: 2.0,
+                  divisions: 15,
+                  label: '${(_draft.gridCrossScale * 100).round()}%',
+                  onChanged: (value) => setState(
+                    () => _draft = _draft.copyWith(gridCrossScale: value),
+                  ),
+                ),
+              ),
+              SizedBox(
+                width: 48,
+                child: Text('${(_draft.gridCrossScale * 100).round()}%'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
           Wrap(
             spacing: 8,
             runSpacing: 8,
@@ -431,11 +488,6 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
                   onPressed: _saveChanges,
                   child: const Text('SAVE CHANGES'),
                 ),
-              TextButton(
-                onPressed: () =>
-                    _applyTheme(null, ThemeSettings.builtInDefault),
-                child: const Text('RESET TO DEFAULT'),
-              ),
             ],
           ),
         ],

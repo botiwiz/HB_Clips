@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show HardwareKeyboard;
 
 import '../../../core/constants.dart'
-    show kBoardGridSpacing, kGridCrossHalfLength, kGridCrossInterval;
+    show kBoardGridSpacing, kGridCrossBaseHalfLength;
 import '../../../core/theme/app_theme.dart';
 import '../../../data/models/clip.dart';
 import '../../../data/models/connector.dart';
@@ -788,7 +788,11 @@ class _ExportDotGridPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     const spacing = kBoardGridSpacing;
     final radius = 1.5 * scale;
-    final crossHalfLength = (kGridCrossHalfLength * scale).clamp(4.0, 16.0);
+    final crossHalfLength =
+        (kGridCrossBaseHalfLength * AppTheme.gridCrossScale * scale).clamp(
+          2.0,
+          28.0,
+        );
     final startCol = (origin.dx / spacing).floor();
     final endCol = ((origin.dx + contentSize.width) / spacing).ceil();
     final startRow = (origin.dy / spacing).floor();
@@ -801,10 +805,10 @@ class _ExportDotGridPainter extends CustomPainter {
       ..style = PaintingStyle.stroke;
     for (var col = startCol; col <= endCol; col++) {
       final x = (col * spacing - origin.dx) * scale;
-      final colIsCrossColumn = col % kGridCrossInterval == 0;
+      final colIsCrossColumn = col % AppTheme.gridCrossInterval == 0;
       for (var row = startRow; row <= endRow; row++) {
         final y = (row * spacing - origin.dy) * scale;
-        if (colIsCrossColumn && row % kGridCrossInterval == 0) {
+        if (colIsCrossColumn && row % AppTheme.gridCrossInterval == 0) {
           canvas.drawLine(
             Offset(x - crossHalfLength, y),
             Offset(x + crossHalfLength, y),

@@ -2,7 +2,7 @@ import 'dart:convert';
 
 import '../local/database.dart';
 
-enum ClipType { image, text, shape }
+enum ClipType { image, text, shape, link }
 
 /// A flowchart-style vector primitive a shape clip renders as. Fixed at
 /// creation, like [ClipType] itself - never changes after a shape clip is
@@ -73,12 +73,14 @@ extension ClipTypeStorage on ClipType {
     ClipType.image => 'image',
     ClipType.text => 'text',
     ClipType.shape => 'shape',
+    ClipType.link => 'link',
   };
 
   static ClipType fromStorage(String value) => switch (value) {
     'image' => ClipType.image,
     'text' => ClipType.text,
     'shape' => ClipType.shape,
+    'link' => ClipType.link,
     _ => throw ArgumentError('Unknown clip type: $value'),
   };
 }
@@ -120,7 +122,22 @@ class BoardClip {
   final String? backgroundColorHex;
   final String? groupId;
   final String? frameId;
+
+  /// Key into [LocalBlobStore] - an image clip's own bytes, or a link
+  /// clip's cached thumbnail (fetched async, see [linkUrl]). Ignored for
+  /// text/shape clips.
   final String? localFilePath;
+
+  /// The URL a link clip opens on double-click. Null for every other
+  /// clip type.
+  final String? linkUrl;
+
+  /// A link clip's page title, extracted from its HTML shortly after the
+  /// clip is created - null until that fetch completes (or if it finds
+  /// nothing), in which case the UI falls back to the URL's hostname.
+  /// Ignored for non-link clips.
+  final String? linkTitle;
+
   final double imagePanX;
   final double imagePanY;
   final double imageZoom;
@@ -173,6 +190,8 @@ class BoardClip {
     this.groupId,
     this.frameId,
     this.localFilePath,
+    this.linkUrl,
+    this.linkTitle,
     this.imagePanX = 0.0,
     this.imagePanY = 0.0,
     this.imageZoom = 1.0,
@@ -207,6 +226,8 @@ class BoardClip {
     groupId: row.groupId,
     frameId: row.frameId,
     localFilePath: row.localFilePath,
+    linkUrl: row.linkUrl,
+    linkTitle: row.linkTitle,
     imagePanX: row.imagePanX,
     imagePanY: row.imagePanY,
     imageZoom: row.imageZoom,
@@ -264,6 +285,8 @@ class BoardClip {
       groupId: groupId ?? this.groupId,
       frameId: frameId ?? this.frameId,
       localFilePath: localFilePath,
+      linkUrl: linkUrl,
+      linkTitle: linkTitle,
       imagePanX: imagePanX ?? this.imagePanX,
       imagePanY: imagePanY ?? this.imagePanY,
       imageZoom: imageZoom ?? this.imageZoom,

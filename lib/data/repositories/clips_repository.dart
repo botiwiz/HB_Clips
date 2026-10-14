@@ -120,6 +120,52 @@ class ClipsRepository {
     );
   }
 
+  Future<BoardClip> addLinkClip({
+    required String id,
+    required String boardId,
+    required String linkUrl,
+    required double x,
+    required double y,
+    double width = kDefaultLinkClipWidth,
+    double height = kDefaultLinkClipHeight,
+  }) async {
+    final zIndex = await _nextZIndex(boardId);
+    return _insertClip(
+      ClipsCompanion.insert(
+        id: id,
+        boardId: boardId,
+        type: 'link',
+        x: Value(x),
+        y: Value(y),
+        width: Value(width),
+        height: Value(height),
+        zIndex: Value(zIndex),
+        linkUrl: Value(linkUrl),
+      ),
+    );
+  }
+
+  /// Fills in a link clip's title and/or cached thumbnail path once the
+  /// async metadata fetch (kicked off right after the clip is created)
+  /// completes - safe to call with partial data (e.g. a title found but
+  /// no image) or not at all (both stay null, and the UI falls back to
+  /// the hostname + a generic link icon).
+  Future<void> updateLinkMetadata(
+    String id, {
+    String? title,
+    String? thumbnailPath,
+  }) {
+    return (_db.update(_db.clips)..where((c) => c.id.equals(id))).write(
+      ClipsCompanion(
+        linkTitle: title != null ? Value(title) : const Value.absent(),
+        localFilePath: thumbnailPath != null
+            ? Value(thumbnailPath)
+            : const Value.absent(),
+        updatedAt: Value(DateTime.now()),
+      ),
+    );
+  }
+
   /// Inserts a full duplicate of [source] under [newId], copying every
   /// field (position unless [x]/[y] override it, size, rotation,
   /// opacity, every type-specific style field, text content/formatting/
@@ -159,6 +205,8 @@ class ClipsRepository {
         groupId: Value(groupId),
         frameId: Value(frameId),
         localFilePath: Value(source.localFilePath),
+        linkUrl: Value(source.linkUrl),
+        linkTitle: Value(source.linkTitle),
         imagePanX: Value(source.imagePanX),
         imagePanY: Value(source.imagePanY),
         imageZoom: Value(source.imageZoom),

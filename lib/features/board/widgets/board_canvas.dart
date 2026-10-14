@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:super_drag_and_drop/super_drag_and_drop.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../core/constants.dart';
@@ -1215,6 +1216,15 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
           _isDoubleClickOn(hit.id, event.localPosition)) {
         ref.read(selectedClipIdsProvider.notifier).state = {hit.id};
         ref.read(editingTextClipIdProvider.notifier).state = hit.id;
+        return;
+      }
+      if (hit.type == ClipType.link &&
+          _isDoubleClickOn(hit.id, event.localPosition)) {
+        ref.read(selectedClipIdsProvider.notifier).state = {hit.id};
+        final url = hit.linkUrl;
+        if (url != null) {
+          launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+        }
         return;
       }
       if (_multiSelectModifierHeld) {
@@ -3318,6 +3328,10 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
 
   @override
   Widget build(BuildContext context) {
+    // Rebuilds the dot grid (and everything else reading AppTheme.* below)
+    // the moment a theme is applied, instead of waiting on an unrelated
+    // pan/zoom to pick up the new mutable AppTheme statics.
+    ref.watch(resolvedThemeSettingsProvider);
     final clipsAsync = ref.watch(activeClipsProvider);
     final view = ref.watch(boardViewProvider);
     final dragging = ref.watch(groupDragProvider);

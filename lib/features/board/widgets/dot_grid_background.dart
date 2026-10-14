@@ -12,7 +12,20 @@ import '../controllers/board_controller.dart';
 class DotGridPainter extends CustomPainter {
   final BoardViewState view;
 
-  const DotGridPainter(this.view);
+  /// Captured from `AppTheme` at construction time (not read live inside
+  /// [paint]) so [shouldRepaint] can compare old vs. new values - these
+  /// are per-theme settings (Settings > Theming > Grid), not tied to
+  /// [view], so without this capture a theme-only change (no pan/zoom)
+  /// could repaint this widget with stale grid settings the next time it
+  /// happens to rebuild.
+  final Color gridDotColor;
+  final int crossInterval;
+  final double crossScale;
+
+  DotGridPainter(this.view)
+    : gridDotColor = AppTheme.gridDot,
+      crossInterval = AppTheme.gridCrossInterval,
+      crossScale = AppTheme.gridCrossScale;
 
   static const double _boardSpacing = kBoardGridSpacing;
   static const double _baseDotRadius = 1.5;
@@ -50,10 +63,11 @@ class DotGridPainter extends CustomPainter {
     // sub-pixel and the grid effectively (not just intentionally) vanishes.
     final radius = (_baseDotRadius * scale).clamp(1.0, 6.0);
     final paint = Paint()
-      ..color = AppTheme.gridDot.withValues(alpha: 0.5 * opacity);
-    final crossHalfLength = (kGridCrossHalfLength * scale).clamp(4.0, 16.0);
+      ..color = gridDotColor.withValues(alpha: 0.5 * opacity);
+    final crossHalfLength = (kGridCrossBaseHalfLength * crossScale * scale)
+        .clamp(2.0, 28.0);
     final crossPaint = Paint()
-      ..color = AppTheme.gridDot.withValues(alpha: 0.5 * opacity)
+      ..color = gridDotColor.withValues(alpha: 0.5 * opacity)
       ..strokeWidth = 1
       ..style = PaintingStyle.stroke;
 
@@ -62,10 +76,10 @@ class DotGridPainter extends CustomPainter {
       // Dart's `%` on ints is Euclidean (always non-negative for a
       // positive divisor), so this is correct for negative columns/rows
       // too - a plain `col % N == 0` check, no extra sign handling needed.
-      final colIsCrossColumn = col % kGridCrossInterval == 0;
+      final colIsCrossColumn = col % crossInterval == 0;
       for (var row = startRow; row <= endRow; row++) {
         final sy = row * spacing * scale + view.panOffset.dy;
-        if (colIsCrossColumn && row % kGridCrossInterval == 0) {
+        if (colIsCrossColumn && row % crossInterval == 0) {
           canvas.drawLine(
             Offset(sx - crossHalfLength, sy),
             Offset(sx + crossHalfLength, sy),
@@ -86,5 +100,8 @@ class DotGridPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant DotGridPainter oldDelegate) =>
       oldDelegate.view.panOffset != view.panOffset ||
-      oldDelegate.view.scale != view.scale;
+      oldDelegate.view.scale != view.scale ||
+      oldDelegate.gridDotColor != gridDotColor ||
+      oldDelegate.crossInterval != crossInterval ||
+      oldDelegate.crossScale != crossScale;
 }

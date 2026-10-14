@@ -30,6 +30,16 @@ class Themes extends Table {
   /// own font size was set. See `lib/app.dart`.
   RealColumn get fontSizeScale => real().withDefault(const Constant(1.0))();
 
+  /// Every `gridCrossInterval`-th dot (in both grid axes) of the board's
+  /// dot-grid background renders as a small "+" cross instead of a plain
+  /// dot - see `dot_grid_background.dart`'s `DotGridPainter`.
+  IntColumn get gridCrossInterval =>
+      integer().withDefault(const Constant(10))();
+
+  /// Multiplier on `kGridCrossBaseHalfLength` for a grid cross's on-screen
+  /// size - 1.0 is the original fixed size, unchanged.
+  RealColumn get gridCrossScale => real().withDefault(const Constant(1.0))();
+
   /// User-controlled display order in the Settings dialog's saved-themes
   /// list - lower sorts first, same convention as `Boards.sortOrder`.
   IntColumn get sortOrder => integer().withDefault(const Constant(0))();

@@ -56,11 +56,15 @@ class ClipWidget extends StatelessWidget {
     // handles for a single selection), so every clip type - shapes
     // included - must keep it.
     final isShape = clip.type == ClipType.shape;
-    // Images are the sole deliberate exception to this app's otherwise-
-    // sharp corner design - see `kImageCornerRadius`'s doc comment.
-    final cardRadius = clip.type == ClipType.image
-        ? kImageCornerRadius
-        : kCornerRadius;
+    final isText = clip.type == ClipType.text;
+    // Images and link "buttons" are the sole deliberate exception to this
+    // app's otherwise-sharp corner design - see `kImageCornerRadius`'s doc
+    // comment. A link clip gets the same rounded, bordered, shadowed card
+    // chrome as an image clip (not a shape's borderless outline or a text
+    // note's plain surface) so it reads as a button, not a floating label.
+    final isButtonLike =
+        clip.type == ClipType.image || clip.type == ClipType.link;
+    final cardRadius = isButtonLike ? kImageCornerRadius : kCornerRadius;
     return Opacity(
       opacity: clip.opacity,
       child: Container(
@@ -68,10 +72,10 @@ class ClipWidget extends StatelessWidget {
           borderRadius: BorderRadius.circular(cardRadius),
           border: selected
               ? Border.all(color: AppTheme.accent, width: 1.0)
-              : (isShape || clip.type == ClipType.text
+              : (isShape || isText
                     ? null
                     : Border.all(color: AppTheme.border, width: 1)),
-          boxShadow: (isShape || clip.type == ClipType.text)
+          boxShadow: (isShape || isText)
               ? null
               : const [
                   BoxShadow(
@@ -82,7 +86,7 @@ class ClipWidget extends StatelessWidget {
                 ],
           color: isShape
               ? null
-              : (clip.type == ClipType.text
+              : (isText
                     ? (clip.backgroundColorHex != null
                           ? hexToColor(clip.backgroundColorHex!)
                           : AppTheme.textNoteSurface)
@@ -96,6 +100,11 @@ class ClipWidget extends StatelessWidget {
           ),
           ClipType.text => _buildText(),
           ClipType.shape => _buildShape(),
+          ClipType.link => ClipRRect(
+            borderRadius: BorderRadius.circular(cardRadius),
+            clipBehavior: Clip.antiAlias,
+            child: _buildLink(),
+          ),
         },
       ),
     );
@@ -130,6 +139,69 @@ class ClipWidget extends StatelessWidget {
             color: AppTheme.textDisabled,
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildLink() {
+    final thumbPath = clip.localFilePath;
+    final url = clip.linkUrl ?? '';
+    final host = Uri.tryParse(url)?.host ?? url;
+    final title = clip.linkTitle;
+    return Padding(
+      padding: const EdgeInsets.all(8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(kImageCornerRadius / 2),
+            child: SizedBox(
+              width: 48,
+              height: 48,
+              child: thumbPath != null
+                  ? LocalImage(
+                      path: thumbPath,
+                      fit: BoxFit.cover,
+                      width: 48,
+                      height: 48,
+                      errorBuilder: (context, error, stackTrace) =>
+                          const _LinkFallbackIcon(),
+                    )
+                  : const _LinkFallbackIcon(),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title ?? host,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: AppTheme.textPrimary,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                if (title != null) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    host,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: AppTheme.textSecondary,
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -223,6 +295,21 @@ class ClipWidget extends StatelessWidget {
             : AppTheme.border,
         strokeWidth: clip.shapeStrokeWidth ?? kDefaultStrokeWidth,
       ),
+    );
+  }
+}
+
+/// The small square placeholder shown in a link clip's thumbnail slot
+/// before its real thumbnail fetch completes, or if it never finds one.
+class _LinkFallbackIcon extends StatelessWidget {
+  const _LinkFallbackIcon();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: AppTheme.surfaceElevated,
+      alignment: Alignment.center,
+      child: const Icon(Icons.link, color: AppTheme.textDisabled, size: 20),
     );
   }
 }

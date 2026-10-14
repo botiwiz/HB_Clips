@@ -543,13 +543,13 @@ class BoardScreen extends ConsumerWidget {
   /// Pastes whatever [copiedSelectionProvider] holds, anchored at
   /// [_pasteAnchor] (preserving relative layout between multiple pasted
   /// clips, or between a pasted frame and its children). Falls back to
-  /// the existing OS-clipboard image paste when nothing's been
+  /// the existing OS-clipboard image/URL paste when nothing's been
   /// internally copied yet - this is the only remaining call site for
-  /// [pasteImageFromClipboard].
+  /// [pasteFromClipboard].
   Future<void> _pasteSelection(BuildContext context, WidgetRef ref) async {
     final copied = ref.read(copiedSelectionProvider);
     if (copied == null) {
-      await pasteImageFromClipboard(context, ref);
+      await pasteFromClipboard(context, ref);
       return;
     }
 

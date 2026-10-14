@@ -35,6 +35,8 @@ void main() {
           border: Color(0xFF444444),
           textPrimary: Color(0xFF555555),
           textSecondary: Color(0xFF666666),
+          gridCrossInterval: 7,
+          gridCrossScale: 1.6,
         );
 
         AppTheme.themeFor(settings);
@@ -48,6 +50,8 @@ void main() {
         expect(AppTheme.textPrimary, settings.textPrimary);
         expect(AppTheme.textSecondary, settings.textSecondary);
         expect(AppTheme.gridDot, settings.border);
+        expect(AppTheme.gridCrossInterval, 7);
+        expect(AppTheme.gridCrossScale, 1.6);
       },
     );
 
@@ -74,6 +78,14 @@ void main() {
         ThemeSettings.builtInDefault.canvasBackground,
       );
       expect(AppTheme.border, ThemeSettings.builtInDefault.border);
+      expect(
+        AppTheme.gridCrossInterval,
+        ThemeSettings.builtInDefault.gridCrossInterval,
+      );
+      expect(
+        AppTheme.gridCrossScale,
+        ThemeSettings.builtInDefault.gridCrossScale,
+      );
     });
 
     test('the returned ThemeData fills its primary button with accent', () {

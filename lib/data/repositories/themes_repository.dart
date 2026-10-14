@@ -1,4 +1,5 @@
 import 'package:drift/drift.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../core/theme/theme_settings.dart';
 import '../local/database.dart';
@@ -49,6 +50,8 @@ class ThemesRepository {
             textSecondaryHex: settings.textSecondaryHex,
             fontFamily: Value(settings.fontFamily),
             fontSizeScale: Value(settings.fontSizeScale),
+            gridCrossInterval: Value(settings.gridCrossInterval),
+            gridCrossScale: Value(settings.gridCrossScale),
             sortOrder: Value(sortOrder),
           ),
         );
@@ -91,6 +94,12 @@ class ThemesRepository {
         fontSizeScale: settings == null
             ? const Value.absent()
             : Value(settings.fontSizeScale),
+        gridCrossInterval: settings == null
+            ? const Value.absent()
+            : Value(settings.gridCrossInterval),
+        gridCrossScale: settings == null
+            ? const Value.absent()
+            : Value(settings.gridCrossScale),
         updatedAt: Value(DateTime.now()),
       ),
     );
@@ -108,5 +117,24 @@ class ThemesRepository {
       await (_db.update(_db.themes)..where((t) => t.id.equals(orderedIds[i])))
           .write(ThemesCompanion(sortOrder: Value(i)));
     }
+  }
+
+  /// Seeds [kSeedThemePresets] as real saved themes the first time this is
+  /// called on a database with zero saved themes (a fresh install, or an
+  /// upgrade from a version that only had the old hardcoded built-ins) -
+  /// a no-op (returns null) once any theme row exists, saved or seeded.
+  /// Returns the new rows' ids in the same order as [kSeedThemePresets],
+  /// or null if nothing was seeded. See `themeSeedProvider`.
+  Future<List<String>?> ensureSeeded() async {
+    final existing = await _db.select(_db.themes).get();
+    if (existing.isNotEmpty) return null;
+
+    final ids = <String>[];
+    for (final (name, settings) in kSeedThemePresets) {
+      final id = const Uuid().v4();
+      await createTheme(id, name, settings);
+      ids.add(id);
+    }
+    return ids;
   }
 }

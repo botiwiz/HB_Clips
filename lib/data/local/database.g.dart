@@ -166,6 +166,28 @@ class $ClipsTable extends Clips with TableInfo<$ClipsTable, ClipRow> {
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _linkUrlMeta = const VerificationMeta(
+    'linkUrl',
+  );
+  @override
+  late final GeneratedColumn<String> linkUrl = GeneratedColumn<String>(
+    'link_url',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _linkTitleMeta = const VerificationMeta(
+    'linkTitle',
+  );
+  @override
+  late final GeneratedColumn<String> linkTitle = GeneratedColumn<String>(
+    'link_title',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _imagePanXMeta = const VerificationMeta(
     'imagePanX',
   );
@@ -370,6 +392,8 @@ class $ClipsTable extends Clips with TableInfo<$ClipsTable, ClipRow> {
     textContent,
     backgroundColorHex,
     localFilePath,
+    linkUrl,
+    linkTitle,
     imagePanX,
     imagePanY,
     imageZoom,
@@ -493,6 +517,18 @@ class $ClipsTable extends Clips with TableInfo<$ClipsTable, ClipRow> {
           data['local_file_path']!,
           _localFilePathMeta,
         ),
+      );
+    }
+    if (data.containsKey('link_url')) {
+      context.handle(
+        _linkUrlMeta,
+        linkUrl.isAcceptableOrUnknown(data['link_url']!, _linkUrlMeta),
+      );
+    }
+    if (data.containsKey('link_title')) {
+      context.handle(
+        _linkTitleMeta,
+        linkTitle.isAcceptableOrUnknown(data['link_title']!, _linkTitleMeta),
       );
     }
     if (data.containsKey('image_pan_x')) {
@@ -681,6 +717,14 @@ class $ClipsTable extends Clips with TableInfo<$ClipsTable, ClipRow> {
         DriftSqlType.string,
         data['${effectivePrefix}local_file_path'],
       ),
+      linkUrl: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}link_url'],
+      ),
+      linkTitle: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}link_title'],
+      ),
       imagePanX: attachedDatabase.typeMapping.read(
         DriftSqlType.double,
         data['${effectivePrefix}image_pan_x'],
@@ -786,8 +830,20 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
   /// app's default text-note surface color.
   final String? backgroundColorHex;
 
-  /// Key into [LocalBlobStore] for this image clip's bytes.
+  /// Key into [LocalBlobStore] - an image clip's own bytes, or a link
+  /// clip's cached thumbnail (fetched async after creation). Ignored for
+  /// text/shape clips.
   final String? localFilePath;
+
+  /// The URL a link clip opens on double-click. Null for every other
+  /// clip type.
+  final String? linkUrl;
+
+  /// A link clip's page title, extracted from its HTML shortly after the
+  /// clip is created - null until that fetch completes (or if it finds
+  /// nothing), in which case the UI falls back to the URL's hostname.
+  /// Ignored for non-link clips.
+  final String? linkTitle;
 
   /// Pan/zoom of the image content within this clip's fixed on-board frame
   /// (double-click a clip to enter this mode) - Flutter `Alignment`
@@ -864,6 +920,8 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
     this.textContent,
     this.backgroundColorHex,
     this.localFilePath,
+    this.linkUrl,
+    this.linkTitle,
     required this.imagePanX,
     required this.imagePanY,
     required this.imageZoom,
@@ -908,6 +966,12 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
     }
     if (!nullToAbsent || localFilePath != null) {
       map['local_file_path'] = Variable<String>(localFilePath);
+    }
+    if (!nullToAbsent || linkUrl != null) {
+      map['link_url'] = Variable<String>(linkUrl);
+    }
+    if (!nullToAbsent || linkTitle != null) {
+      map['link_title'] = Variable<String>(linkTitle);
     }
     map['image_pan_x'] = Variable<double>(imagePanX);
     map['image_pan_y'] = Variable<double>(imagePanY);
@@ -975,6 +1039,12 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
       localFilePath: localFilePath == null && nullToAbsent
           ? const Value.absent()
           : Value(localFilePath),
+      linkUrl: linkUrl == null && nullToAbsent
+          ? const Value.absent()
+          : Value(linkUrl),
+      linkTitle: linkTitle == null && nullToAbsent
+          ? const Value.absent()
+          : Value(linkTitle),
       imagePanX: Value(imagePanX),
       imagePanY: Value(imagePanY),
       imageZoom: Value(imageZoom),
@@ -1037,6 +1107,8 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
         json['backgroundColorHex'],
       ),
       localFilePath: serializer.fromJson<String?>(json['localFilePath']),
+      linkUrl: serializer.fromJson<String?>(json['linkUrl']),
+      linkTitle: serializer.fromJson<String?>(json['linkTitle']),
       imagePanX: serializer.fromJson<double>(json['imagePanX']),
       imagePanY: serializer.fromJson<double>(json['imagePanY']),
       imageZoom: serializer.fromJson<double>(json['imageZoom']),
@@ -1082,6 +1154,8 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
       'textContent': serializer.toJson<String?>(textContent),
       'backgroundColorHex': serializer.toJson<String?>(backgroundColorHex),
       'localFilePath': serializer.toJson<String?>(localFilePath),
+      'linkUrl': serializer.toJson<String?>(linkUrl),
+      'linkTitle': serializer.toJson<String?>(linkTitle),
       'imagePanX': serializer.toJson<double>(imagePanX),
       'imagePanY': serializer.toJson<double>(imagePanY),
       'imageZoom': serializer.toJson<double>(imageZoom),
@@ -1117,6 +1191,8 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
     Value<String?> textContent = const Value.absent(),
     Value<String?> backgroundColorHex = const Value.absent(),
     Value<String?> localFilePath = const Value.absent(),
+    Value<String?> linkUrl = const Value.absent(),
+    Value<String?> linkTitle = const Value.absent(),
     double? imagePanX,
     double? imagePanY,
     double? imageZoom,
@@ -1153,6 +1229,8 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
     localFilePath: localFilePath.present
         ? localFilePath.value
         : this.localFilePath,
+    linkUrl: linkUrl.present ? linkUrl.value : this.linkUrl,
+    linkTitle: linkTitle.present ? linkTitle.value : this.linkTitle,
     imagePanX: imagePanX ?? this.imagePanX,
     imagePanY: imagePanY ?? this.imagePanY,
     imageZoom: imageZoom ?? this.imageZoom,
@@ -1207,6 +1285,8 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
       localFilePath: data.localFilePath.present
           ? data.localFilePath.value
           : this.localFilePath,
+      linkUrl: data.linkUrl.present ? data.linkUrl.value : this.linkUrl,
+      linkTitle: data.linkTitle.present ? data.linkTitle.value : this.linkTitle,
       imagePanX: data.imagePanX.present ? data.imagePanX.value : this.imagePanX,
       imagePanY: data.imagePanY.present ? data.imagePanY.value : this.imagePanY,
       imageZoom: data.imageZoom.present ? data.imageZoom.value : this.imageZoom,
@@ -1258,6 +1338,8 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
           ..write('textContent: $textContent, ')
           ..write('backgroundColorHex: $backgroundColorHex, ')
           ..write('localFilePath: $localFilePath, ')
+          ..write('linkUrl: $linkUrl, ')
+          ..write('linkTitle: $linkTitle, ')
           ..write('imagePanX: $imagePanX, ')
           ..write('imagePanY: $imagePanY, ')
           ..write('imageZoom: $imageZoom, ')
@@ -1295,6 +1377,8 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
     textContent,
     backgroundColorHex,
     localFilePath,
+    linkUrl,
+    linkTitle,
     imagePanX,
     imagePanY,
     imageZoom,
@@ -1331,6 +1415,8 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
           other.textContent == this.textContent &&
           other.backgroundColorHex == this.backgroundColorHex &&
           other.localFilePath == this.localFilePath &&
+          other.linkUrl == this.linkUrl &&
+          other.linkTitle == this.linkTitle &&
           other.imagePanX == this.imagePanX &&
           other.imagePanY == this.imagePanY &&
           other.imageZoom == this.imageZoom &&
@@ -1365,6 +1451,8 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
   final Value<String?> textContent;
   final Value<String?> backgroundColorHex;
   final Value<String?> localFilePath;
+  final Value<String?> linkUrl;
+  final Value<String?> linkTitle;
   final Value<double> imagePanX;
   final Value<double> imagePanY;
   final Value<double> imageZoom;
@@ -1398,6 +1486,8 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
     this.textContent = const Value.absent(),
     this.backgroundColorHex = const Value.absent(),
     this.localFilePath = const Value.absent(),
+    this.linkUrl = const Value.absent(),
+    this.linkTitle = const Value.absent(),
     this.imagePanX = const Value.absent(),
     this.imagePanY = const Value.absent(),
     this.imageZoom = const Value.absent(),
@@ -1432,6 +1522,8 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
     this.textContent = const Value.absent(),
     this.backgroundColorHex = const Value.absent(),
     this.localFilePath = const Value.absent(),
+    this.linkUrl = const Value.absent(),
+    this.linkTitle = const Value.absent(),
     this.imagePanX = const Value.absent(),
     this.imagePanY = const Value.absent(),
     this.imageZoom = const Value.absent(),
@@ -1468,6 +1560,8 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
     Expression<String>? textContent,
     Expression<String>? backgroundColorHex,
     Expression<String>? localFilePath,
+    Expression<String>? linkUrl,
+    Expression<String>? linkTitle,
     Expression<double>? imagePanX,
     Expression<double>? imagePanY,
     Expression<double>? imageZoom,
@@ -1503,6 +1597,8 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
       if (backgroundColorHex != null)
         'background_color_hex': backgroundColorHex,
       if (localFilePath != null) 'local_file_path': localFilePath,
+      if (linkUrl != null) 'link_url': linkUrl,
+      if (linkTitle != null) 'link_title': linkTitle,
       if (imagePanX != null) 'image_pan_x': imagePanX,
       if (imagePanY != null) 'image_pan_y': imagePanY,
       if (imageZoom != null) 'image_zoom': imageZoom,
@@ -1541,6 +1637,8 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
     Value<String?>? textContent,
     Value<String?>? backgroundColorHex,
     Value<String?>? localFilePath,
+    Value<String?>? linkUrl,
+    Value<String?>? linkTitle,
     Value<double>? imagePanX,
     Value<double>? imagePanY,
     Value<double>? imageZoom,
@@ -1575,6 +1673,8 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
       textContent: textContent ?? this.textContent,
       backgroundColorHex: backgroundColorHex ?? this.backgroundColorHex,
       localFilePath: localFilePath ?? this.localFilePath,
+      linkUrl: linkUrl ?? this.linkUrl,
+      linkTitle: linkTitle ?? this.linkTitle,
       imagePanX: imagePanX ?? this.imagePanX,
       imagePanY: imagePanY ?? this.imagePanY,
       imageZoom: imageZoom ?? this.imageZoom,
@@ -1642,6 +1742,12 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
     }
     if (localFilePath.present) {
       map['local_file_path'] = Variable<String>(localFilePath.value);
+    }
+    if (linkUrl.present) {
+      map['link_url'] = Variable<String>(linkUrl.value);
+    }
+    if (linkTitle.present) {
+      map['link_title'] = Variable<String>(linkTitle.value);
     }
     if (imagePanX.present) {
       map['image_pan_x'] = Variable<double>(imagePanX.value);
@@ -1717,6 +1823,8 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
           ..write('textContent: $textContent, ')
           ..write('backgroundColorHex: $backgroundColorHex, ')
           ..write('localFilePath: $localFilePath, ')
+          ..write('linkUrl: $linkUrl, ')
+          ..write('linkTitle: $linkTitle, ')
           ..write('imagePanX: $imagePanX, ')
           ..write('imagePanY: $imagePanY, ')
           ..write('imageZoom: $imageZoom, ')
@@ -4604,11 +4712,12 @@ class AppSettingsRow extends DataClass implements Insertable<AppSettingsRow> {
   /// periodic auto-backup/manual Save silently no-op until it's set.
   final String? backupFolderPath;
 
-  /// Which saved `Themes` row (by id) is currently applied app-wide, or a
-  /// `kBuiltInThemes` well-known id - null means "the built-in default"
-  /// (`ThemeSettings.builtInDefault`), the app's original look. See
-  /// `lib/core/theme/theme_settings.dart` and `lib/app.dart`'s
-  /// `resolvedThemeSettingsProvider` resolution.
+  /// Which saved `Themes` row (by id) is currently applied app-wide - null
+  /// means the bare code-level fallback look (`ThemeSettings.builtInDefault`),
+  /// only reachable if every saved theme has been deleted (`ensureSeeded`
+  /// keeps at least one seeded on every normal startup). See
+  /// `lib/core/theme/theme_settings.dart` and `lib/data/providers.dart`'s
+  /// `resolvedThemeSettingsProvider`/`themeSeedProvider`.
   final String? activeThemeId;
   const AppSettingsRow({
     required this.id,
@@ -4916,6 +5025,30 @@ class $ThemesTable extends Themes with TableInfo<$ThemesTable, ThemeRow> {
     requiredDuringInsert: false,
     defaultValue: const Constant(1.0),
   );
+  static const VerificationMeta _gridCrossIntervalMeta = const VerificationMeta(
+    'gridCrossInterval',
+  );
+  @override
+  late final GeneratedColumn<int> gridCrossInterval = GeneratedColumn<int>(
+    'grid_cross_interval',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(10),
+  );
+  static const VerificationMeta _gridCrossScaleMeta = const VerificationMeta(
+    'gridCrossScale',
+  );
+  @override
+  late final GeneratedColumn<double> gridCrossScale = GeneratedColumn<double>(
+    'grid_cross_scale',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(1.0),
+  );
   static const VerificationMeta _sortOrderMeta = const VerificationMeta(
     'sortOrder',
   );
@@ -4966,6 +5099,8 @@ class $ThemesTable extends Themes with TableInfo<$ThemesTable, ThemeRow> {
     textSecondaryHex,
     fontFamily,
     fontSizeScale,
+    gridCrossInterval,
+    gridCrossScale,
     sortOrder,
     createdAt,
     updatedAt,
@@ -5089,6 +5224,24 @@ class $ThemesTable extends Themes with TableInfo<$ThemesTable, ThemeRow> {
         ),
       );
     }
+    if (data.containsKey('grid_cross_interval')) {
+      context.handle(
+        _gridCrossIntervalMeta,
+        gridCrossInterval.isAcceptableOrUnknown(
+          data['grid_cross_interval']!,
+          _gridCrossIntervalMeta,
+        ),
+      );
+    }
+    if (data.containsKey('grid_cross_scale')) {
+      context.handle(
+        _gridCrossScaleMeta,
+        gridCrossScale.isAcceptableOrUnknown(
+          data['grid_cross_scale']!,
+          _gridCrossScaleMeta,
+        ),
+      );
+    }
     if (data.containsKey('sort_order')) {
       context.handle(
         _sortOrderMeta,
@@ -5164,6 +5317,14 @@ class $ThemesTable extends Themes with TableInfo<$ThemesTable, ThemeRow> {
         DriftSqlType.double,
         data['${effectivePrefix}font_size_scale'],
       )!,
+      gridCrossInterval: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}grid_cross_interval'],
+      )!,
+      gridCrossScale: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}grid_cross_scale'],
+      )!,
       sortOrder: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}sort_order'],
@@ -5207,6 +5368,15 @@ class ThemeRow extends DataClass implements Insertable<ThemeRow> {
   /// own font size was set. See `lib/app.dart`.
   final double fontSizeScale;
 
+  /// Every `gridCrossInterval`-th dot (in both grid axes) of the board's
+  /// dot-grid background renders as a small "+" cross instead of a plain
+  /// dot - see `dot_grid_background.dart`'s `DotGridPainter`.
+  final int gridCrossInterval;
+
+  /// Multiplier on `kGridCrossBaseHalfLength` for a grid cross's on-screen
+  /// size - 1.0 is the original fixed size, unchanged.
+  final double gridCrossScale;
+
   /// User-controlled display order in the Settings dialog's saved-themes
   /// list - lower sorts first, same convention as `Boards.sortOrder`.
   final int sortOrder;
@@ -5225,6 +5395,8 @@ class ThemeRow extends DataClass implements Insertable<ThemeRow> {
     required this.textSecondaryHex,
     this.fontFamily,
     required this.fontSizeScale,
+    required this.gridCrossInterval,
+    required this.gridCrossScale,
     required this.sortOrder,
     required this.createdAt,
     required this.updatedAt,
@@ -5246,6 +5418,8 @@ class ThemeRow extends DataClass implements Insertable<ThemeRow> {
       map['font_family'] = Variable<String>(fontFamily);
     }
     map['font_size_scale'] = Variable<double>(fontSizeScale);
+    map['grid_cross_interval'] = Variable<int>(gridCrossInterval);
+    map['grid_cross_scale'] = Variable<double>(gridCrossScale);
     map['sort_order'] = Variable<int>(sortOrder);
     map['created_at'] = Variable<DateTime>(createdAt);
     map['updated_at'] = Variable<DateTime>(updatedAt);
@@ -5268,6 +5442,8 @@ class ThemeRow extends DataClass implements Insertable<ThemeRow> {
           ? const Value.absent()
           : Value(fontFamily),
       fontSizeScale: Value(fontSizeScale),
+      gridCrossInterval: Value(gridCrossInterval),
+      gridCrossScale: Value(gridCrossScale),
       sortOrder: Value(sortOrder),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
@@ -5296,6 +5472,8 @@ class ThemeRow extends DataClass implements Insertable<ThemeRow> {
       textSecondaryHex: serializer.fromJson<String>(json['textSecondaryHex']),
       fontFamily: serializer.fromJson<String?>(json['fontFamily']),
       fontSizeScale: serializer.fromJson<double>(json['fontSizeScale']),
+      gridCrossInterval: serializer.fromJson<int>(json['gridCrossInterval']),
+      gridCrossScale: serializer.fromJson<double>(json['gridCrossScale']),
       sortOrder: serializer.fromJson<int>(json['sortOrder']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
@@ -5317,6 +5495,8 @@ class ThemeRow extends DataClass implements Insertable<ThemeRow> {
       'textSecondaryHex': serializer.toJson<String>(textSecondaryHex),
       'fontFamily': serializer.toJson<String?>(fontFamily),
       'fontSizeScale': serializer.toJson<double>(fontSizeScale),
+      'gridCrossInterval': serializer.toJson<int>(gridCrossInterval),
+      'gridCrossScale': serializer.toJson<double>(gridCrossScale),
       'sortOrder': serializer.toJson<int>(sortOrder),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
@@ -5336,6 +5516,8 @@ class ThemeRow extends DataClass implements Insertable<ThemeRow> {
     String? textSecondaryHex,
     Value<String?> fontFamily = const Value.absent(),
     double? fontSizeScale,
+    int? gridCrossInterval,
+    double? gridCrossScale,
     int? sortOrder,
     DateTime? createdAt,
     DateTime? updatedAt,
@@ -5352,6 +5534,8 @@ class ThemeRow extends DataClass implements Insertable<ThemeRow> {
     textSecondaryHex: textSecondaryHex ?? this.textSecondaryHex,
     fontFamily: fontFamily.present ? fontFamily.value : this.fontFamily,
     fontSizeScale: fontSizeScale ?? this.fontSizeScale,
+    gridCrossInterval: gridCrossInterval ?? this.gridCrossInterval,
+    gridCrossScale: gridCrossScale ?? this.gridCrossScale,
     sortOrder: sortOrder ?? this.sortOrder,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
@@ -5384,6 +5568,12 @@ class ThemeRow extends DataClass implements Insertable<ThemeRow> {
       fontSizeScale: data.fontSizeScale.present
           ? data.fontSizeScale.value
           : this.fontSizeScale,
+      gridCrossInterval: data.gridCrossInterval.present
+          ? data.gridCrossInterval.value
+          : this.gridCrossInterval,
+      gridCrossScale: data.gridCrossScale.present
+          ? data.gridCrossScale.value
+          : this.gridCrossScale,
       sortOrder: data.sortOrder.present ? data.sortOrder.value : this.sortOrder,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
@@ -5405,6 +5595,8 @@ class ThemeRow extends DataClass implements Insertable<ThemeRow> {
           ..write('textSecondaryHex: $textSecondaryHex, ')
           ..write('fontFamily: $fontFamily, ')
           ..write('fontSizeScale: $fontSizeScale, ')
+          ..write('gridCrossInterval: $gridCrossInterval, ')
+          ..write('gridCrossScale: $gridCrossScale, ')
           ..write('sortOrder: $sortOrder, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
@@ -5426,6 +5618,8 @@ class ThemeRow extends DataClass implements Insertable<ThemeRow> {
     textSecondaryHex,
     fontFamily,
     fontSizeScale,
+    gridCrossInterval,
+    gridCrossScale,
     sortOrder,
     createdAt,
     updatedAt,
@@ -5446,6 +5640,8 @@ class ThemeRow extends DataClass implements Insertable<ThemeRow> {
           other.textSecondaryHex == this.textSecondaryHex &&
           other.fontFamily == this.fontFamily &&
           other.fontSizeScale == this.fontSizeScale &&
+          other.gridCrossInterval == this.gridCrossInterval &&
+          other.gridCrossScale == this.gridCrossScale &&
           other.sortOrder == this.sortOrder &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt);
@@ -5464,6 +5660,8 @@ class ThemesCompanion extends UpdateCompanion<ThemeRow> {
   final Value<String> textSecondaryHex;
   final Value<String?> fontFamily;
   final Value<double> fontSizeScale;
+  final Value<int> gridCrossInterval;
+  final Value<double> gridCrossScale;
   final Value<int> sortOrder;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
@@ -5481,6 +5679,8 @@ class ThemesCompanion extends UpdateCompanion<ThemeRow> {
     this.textSecondaryHex = const Value.absent(),
     this.fontFamily = const Value.absent(),
     this.fontSizeScale = const Value.absent(),
+    this.gridCrossInterval = const Value.absent(),
+    this.gridCrossScale = const Value.absent(),
     this.sortOrder = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
@@ -5499,6 +5699,8 @@ class ThemesCompanion extends UpdateCompanion<ThemeRow> {
     required String textSecondaryHex,
     this.fontFamily = const Value.absent(),
     this.fontSizeScale = const Value.absent(),
+    this.gridCrossInterval = const Value.absent(),
+    this.gridCrossScale = const Value.absent(),
     this.sortOrder = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
@@ -5526,6 +5728,8 @@ class ThemesCompanion extends UpdateCompanion<ThemeRow> {
     Expression<String>? textSecondaryHex,
     Expression<String>? fontFamily,
     Expression<double>? fontSizeScale,
+    Expression<int>? gridCrossInterval,
+    Expression<double>? gridCrossScale,
     Expression<int>? sortOrder,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
@@ -5546,6 +5750,8 @@ class ThemesCompanion extends UpdateCompanion<ThemeRow> {
       if (textSecondaryHex != null) 'text_secondary_hex': textSecondaryHex,
       if (fontFamily != null) 'font_family': fontFamily,
       if (fontSizeScale != null) 'font_size_scale': fontSizeScale,
+      if (gridCrossInterval != null) 'grid_cross_interval': gridCrossInterval,
+      if (gridCrossScale != null) 'grid_cross_scale': gridCrossScale,
       if (sortOrder != null) 'sort_order': sortOrder,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
@@ -5566,6 +5772,8 @@ class ThemesCompanion extends UpdateCompanion<ThemeRow> {
     Value<String>? textSecondaryHex,
     Value<String?>? fontFamily,
     Value<double>? fontSizeScale,
+    Value<int>? gridCrossInterval,
+    Value<double>? gridCrossScale,
     Value<int>? sortOrder,
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
@@ -5584,6 +5792,8 @@ class ThemesCompanion extends UpdateCompanion<ThemeRow> {
       textSecondaryHex: textSecondaryHex ?? this.textSecondaryHex,
       fontFamily: fontFamily ?? this.fontFamily,
       fontSizeScale: fontSizeScale ?? this.fontSizeScale,
+      gridCrossInterval: gridCrossInterval ?? this.gridCrossInterval,
+      gridCrossScale: gridCrossScale ?? this.gridCrossScale,
       sortOrder: sortOrder ?? this.sortOrder,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
@@ -5632,6 +5842,12 @@ class ThemesCompanion extends UpdateCompanion<ThemeRow> {
     if (fontSizeScale.present) {
       map['font_size_scale'] = Variable<double>(fontSizeScale.value);
     }
+    if (gridCrossInterval.present) {
+      map['grid_cross_interval'] = Variable<int>(gridCrossInterval.value);
+    }
+    if (gridCrossScale.present) {
+      map['grid_cross_scale'] = Variable<double>(gridCrossScale.value);
+    }
     if (sortOrder.present) {
       map['sort_order'] = Variable<int>(sortOrder.value);
     }
@@ -5662,6 +5878,8 @@ class ThemesCompanion extends UpdateCompanion<ThemeRow> {
           ..write('textSecondaryHex: $textSecondaryHex, ')
           ..write('fontFamily: $fontFamily, ')
           ..write('fontSizeScale: $fontSizeScale, ')
+          ..write('gridCrossInterval: $gridCrossInterval, ')
+          ..write('gridCrossScale: $gridCrossScale, ')
           ..write('sortOrder: $sortOrder, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
@@ -5715,6 +5933,8 @@ typedef $$ClipsTableCreateCompanionBuilder =
       Value<String?> textContent,
       Value<String?> backgroundColorHex,
       Value<String?> localFilePath,
+      Value<String?> linkUrl,
+      Value<String?> linkTitle,
       Value<double> imagePanX,
       Value<double> imagePanY,
       Value<double> imageZoom,
@@ -5750,6 +5970,8 @@ typedef $$ClipsTableUpdateCompanionBuilder =
       Value<String?> textContent,
       Value<String?> backgroundColorHex,
       Value<String?> localFilePath,
+      Value<String?> linkUrl,
+      Value<String?> linkTitle,
       Value<double> imagePanX,
       Value<double> imagePanY,
       Value<double> imageZoom,
@@ -5849,6 +6071,16 @@ class $$ClipsTableFilterComposer extends Composer<_$AppDatabase, $ClipsTable> {
 
   ColumnFilters<String> get localFilePath => $composableBuilder(
     column: $table.localFilePath,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get linkUrl => $composableBuilder(
+    column: $table.linkUrl,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get linkTitle => $composableBuilder(
+    column: $table.linkTitle,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -6017,6 +6249,16 @@ class $$ClipsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get linkUrl => $composableBuilder(
+    column: $table.linkUrl,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get linkTitle => $composableBuilder(
+    column: $table.linkTitle,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<double> get imagePanX => $composableBuilder(
     column: $table.imagePanX,
     builder: (column) => ColumnOrderings(column),
@@ -6158,6 +6400,12 @@ class $$ClipsTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<String> get linkUrl =>
+      $composableBuilder(column: $table.linkUrl, builder: (column) => column);
+
+  GeneratedColumn<String> get linkTitle =>
+      $composableBuilder(column: $table.linkTitle, builder: (column) => column);
+
   GeneratedColumn<double> get imagePanX =>
       $composableBuilder(column: $table.imagePanX, builder: (column) => column);
 
@@ -6264,6 +6512,8 @@ class $$ClipsTableTableManager
                 Value<String?> textContent = const Value.absent(),
                 Value<String?> backgroundColorHex = const Value.absent(),
                 Value<String?> localFilePath = const Value.absent(),
+                Value<String?> linkUrl = const Value.absent(),
+                Value<String?> linkTitle = const Value.absent(),
                 Value<double> imagePanX = const Value.absent(),
                 Value<double> imagePanY = const Value.absent(),
                 Value<double> imageZoom = const Value.absent(),
@@ -6297,6 +6547,8 @@ class $$ClipsTableTableManager
                 textContent: textContent,
                 backgroundColorHex: backgroundColorHex,
                 localFilePath: localFilePath,
+                linkUrl: linkUrl,
+                linkTitle: linkTitle,
                 imagePanX: imagePanX,
                 imagePanY: imagePanY,
                 imageZoom: imageZoom,
@@ -6332,6 +6584,8 @@ class $$ClipsTableTableManager
                 Value<String?> textContent = const Value.absent(),
                 Value<String?> backgroundColorHex = const Value.absent(),
                 Value<String?> localFilePath = const Value.absent(),
+                Value<String?> linkUrl = const Value.absent(),
+                Value<String?> linkTitle = const Value.absent(),
                 Value<double> imagePanX = const Value.absent(),
                 Value<double> imagePanY = const Value.absent(),
                 Value<double> imageZoom = const Value.absent(),
@@ -6365,6 +6619,8 @@ class $$ClipsTableTableManager
                 textContent: textContent,
                 backgroundColorHex: backgroundColorHex,
                 localFilePath: localFilePath,
+                linkUrl: linkUrl,
+                linkTitle: linkTitle,
                 imagePanX: imagePanX,
                 imagePanY: imagePanY,
                 imageZoom: imageZoom,
@@ -7933,6 +8189,8 @@ typedef $$ThemesTableCreateCompanionBuilder =
       required String textSecondaryHex,
       Value<String?> fontFamily,
       Value<double> fontSizeScale,
+      Value<int> gridCrossInterval,
+      Value<double> gridCrossScale,
       Value<int> sortOrder,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
@@ -7952,6 +8210,8 @@ typedef $$ThemesTableUpdateCompanionBuilder =
       Value<String> textSecondaryHex,
       Value<String?> fontFamily,
       Value<double> fontSizeScale,
+      Value<int> gridCrossInterval,
+      Value<double> gridCrossScale,
       Value<int> sortOrder,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
@@ -8024,6 +8284,16 @@ class $$ThemesTableFilterComposer
 
   ColumnFilters<double> get fontSizeScale => $composableBuilder(
     column: $table.fontSizeScale,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get gridCrossInterval => $composableBuilder(
+    column: $table.gridCrossInterval,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get gridCrossScale => $composableBuilder(
+    column: $table.gridCrossScale,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -8112,6 +8382,16 @@ class $$ThemesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get gridCrossInterval => $composableBuilder(
+    column: $table.gridCrossInterval,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get gridCrossScale => $composableBuilder(
+    column: $table.gridCrossScale,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<int> get sortOrder => $composableBuilder(
     column: $table.sortOrder,
     builder: (column) => ColumnOrderings(column),
@@ -8187,6 +8467,16 @@ class $$ThemesTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<int> get gridCrossInterval => $composableBuilder(
+    column: $table.gridCrossInterval,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<double> get gridCrossScale => $composableBuilder(
+    column: $table.gridCrossScale,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<int> get sortOrder =>
       $composableBuilder(column: $table.sortOrder, builder: (column) => column);
 
@@ -8237,6 +8527,8 @@ class $$ThemesTableTableManager
                 Value<String> textSecondaryHex = const Value.absent(),
                 Value<String?> fontFamily = const Value.absent(),
                 Value<double> fontSizeScale = const Value.absent(),
+                Value<int> gridCrossInterval = const Value.absent(),
+                Value<double> gridCrossScale = const Value.absent(),
                 Value<int> sortOrder = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
@@ -8254,6 +8546,8 @@ class $$ThemesTableTableManager
                 textSecondaryHex: textSecondaryHex,
                 fontFamily: fontFamily,
                 fontSizeScale: fontSizeScale,
+                gridCrossInterval: gridCrossInterval,
+                gridCrossScale: gridCrossScale,
                 sortOrder: sortOrder,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
@@ -8273,6 +8567,8 @@ class $$ThemesTableTableManager
                 required String textSecondaryHex,
                 Value<String?> fontFamily = const Value.absent(),
                 Value<double> fontSizeScale = const Value.absent(),
+                Value<int> gridCrossInterval = const Value.absent(),
+                Value<double> gridCrossScale = const Value.absent(),
                 Value<int> sortOrder = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
@@ -8290,6 +8586,8 @@ class $$ThemesTableTableManager
                 textSecondaryHex: textSecondaryHex,
                 fontFamily: fontFamily,
                 fontSizeScale: fontSizeScale,
+                gridCrossInterval: gridCrossInterval,
+                gridCrossScale: gridCrossScale,
                 sortOrder: sortOrder,
                 createdAt: createdAt,
                 updatedAt: updatedAt,

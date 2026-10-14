@@ -10,6 +10,11 @@ class HbClipsApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Side-effect-only watch: seeds the 3 starter presets (and migrates a
+    // pre-upgrade built-in choice) the first time this runs. Its own
+    // ThemeSettings still comes from resolvedThemeSettingsProvider below -
+    // see themeSeedProvider's doc comment.
+    ref.watch(themeSeedProvider);
     final resolved = ref.watch(resolvedThemeSettingsProvider);
     return MaterialApp(
       title: 'HB_Clips',

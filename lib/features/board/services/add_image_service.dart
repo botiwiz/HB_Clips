@@ -1,13 +1,19 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../../core/constants.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../data/local_blob_store.dart';
 import '../../../data/providers.dart';
+import '../../../data/repositories/clips_repository.dart';
 import '../controllers/undo_controller.dart';
 import 'image_size_service.dart';
+import 'link_preview_service.dart';
+import 'remote_image_fetch_service.dart';
 
 const _uuid = Uuid();
 
@@ -79,4 +85,74 @@ Future<void> addImageClipFromBytes(
         imageAspectRatio: imageAspectRatioForBytes(bytes),
       );
   pushAddClipUndo(ref, id);
+}
+
+/// Creates a link clip for [url] centered at [boardCenter], then kicks off
+/// (but doesn't await) a best-effort fetch of the page's title/thumbnail -
+/// the clip exists and is undoable immediately, so a paste never blocks on
+/// a network round-trip; the title/thumbnail fill in shortly after if the
+/// fetch succeeds, or the clip just keeps showing its hostname + a generic
+/// link icon if it doesn't (no retry - matches this codebase's
+/// established "best-effort, fail quiet" convention for remote fetches).
+Future<void> addLinkClipFromUrl(
+  WidgetRef ref, {
+  required String url,
+  required Offset boardCenter,
+}) async {
+  final id = _uuid.v4();
+  final boardId = ref.read(currentBoardIdProvider);
+  // Captured synchronously, before any `await`, so the long-running
+  // background fetch below never holds onto `ref` itself across an async
+  // gap - these repository/store objects are long-lived (tied to the
+  // ProviderScope/database, not this gesture's widget), so using them
+  // after the triggering widget unmounts is safe in a way re-reading
+  // `ref` later would not be.
+  final clipsRepo = ref.read(clipsRepositoryProvider);
+  final blobStore = ref.read(localBlobStoreProvider);
+
+  await clipsRepo.addLinkClip(
+    id: id,
+    boardId: boardId,
+    linkUrl: url,
+    x: boardCenter.dx - kDefaultLinkClipWidth / 2,
+    y: boardCenter.dy - kDefaultLinkClipHeight / 2,
+  );
+  pushAddClipUndo(ref, id);
+
+  unawaited(
+    _fetchAndApplyLinkMetadata(
+      clipsRepo: clipsRepo,
+      blobStore: blobStore,
+      id: id,
+      url: url,
+    ),
+  );
+}
+
+Future<void> _fetchAndApplyLinkMetadata({
+  required ClipsRepository clipsRepo,
+  required LocalBlobStore blobStore,
+  required String id,
+  required String url,
+}) async {
+  final pageUri = Uri.tryParse(url);
+  if (pageUri == null) return;
+
+  final metadata = await fetchLinkPreviewMetadata(pageUri);
+  String? thumbnailPath;
+  if (metadata.imageUri != null) {
+    final image = await fetchImageBytes(metadata.imageUri!);
+    if (image != null) {
+      final square = squareThumbnailBytes(image.bytes);
+      if (square != null) {
+        thumbnailPath = await blobStore.writeBytes(square, extension: '.png');
+      }
+    }
+  }
+  if (metadata.title == null && thumbnailPath == null) return;
+  await clipsRepo.updateLinkMetadata(
+    id,
+    title: metadata.title,
+    thumbnailPath: thumbnailPath,
+  );
 }

@@ -39,6 +39,14 @@ class AppTheme {
   /// picked an accent color that happens to look alarming.
   static Color danger = ThemeSettings.builtInDefault.danger;
 
+  /// Live, per-theme cross-mark grid settings - see `ThemeSettings
+  /// .gridCrossInterval`/`gridCrossScale`. Read directly by the three
+  /// cross-mark painters (`DotGridPainter`, `pdf_writer.dart`'s
+  /// `_drawDotGrid`, `_ExportDotGridPainter`), same "bare mutable static,
+  /// no constructor plumbing" convention the 8 color fields above use.
+  static int gridCrossInterval = ThemeSettings.builtInDefault.gridCrossInterval;
+  static double gridCrossScale = ThemeSettings.builtInDefault.gridCrossScale;
+
   /// Text notes have no background card by default - just white text
   /// floating directly on the canvas - so they read as annotations rather
   /// than image-like tiles. A custom `backgroundColorHex` still overrides
@@ -69,6 +77,8 @@ class AppTheme {
     textSecondary = settings.textSecondary;
     accent = settings.accent;
     danger = settings.danger;
+    gridCrossInterval = settings.gridCrossInterval;
+    gridCrossScale = settings.gridCrossScale;
 
     final scheme = ColorScheme.dark(
       primary: textPrimary,

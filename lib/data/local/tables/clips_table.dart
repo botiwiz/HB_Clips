@@ -40,8 +40,20 @@ class Clips extends Table {
   /// app's default text-note surface color.
   TextColumn get backgroundColorHex => text().nullable()();
 
-  /// Key into [LocalBlobStore] for this image clip's bytes.
+  /// Key into [LocalBlobStore] - an image clip's own bytes, or a link
+  /// clip's cached thumbnail (fetched async after creation). Ignored for
+  /// text/shape clips.
   TextColumn get localFilePath => text().nullable()();
+
+  /// The URL a link clip opens on double-click. Null for every other
+  /// clip type.
+  TextColumn get linkUrl => text().nullable()();
+
+  /// A link clip's page title, extracted from its HTML shortly after the
+  /// clip is created - null until that fetch completes (or if it finds
+  /// nothing), in which case the UI falls back to the URL's hostname.
+  /// Ignored for non-link clips.
+  TextColumn get linkTitle => text().nullable()();
 
   /// Pan/zoom of the image content within this clip's fixed on-board frame
   /// (double-click a clip to enter this mode) - Flutter `Alignment`

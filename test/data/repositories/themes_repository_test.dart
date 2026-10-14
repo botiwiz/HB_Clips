@@ -20,6 +20,8 @@ void main() {
     textSecondary: Color(0xFF9B9BA1),
     fontFamily: 'Chakra Petch',
     fontSizeScale: 1.1,
+    gridCrossInterval: 6,
+    gridCrossScale: 1.4,
   );
 
   const settingsB = ThemeSettings(
@@ -57,6 +59,8 @@ void main() {
       expect(row.name, 'My theme');
       expect(row.fontFamily, 'Chakra Petch');
       expect(row.fontSizeScale, 1.1);
+      expect(row.gridCrossInterval, 6);
+      expect(row.gridCrossScale, 1.4);
 
       final roundTripped = ThemeSettings.fromRow(row);
       expect(roundTripped.accent, settingsA.accent);
@@ -69,15 +73,20 @@ void main() {
       expect(roundTripped.textSecondary, settingsA.textSecondary);
       expect(roundTripped.fontFamily, settingsA.fontFamily);
       expect(roundTripped.fontSizeScale, settingsA.fontSizeScale);
+      expect(roundTripped.gridCrossInterval, settingsA.gridCrossInterval);
+      expect(roundTripped.gridCrossScale, settingsA.gridCrossScale);
     },
   );
 
-  test('createTheme defaults fontFamily to null and fontSizeScale to 1.0 '
-      'when the settings leave them unset', () async {
+  test('createTheme defaults fontFamily to null, fontSizeScale to 1.0, '
+      'gridCrossInterval to 10 and gridCrossScale to 1.0 when the settings '
+      'leave them unset', () async {
     await themes.createTheme('theme-1', 'My theme', settingsB);
     final row = (await themes.watchThemes().first).single;
     expect(row.fontFamily, isNull);
     expect(row.fontSizeScale, 1.0);
+    expect(row.gridCrossInterval, 10);
+    expect(row.gridCrossScale, 1.0);
   });
 
   test('createTheme assigns strictly increasing sortOrder', () async {
@@ -137,5 +146,30 @@ void main() {
 
     final rows = await themes.watchThemes().first;
     expect(rows.map((t) => t.id).toList(), ['theme-3', 'theme-1', 'theme-2']);
+  });
+
+  test('ensureSeeded inserts kSeedThemePresets on an empty database and '
+      'returns their new ids in order', () async {
+    final ids = await themes.ensureSeeded();
+    expect(ids, hasLength(kSeedThemePresets.length));
+
+    final rows = await themes.watchThemes().first;
+    expect(rows, hasLength(kSeedThemePresets.length));
+    expect(
+      rows.map((r) => r.name).toList(),
+      kSeedThemePresets.map((p) => p.$1).toList(),
+    );
+    expect(rows.map((r) => r.id).toList(), ids);
+  });
+
+  test('ensureSeeded is a no-op once any theme already exists', () async {
+    await themes.createTheme('theme-1', 'My theme', settingsA);
+
+    final ids = await themes.ensureSeeded();
+
+    expect(ids, isNull);
+    final rows = await themes.watchThemes().first;
+    expect(rows, hasLength(1));
+    expect(rows.single.id, 'theme-1');
   });
 }
