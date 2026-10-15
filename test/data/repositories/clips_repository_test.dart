@@ -85,6 +85,53 @@ void main() {
     expect(clip.localFilePath, '/tmp/thumb.png');
   });
 
+  test('duplicateClip with an explicit boardId lands the duplicate on that '
+      'board instead of the source clip\'s own board, with z-order computed '
+      'against the target board\'s existing clips', () async {
+    const otherBoardId = 'other-board';
+    final sourceId = _uuid.v4();
+    await repo.addTextNote(
+      id: sourceId,
+      boardId: kLocalBoardId,
+      textContent: 'source',
+      x: 0,
+      y: 0,
+    );
+    final source = (await repo.watchActiveClips(kLocalBoardId).first)
+        .firstWhere((c) => c.id == sourceId);
+
+    // Give the target board a clip with a high zIndex first, so a
+    // duplicate landing there should sort above it - not above whatever
+    // the source board's own highest zIndex happens to be.
+    final existingOnOtherBoardId = _uuid.v4();
+    await repo.addTextNote(
+      id: existingOnOtherBoardId,
+      boardId: otherBoardId,
+      textContent: 'already on the other board',
+      x: 0,
+      y: 0,
+    );
+    final existingOnOtherBoard =
+        (await repo.watchActiveClips(otherBoardId).first).firstWhere(
+          (c) => c.id == existingOnOtherBoardId,
+        );
+
+    final duplicate = await repo.duplicateClip(
+      source,
+      newId: _uuid.v4(),
+      groupId: null,
+      frameId: null,
+      boardId: otherBoardId,
+    );
+
+    expect(duplicate.boardId, otherBoardId);
+    final onSourceBoard = await repo.watchActiveClips(kLocalBoardId).first;
+    expect(onSourceBoard.where((c) => c.id == duplicate.id), isEmpty);
+    final onTargetBoard = await repo.watchActiveClips(otherBoardId).first;
+    expect(onTargetBoard.where((c) => c.id == duplicate.id), hasLength(1));
+    expect(duplicate.zIndex, greaterThan(existingOnOtherBoard.zIndex));
+  });
+
   test('duplicateClip on a link clip carries linkUrl/linkTitle over', () async {
     final sourceId = _uuid.v4();
     await repo.addLinkClip(

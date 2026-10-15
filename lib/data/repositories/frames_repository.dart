@@ -66,20 +66,25 @@ class FramesRepository {
   /// plays for clips. Returns the inserted row (mirroring
   /// [ClipsRepository.duplicateClip]'s own return) so a caller that just
   /// duplicated a frame can immediately seed drag state from its real
-  /// persisted values without a second read.
+  /// persisted values without a second read. [boardId] defaults to
+  /// [source]'s own board - pass it explicitly for a cross-board paste,
+  /// same shape as [ClipsRepository.duplicateClip]'s own [boardId]
+  /// override.
   Future<FrameRow> duplicateFrame(
     FrameRow source, {
     required String newId,
     double? x,
     double? y,
+    String? boardId,
   }) async {
-    final sortOrder = await _nextSortOrder(source.boardId);
+    final targetBoardId = boardId ?? source.boardId;
+    final sortOrder = await _nextSortOrder(targetBoardId);
     await _db
         .into(_db.frames)
         .insert(
           FramesCompanion.insert(
             id: newId,
-            boardId: source.boardId,
+            boardId: targetBoardId,
             name: Value(source.name),
             x: Value(x ?? source.x),
             y: Value(y ?? source.y),

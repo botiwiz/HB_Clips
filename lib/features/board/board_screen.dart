@@ -12,6 +12,7 @@ import '../../core/widgets/hsv_color_picker.dart';
 import '../../data/local/database.dart' show FrameRow;
 import '../../data/models/clip.dart';
 import '../../data/models/connector.dart';
+import '../../data/models/stroke.dart';
 import '../../data/pdf/pdf_writer.dart';
 import '../../data/providers.dart';
 import '../../data/repositories/clips_repository.dart';
@@ -25,13 +26,15 @@ import 'controllers/auto_backup_scheduler.dart';
 import 'controllers/backup_folder_prompt_controller.dart';
 import 'controllers/board_view_persistence_controller.dart';
 import 'controllers/undo_controller.dart';
+import 'geometry/copy_paste_remap.dart';
 import 'geometry/frame_geometry.dart';
 import 'geometry/frame_presets.dart';
 import 'geometry/pdf_export_selection.dart';
 import 'geometry/selection_geometry.dart';
-import 'services/add_image_service.dart' show pushAddClipUndo, pushAddClipsUndo;
+import 'services/add_image_service.dart' show pushAddClipUndo;
 import 'services/apply_frame_preset.dart' show applyFramePreset;
 import 'services/backup_folder_service.dart';
+import 'services/clipboard_copy_service.dart';
 import 'services/clipboard_paste_service.dart';
 import 'services/image_size_service.dart';
 import 'services/pureref_import_service.dart';
@@ -521,9 +524,13 @@ class BoardScreen extends ConsumerWidget {
       if (frame == null) return;
       final clips = ref.read(activeClipsProvider).valueOrNull ?? [];
       final children = clips.where((c) => c.frameId == frameId).toList();
+      final childIds = children.map((c) => c.id).toSet();
+      final tagAlongs = _connectorsAndStrokesWithin(ref, childIds);
       ref.read(copiedSelectionProvider.notifier).state = CopiedSelection(
         frame: frame,
         clips: children,
+        connectors: tagAlongs.connectors,
+        strokes: tagAlongs.strokes,
       );
       return;
     }
@@ -535,9 +542,85 @@ class BoardScreen extends ConsumerWidget {
       for (final id in selection) ClipGeometry.findById(clips, id),
     ].whereType<BoardClip>().toList();
     if (copied.isEmpty) return;
+    final copiedIds = copied.map((c) => c.id).toSet();
+    final tagAlongs = _connectorsAndStrokesWithin(ref, copiedIds);
     ref.read(copiedSelectionProvider.notifier).state = CopiedSelection(
       clips: copied,
+      connectors: tagAlongs.connectors,
+      strokes: tagAlongs.strokes,
     );
+  }
+
+  /// Every connector whose *both* endpoints are in [clipIds], and every
+  /// stroke attached to one of [clipIds] - the "tag-along" elements a
+  /// clip/frame copy brings with it so an internal connection or
+  /// annotation isn't silently dropped by Ctrl+C/Ctrl+V. A connector
+  /// pointing outside [clipIds] is left behind, same as a freestanding
+  /// (unattached) stroke - see [CopiedSelection]'s own doc comment.
+  ({List<Connector> connectors, List<Stroke> strokes})
+  _connectorsAndStrokesWithin(WidgetRef ref, Set<String> clipIds) {
+    final allConnectors = ref.read(activeConnectorsProvider).valueOrNull ?? [];
+    final connectors = allConnectors
+        .where(
+          (c) => clipIds.contains(c.fromClipId) && clipIds.contains(c.toClipId),
+        )
+        .toList();
+    final allStrokes = ref.read(boardStrokesProvider).valueOrNull ?? [];
+    final strokes = allStrokes
+        .where((s) => s.clipId != null && clipIds.contains(s.clipId))
+        .toList();
+    return (connectors: connectors, strokes: strokes);
+  }
+
+  /// Persists every entry of [connectors]/[strokes] exactly as given
+  /// (including their own `id`) - shared by the initial paste and by a
+  /// later redo, so a repeated undo/redo cycle always reconstructs the
+  /// identical rows rather than minting new ids each time.
+  Future<void> _insertConnectorsAndStrokes(
+    WidgetRef ref,
+    List<Connector> connectors,
+    List<Stroke> strokes,
+  ) {
+    final connectorsRepo = ref.read(connectorsRepositoryProvider);
+    final strokesRepo = ref.read(strokesRepositoryProvider);
+    return Future.wait([
+      for (final c in connectors)
+        connectorsRepo.addConnector(
+          id: c.id,
+          boardId: c.boardId,
+          fromClipId: c.fromClipId,
+          fromSide: c.fromSide,
+          toClipId: c.toClipId,
+          toRelX: c.toRelX,
+          toRelY: c.toRelY,
+        ),
+      for (final s in strokes)
+        strokesRepo.addStroke(
+          id: s.id,
+          boardId: s.boardId,
+          clipId: s.clipId,
+          colorHex: s.colorHex,
+          strokeWidth: s.strokeWidth,
+          points: s.points,
+          dashed: s.dashed,
+          arrowEnd: s.arrowEnd,
+        ),
+    ]);
+  }
+
+  /// Undo's counterpart to [_insertConnectorsAndStrokes] - a hard delete,
+  /// since neither repository has a restorable soft-delete.
+  Future<void> _deleteConnectorsAndStrokes(
+    WidgetRef ref,
+    List<Connector> connectors,
+    List<Stroke> strokes,
+  ) {
+    final connectorsRepo = ref.read(connectorsRepositoryProvider);
+    final strokesRepo = ref.read(strokesRepositoryProvider);
+    return Future.wait([
+      for (final c in connectors) connectorsRepo.deleteConnector(c.id),
+      for (final s in strokes) strokesRepo.deleteStroke(s.id),
+    ]);
   }
 
   /// Pastes whatever [copiedSelectionProvider] holds, anchored at
@@ -556,6 +639,11 @@ class BoardScreen extends ConsumerWidget {
     final anchor = _pasteAnchor(context, ref);
     final framesRepo = ref.read(framesRepositoryProvider);
     final clipsRepo = ref.read(clipsRepositoryProvider);
+    // Always targets whichever board is currently open, not the board the
+    // selection was copied from - this is what makes Ctrl+C on board A,
+    // switch to board B, Ctrl+V land the paste on B instead of silently
+    // reappearing back on A.
+    final targetBoardId = ref.read(currentBoardIdProvider);
 
     final frame = copied.frame;
     if (frame != null) {
@@ -567,9 +655,11 @@ class BoardScreen extends ConsumerWidget {
         newId: newFrameId,
         x: frame.x + dx,
         y: frame.y + dy,
+        boardId: targetBoardId,
       );
       if (!context.mounted) return;
       final newChildIds = <String>[];
+      final clipIdMap = <String, String>{};
       for (final child in copied.clips) {
         final newChildId = _uuid.v4();
         await clipsRepo.duplicateClip(
@@ -579,10 +669,28 @@ class BoardScreen extends ConsumerWidget {
           y: child.y + dy,
           groupId: null,
           frameId: newFrameId,
+          boardId: targetBoardId,
         );
         if (!context.mounted) return;
         newChildIds.add(newChildId);
+        clipIdMap[child.id] = newChildId;
       }
+      final newConnectors = remapConnectorsForPaste(
+        copied.connectors,
+        clipIdMap,
+        targetBoardId,
+        newId: _uuid.v4,
+        now: DateTime.now,
+      );
+      final newStrokes = remapStrokesForPaste(
+        copied.strokes,
+        clipIdMap,
+        targetBoardId,
+        newId: _uuid.v4,
+        now: DateTime.now,
+      );
+      await _insertConnectorsAndStrokes(ref, newConnectors, newStrokes);
+      if (!context.mounted) return;
       ref.read(selectedFrameIdsProvider.notifier).state = {newFrameId};
       ref.read(selectedClipIdsProvider.notifier).state = {};
       ref
@@ -592,6 +700,7 @@ class BoardScreen extends ConsumerWidget {
               undo: () => Future.wait([
                 framesRepo.deleteFrame(newFrameId),
                 for (final id in newChildIds) clipsRepo.binClip(id),
+                _deleteConnectorsAndStrokes(ref, newConnectors, newStrokes),
               ]),
               redo: () => Future.wait([
                 framesRepo.duplicateFrame(
@@ -599,8 +708,10 @@ class BoardScreen extends ConsumerWidget {
                   newId: newFrameId,
                   x: frame.x + dx,
                   y: frame.y + dy,
+                  boardId: targetBoardId,
                 ),
                 for (final id in newChildIds) clipsRepo.restoreClip(id),
+                _insertConnectorsAndStrokes(ref, newConnectors, newStrokes),
               ]),
             ),
           );
@@ -635,6 +746,7 @@ class BoardScreen extends ConsumerWidget {
         : null;
 
     final newIds = <String>[];
+    final clipIdMap = <String, String>{};
     for (final clip in clips) {
       final newId = _uuid.v4();
       await clipsRepo.duplicateClip(
@@ -644,12 +756,43 @@ class BoardScreen extends ConsumerWidget {
         y: clip.y + dy,
         groupId: pasteGroupId,
         frameId: null,
+        boardId: targetBoardId,
       );
       if (!context.mounted) return;
       newIds.add(newId);
+      clipIdMap[clip.id] = newId;
     }
+    final newConnectors = remapConnectorsForPaste(
+      copied.connectors,
+      clipIdMap,
+      targetBoardId,
+      newId: _uuid.v4,
+      now: DateTime.now,
+    );
+    final newStrokes = remapStrokesForPaste(
+      copied.strokes,
+      clipIdMap,
+      targetBoardId,
+      newId: _uuid.v4,
+      now: DateTime.now,
+    );
+    await _insertConnectorsAndStrokes(ref, newConnectors, newStrokes);
+    if (!context.mounted) return;
     ref.read(selectedClipIdsProvider.notifier).state = newIds.toSet();
-    pushAddClipsUndo(ref, newIds);
+    ref
+        .read(undoManagerProvider.notifier)
+        .push(
+          UndoableAction(
+            undo: () => Future.wait([
+              for (final id in newIds) clipsRepo.binClip(id),
+              _deleteConnectorsAndStrokes(ref, newConnectors, newStrokes),
+            ]),
+            redo: () => Future.wait([
+              for (final id in newIds) clipsRepo.restoreClip(id),
+              _insertConnectorsAndStrokes(ref, newConnectors, newStrokes),
+            ]),
+          ),
+        );
   }
 
   /// Handles bare/shift Backspace, Delete, the 4 arrow keys, and
@@ -1153,6 +1296,12 @@ class BoardScreen extends ConsumerWidget {
         selectedClips.first.type == ClipType.image &&
         (selectedClips.first.localFilePath?.toLowerCase().endsWith('.gif') ??
             false);
+    final canCopyImage =
+        !isDrawMode &&
+        !isTextToolActive &&
+        selectedClips.length == 1 &&
+        selectedClips.first.type == ClipType.image &&
+        selectedClips.first.localFilePath != null;
 
     return Scaffold(
       body: Focus(
@@ -1295,6 +1444,16 @@ class BoardScreen extends ConsumerWidget {
                                 icon: Icons.group_off_outlined,
                                 onPressed: () =>
                                     _ungroupSelection(ref, commonGroupId),
+                              ),
+                            if (canCopyImage)
+                              PillIconButton(
+                                tooltip: 'Copy image to clipboard',
+                                icon: Icons.copy,
+                                onPressed: () => copyImageToOsClipboard(
+                                  context,
+                                  ref,
+                                  selectedClips.first,
+                                ),
                               ),
                             PillIconButton(
                               tooltip: 'Bring to front',

@@ -178,7 +178,12 @@ class ClipsRepository {
   /// pass [groupId]/[frameId] explicitly (even as null) since there's no
   /// sensible shared default between "duplicate in place" (keep the
   /// source's own group/frame) and "paste elsewhere" (start ungrouped
-  /// and unparented).
+  /// and unparented). [boardId] defaults to [source]'s own board - pass
+  /// it explicitly to land the duplicate on a *different* board (a
+  /// cross-board paste); z-ordering is then computed against that target
+  /// board, not the source board's. `localFilePath` is reused as-is with
+  /// no byte-copying either way, since blob storage is shared globally
+  /// across every board, not per-board.
   Future<BoardClip> duplicateClip(
     BoardClip source, {
     required String newId,
@@ -186,12 +191,14 @@ class ClipsRepository {
     double? y,
     required String? groupId,
     required String? frameId,
+    String? boardId,
   }) async {
-    final zIndex = await _nextZIndex(source.boardId);
+    final targetBoardId = boardId ?? source.boardId;
+    final zIndex = await _nextZIndex(targetBoardId);
     return _insertClip(
       ClipsCompanion.insert(
         id: newId,
-        boardId: source.boardId,
+        boardId: targetBoardId,
         type: source.type.storageValue,
         x: Value(x ?? source.x),
         y: Value(y ?? source.y),

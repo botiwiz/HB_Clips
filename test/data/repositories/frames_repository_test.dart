@@ -156,6 +156,59 @@ void main() {
     },
   );
 
+  test('duplicateFrame with an explicit boardId lands the duplicate on that '
+      'board instead of the source frame\'s own board, with sortOrder '
+      'computed against the target board\'s existing frames', () async {
+    const otherBoardId = 'other-board';
+    await db
+        .into(db.boards)
+        .insert(
+          BoardsCompanion.insert(id: otherBoardId, name: const Value('Other')),
+        );
+
+    await repo.createFrame(
+      id: 'frame-source',
+      boardId: kLocalBoardId,
+      name: 'Source',
+      x: 0,
+      y: 0,
+      width: 100,
+      height: 100,
+    );
+    final source = await (db.select(
+      db.frames,
+    )..where((f) => f.id.equals('frame-source'))).getSingle();
+
+    await repo.createFrame(
+      id: 'frame-already-there',
+      boardId: otherBoardId,
+      name: 'Already there',
+      x: 0,
+      y: 0,
+      width: 100,
+      height: 100,
+    );
+    final existingOnOtherBoard = await (db.select(
+      db.frames,
+    )..where((f) => f.id.equals('frame-already-there'))).getSingle();
+
+    final duplicate = await repo.duplicateFrame(
+      source,
+      newId: 'frame-dup',
+      boardId: otherBoardId,
+    );
+
+    expect(duplicate.boardId, otherBoardId);
+    final onSourceBoard = await repo.watchFrames(kLocalBoardId).first;
+    expect(onSourceBoard.where((f) => f.id == duplicate.id), isEmpty);
+    final onTargetBoard = await repo.watchFrames(otherBoardId).first;
+    expect(onTargetBoard.map((f) => f.id).toList(), [
+      'frame-already-there',
+      duplicate.id,
+    ]);
+    expect(duplicate.sortOrder, greaterThan(existingOnOtherBoard.sortOrder));
+  });
+
   test(
     'frames on different boards get independently-ranked sortOrder after migration-style backfill',
     () async {

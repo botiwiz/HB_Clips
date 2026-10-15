@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../data/local/database.dart' show FrameRow;
 import '../../../data/models/clip.dart' show BoardClip, ShapeKind;
 import '../../../data/models/connector.dart';
+import '../../../data/models/stroke.dart';
 
 /// Camera transform for the infinite board: screenPoint = boardPoint *
 /// scale + panOffset.
@@ -343,7 +344,24 @@ class CopiedSelection {
   /// clip selection itself.
   final List<BoardClip> clips;
 
-  const CopiedSelection({this.frame, required this.clips});
+  /// Every connector whose *both* endpoints are in [clips] - a connector
+  /// pointing outside the copied selection is dropped rather than pasted
+  /// dangling (same "internal edges only" rule most diagramming tools use
+  /// for copying a connected subgraph).
+  final List<Connector> connectors;
+
+  /// Every stroke attached ([Stroke.clipId] set) to one of [clips].
+  /// Freestanding strokes (`clipId == null`) are never captured - there's
+  /// no selection mechanism for them to be "part of" a copy in the first
+  /// place.
+  final List<Stroke> strokes;
+
+  const CopiedSelection({
+    this.frame,
+    required this.clips,
+    this.connectors = const [],
+    this.strokes = const [],
+  });
 }
 
 /// The in-app Ctrl+C/Ctrl+V clipboard - null means nothing's been
