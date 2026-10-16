@@ -26,6 +26,7 @@ import '../geometry/frame_geometry.dart';
 import '../geometry/image_pan_zoom_geometry.dart';
 import '../geometry/selection_geometry.dart';
 import '../geometry/snap_geometry.dart';
+import '../geometry/spacing_snap_geometry.dart';
 import '../geometry/view_focus_geometry.dart';
 import '../services/add_image_service.dart';
 import '../services/eyedropper_service.dart';
@@ -481,6 +482,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     ref.read(panZoomLiveProvider.notifier).state = null;
     ref.read(defineFrameRectProvider.notifier).state = null;
     ref.read(snapGuidesProvider.notifier).state = (x: null, y: null);
+    ref.read(spacingSnapGuidesProvider.notifier).state = (x: null, y: null);
     ref.read(textToolDragRectProvider.notifier).state = null;
     ref.read(shapeToolDragRectProvider.notifier).state = null;
     ref.read(connectorDraftProvider.notifier).state = null;
@@ -492,6 +494,17 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
   void _setSnapGuides(({double? x, double? y}) guides) {
     if (ref.read(snapGuidesProvider) != guides) {
       ref.read(snapGuidesProvider.notifier).state = guides;
+    }
+  }
+
+  /// Updates [spacingSnapGuidesProvider] only when it actually changed -
+  /// same rebuild-avoidance role as [_setSnapGuides]. Relies on
+  /// [SpacingGuide]'s value-based `==` so an unchanged guide across two
+  /// pointer-move frames doesn't appear "different" just because a new
+  /// instance was built.
+  void _setSpacingGuides(({SpacingGuide? x, SpacingGuide? y}) guides) {
+    if (ref.read(spacingSnapGuidesProvider) != guides) {
+      ref.read(spacingSnapGuidesProvider.notifier).state = guides;
     }
   }
 
@@ -1782,6 +1795,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       // the grid-snap toggle is off.
       var effectiveDelta = delta;
       ({double? x, double? y}) guides = (x: null, y: null);
+      ({SpacingGuide? x, SpacingGuide? y}) spacingGuides = (x: null, y: null);
       if (!snap) {
         final draggedIds = _groupDragStartPositions!.keys.toSet();
         final startRects = [
@@ -1805,17 +1819,23 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
             for (final f in ref.read(boardFramesProvider).valueOrNull ?? [])
               FrameGeometry.boardRect(f),
           ];
-          final snapResult = SnapGeometry.snap(
+          final combined = SpacingSnapGeometry.snapWithEdges(
             draggedBoundsBeforeDelta: draggedBounds,
             delta: delta,
             others: others,
-            threshold: kEdgeSnapThresholdPx / view.scale,
+            edgeThreshold: kEdgeSnapThresholdPx / view.scale,
+            spacingThreshold: kSpacingSnapThresholdPx / view.scale,
           );
-          effectiveDelta = snapResult.delta;
-          guides = (x: snapResult.guideX, y: snapResult.guideY);
+          effectiveDelta = combined.delta;
+          guides = (x: combined.guideX, y: combined.guideY);
+          spacingGuides = (
+            x: combined.spacingGuideX,
+            y: combined.spacingGuideY,
+          );
         }
       }
       _setSnapGuides(guides);
+      _setSpacingGuides(spacingGuides);
 
       final newPositions = ClipGeometry.applyGroupDelta(
         _groupDragStartPositions!,
@@ -1991,6 +2011,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
 
       var effectiveDelta = delta;
       ({double? x, double? y}) guides = (x: null, y: null);
+      ({SpacingGuide? x, SpacingGuide? y}) spacingGuides = (x: null, y: null);
       if (!snap) {
         final draggedIds = _frameDragStartRects!.keys.toSet();
         final startRects = _frameDragStartRects!.values.toList();
@@ -2005,17 +2026,23 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
             for (final f in ref.read(boardFramesProvider).valueOrNull ?? [])
               if (!draggedIds.contains(f.id)) FrameGeometry.boardRect(f),
           ];
-          final snapResult = SnapGeometry.snap(
+          final combined = SpacingSnapGeometry.snapWithEdges(
             draggedBoundsBeforeDelta: draggedBounds,
             delta: delta,
             others: others,
-            threshold: kEdgeSnapThresholdPx / view.scale,
+            edgeThreshold: kEdgeSnapThresholdPx / view.scale,
+            spacingThreshold: kSpacingSnapThresholdPx / view.scale,
           );
-          effectiveDelta = snapResult.delta;
-          guides = (x: snapResult.guideX, y: snapResult.guideY);
+          effectiveDelta = combined.delta;
+          guides = (x: combined.guideX, y: combined.guideY);
+          spacingGuides = (
+            x: combined.spacingGuideX,
+            y: combined.spacingGuideY,
+          );
         }
       }
       _setSnapGuides(guides);
+      _setSpacingGuides(spacingGuides);
 
       Rect snapRect(Rect r) {
         final shifted = r.shift(effectiveDelta);
@@ -2417,6 +2444,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       }
       ref.read(groupDragProvider.notifier).state = null;
       ref.read(snapGuidesProvider.notifier).state = (x: null, y: null);
+      ref.read(spacingSnapGuidesProvider.notifier).state = (x: null, y: null);
       _groupDragStartPositions = null;
       _groupDragIsDuplicate = false;
       _pendingCollapseId = null;
@@ -2542,6 +2570,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       ref.read(groupDragProvider.notifier).state = null;
       ref.read(frameResizeRectProvider.notifier).state = null;
       ref.read(snapGuidesProvider.notifier).state = (x: null, y: null);
+      ref.read(spacingSnapGuidesProvider.notifier).state = (x: null, y: null);
       _frameResizeId = null;
       _frameResizing = false;
       _frameResizeStartRect = null;
@@ -2644,6 +2673,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       ref.read(groupDragProvider.notifier).state = null;
       ref.read(frameDragRectsProvider.notifier).state = null;
       ref.read(snapGuidesProvider.notifier).state = (x: null, y: null);
+      ref.read(spacingSnapGuidesProvider.notifier).state = (x: null, y: null);
       _activeFrameGroupScaleHandle = null;
       _frameGroupScaleStartFrameRects = null;
       _frameGroupScaleStartChildRects = null;
@@ -2755,6 +2785,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       ref.read(groupDragProvider.notifier).state = null;
       ref.read(frameDragRectsProvider.notifier).state = null;
       ref.read(snapGuidesProvider.notifier).state = (x: null, y: null);
+      ref.read(spacingSnapGuidesProvider.notifier).state = (x: null, y: null);
       _frameDragStartRects = null;
       _frameGestureStartPointerBoard = null;
       _frameDragMoved = false;

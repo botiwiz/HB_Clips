@@ -52,6 +52,19 @@ const double kMaxImageZoom = 8.0;
 /// board-space positions.
 const double kEdgeSnapThresholdPx = 8;
 
+/// Screen-space distance (logical pixels, regardless of zoom) within which
+/// a dragged selection's gap to a same-row/column neighbor snaps to either
+/// an already-established neighbor-to-neighbor gap ("continue the rhythm")
+/// or an equal-margin midpoint between two facing neighbors ("equal-margin
+/// centering") - see `SpacingSnapGeometry`. Converted to board units the
+/// same way `kEdgeSnapThresholdPx` is (divided by the current view scale)
+/// before comparing against board-space gap distances. Deliberately its
+/// own constant rather than reusing `kEdgeSnapThresholdPx` directly - even
+/// though it currently shares the same numeric value - so each behavior's
+/// forgiveness can be tuned independently later without the two becoming
+/// entangled.
+const double kSpacingSnapThresholdPx = 8;
+
 /// Connector/spline line thickness on screen, in logical pixels - fixed
 /// regardless of zoom (like the grid dots), not derived from the per-
 /// connector `strokeWidth` DB column, which PDF export still uses directly

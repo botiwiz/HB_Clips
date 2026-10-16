@@ -7,6 +7,7 @@ import '../../../data/local/database.dart' show FrameRow;
 import '../../../data/models/clip.dart' show BoardClip, ShapeKind;
 import '../../../data/models/connector.dart';
 import '../../../data/models/stroke.dart';
+import '../geometry/spacing_snap_geometry.dart';
 
 /// Camera transform for the infinite board: screenPoint = boardPoint *
 /// scale + panOffset.
@@ -227,6 +228,19 @@ final defineFrameRectProvider = StateProvider<Rect?>((ref) => null);
 final snapGuidesProvider = StateProvider<({double? x, double? y})>(
   (ref) => (x: null, y: null),
 );
+
+/// Richer spacing-snap guide geometry (gap brackets + matched distance)
+/// active during a group/frame drag - the spacing-snap counterpart to
+/// [snapGuidesProvider], kept as its own provider rather than widening
+/// that one's `{double?, double?}` shape, since the existing edge-snap
+/// call sites in `board_canvas.dart` only ever need a bare coordinate and
+/// shouldn't have to thread spacing-guide fields through. Null on an axis
+/// means no spacing guide is active there. See
+/// `SpacingSnapGeometry`/`SnapGuidesOverlay`.
+final spacingSnapGuidesProvider =
+    StateProvider<({SpacingGuide? x, SpacingGuide? y})>(
+      (ref) => (x: null, y: null),
+    );
 
 /// Whether the one-shot text tool is armed: a click or click-drag on the
 /// canvas creates a new text-note clip, then this flips back to false
