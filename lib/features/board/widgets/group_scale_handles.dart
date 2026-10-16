@@ -14,11 +14,21 @@ import '../geometry/selection_geometry.dart';
 /// currently has rotation == 0 (v1 restriction: rotated-group scaling
 /// needs each clip's corners scaled around the group anchor, which is
 /// meaningfully more math for a first pass - see `ClipGeometry.scaleGroup`).
+///
+/// Also renders nothing the instant any frame is also selected - a
+/// selection that mixes frame(s) with clip(s) scales through
+/// `FrameGroupScaleHandles`'s bounding box instead (which spans the whole
+/// mixed selection, not just the clips), so this widget steps aside
+/// entirely rather than drawing a second, conflicting set of handles over
+/// a narrower box.
 class GroupScaleHandles extends ConsumerWidget {
   const GroupScaleHandles({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    if (ref.watch(selectedFrameIdsProvider).isNotEmpty) {
+      return const SizedBox.shrink();
+    }
     final selection = ref.watch(selectedClipIdsProvider);
     if (selection.length < 2) return const SizedBox.shrink();
 

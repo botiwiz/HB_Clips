@@ -192,17 +192,14 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
 
   // Single-frame resize via its own bottom-right corner handle - stays
   // single-frame-only even with multi-select (see FrameGroupScaleHandles
-  // for the 2+-frame case), so this keeps its own dedicated fields/
-  // provider (frameResizeRectProvider) entirely separate from move's.
+  // for the 2+-frame/mixed-selection case), so this keeps its own
+  // dedicated fields/provider (frameResizeRectProvider) entirely separate
+  // from move's. Always frame-only: resizing a lone selected frame never
+  // touches its children (see FrameGeometry.resize's doc comment) - there
+  // is no child-scaling variant of this gesture to choose between.
   String? _frameResizeId;
   bool _frameResizing = false;
   Rect? _frameResizeStartRect;
-  // Which resize math/commit path an in-flight _frameResizeId gesture is
-  // using - true when it was started from the frame-only handle (see
-  // FrameGeometry.resizeFrameOnly), which never touches children. Default
-  // false covers the normal bottom-right handle without needing its own
-  // branch to set it explicitly.
-  bool _frameOnlyResize = false;
 
   // Frame move - map-based so one frame or several (a multi-selection)
   // go through the exact same path, mirroring how clip group-drag never
@@ -225,13 +222,6 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
   // themselves.
   Map<String, Offset>? _frameChildStartPositions;
 
-  // Same idea as _frameChildStartPositions, but for a single-frame
-  // resize: full start-of-gesture snapshots (width/height too, not just
-  // position) so FrameGeometry.scaleChildren can scale each child to
-  // match the frame's new size. Null when the resized frame has no
-  // children.
-  Map<String, BoardClip>? _frameResizeChildStart;
-
   // Set true only when the current frame-drag session is dragging a
   // frame + children just created by Alt-drag-duplicate (see the
   // frame hit-test branch) - the pointer-up commit branch still writes
@@ -241,10 +231,15 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
   // pointer-down.
   bool _frameDragIsDuplicate = false;
 
-  // Multi-frame group-scale (2+ selected frames) - the frame equivalent
-  // of _activeGroupScaleHandle/_groupScaleStartClips/_groupScaleStartRect
-  // for clips. A separate mechanism from single-frame resize above, not
-  // an extension of it (see FrameGroupScaleHandles's doc comment).
+  // Frame-plus-anything-else group-scale: fires for 2+ selected frames,
+  // or for any selection that mixes frame(s) with clip(s) - the frame
+  // equivalent of _activeGroupScaleHandle/_groupScaleStartClips/
+  // _groupScaleStartRect for clips. A separate mechanism from single-frame
+  // resize above, not an extension of it (see FrameGroupScaleHandles's doc
+  // comment for the exact selection-shape rules). _frameGroupScaleStart
+  // ChildRects holds every clip that moves/scales along with this gesture
+  // - both clips nested in a selected frame AND clips directly selected
+  // alongside it - since both get the identical no-floor transform.
   HandleKind? _activeFrameGroupScaleHandle;
   Map<String, Rect>? _frameGroupScaleStartFrameRects;
   Map<String, Rect>? _frameGroupScaleStartChildRects;
@@ -477,13 +472,11 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     _frameResizeId = null;
     _frameResizing = false;
     _frameResizeStartRect = null;
-    _frameOnlyResize = false;
     _frameDragStartRects = null;
     _frameGestureStartPointerBoard = null;
     _frameDragMoved = false;
     _pendingFrameCollapseId = null;
     _frameChildStartPositions = null;
-    _frameResizeChildStart = null;
     _frameDragIsDuplicate = false;
     _activeFrameGroupScaleHandle = null;
     _frameGroupScaleStartFrameRects = null;
@@ -1149,8 +1142,14 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       }
     }
 
-    // 1. A handle on the sole selected clip takes priority over everything.
-    if (selection.length == 1) {
+    // 1. A handle on the sole selected clip takes priority over everything
+    // - but only when no frame is *also* selected. A frame+clip mixed
+    // selection (only reachable via marquee) scales as one combined group
+    // through FrameGroupScaleHandles/step 2.5a instead; letting the clip's
+    // own solo handle remain live here would let it resize independently
+    // of the frame it's supposedly grouped with, defeating the whole point
+    // of the mixed-selection combined scale.
+    if (selection.length == 1 && ref.read(selectedFrameIdsProvider).isEmpty) {
       final selectedClip = ClipGeometry.findById(clips, selection.first);
       if (selectedClip != null) {
         final handle = ClipGeometry.hitTestHandle(
@@ -1207,8 +1206,11 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
 
     // 1.5. A handle on a multi-clip selection's bounding box (group scale)
     // - only offered when every selected clip is currently unrotated (see
-    // GroupScaleHandles's doc comment for why).
-    if (selection.length >= 2) {
+    // GroupScaleHandles's doc comment for why), and only when no frame is
+    // *also* selected - a mixed selection's scale handles are owned
+    // entirely by the frame-aware path below (2.5a), so this one must not
+    // also try to claim the same corner for a clip-only bounding box.
+    if (selection.length >= 2 && ref.read(selectedFrameIdsProvider).isEmpty) {
       final selectedClips = [
         for (final c in clips)
           if (selection.contains(c.id)) c,
@@ -1525,18 +1527,33 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     final frames = ref.read(boardFramesProvider).valueOrNull ?? [];
     final selectedFrameIds = ref.read(selectedFrameIdsProvider);
 
-    // 2.5a. A handle on a 2+-frame selection's bounding box (group scale)
-    // - mirrors clip group-scale (step 1.5); single-frame resize (below)
-    // stays a separate, single-frame-only mechanism.
-    if (selectedFrameIds.length >= 2) {
+    // 2.5a. A handle on the bounding box of "frame(s) + anything else"
+    // (group scale) - fires for 2+ selected frames, or for any selection
+    // that mixes at least one frame with at least one clip (a plain
+    // marquee drag is the only way to produce that combination - see
+    // FrameGroupScaleHandles's doc comment). Mirrors clip group-scale
+    // (step 1.5); single-frame-ALONE resize (below) stays a separate,
+    // frame-only mechanism.
+    final selectedClipIdsForScale = ref.read(selectedClipIdsProvider);
+    if (selectedFrameIds.isNotEmpty &&
+        selectedFrameIds.length + selectedClipIdsForScale.length >= 2) {
       final selectedFrames = [
         for (final f in frames)
           if (selectedFrameIds.contains(f.id)) f,
       ];
-      if (selectedFrames.length >= 2) {
+      final selectedLooseClips = [
+        for (final c in clips)
+          if (selectedClipIdsForScale.contains(c.id)) c,
+      ];
+      if (selectedFrames.isNotEmpty) {
         Rect groupRect = FrameGeometry.boardRect(selectedFrames.first);
         for (final f in selectedFrames.skip(1)) {
           groupRect = groupRect.expandToInclude(FrameGeometry.boardRect(f));
+        }
+        for (final c in selectedLooseClips) {
+          groupRect = groupRect.expandToInclude(
+            Rect.fromLTWH(c.x, c.y, c.width, c.height),
+          );
         }
         final handle = ClipGeometry.hitTestRectHandle(
           groupRect,
@@ -1551,9 +1568,14 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
           };
           _frameGroupScaleStartGroupRect = groupRect;
           final frameIds = selectedFrames.map((f) => f.id).toSet();
-          final groupChildren = clips
-              .where((c) => c.frameId != null && frameIds.contains(c.frameId))
-              .toList();
+          // Every clip that must move/scale along with this gesture -
+          // clips nested in a selected frame AND clips directly selected
+          // alongside it, deduped by Map key since a clip can be both.
+          final groupChildren = {
+            for (final c in clips)
+              if (c.frameId != null && frameIds.contains(c.frameId)) c.id: c,
+            for (final c in selectedLooseClips) c.id: c,
+          }.values;
           _frameGroupScaleStartChildRects = {
             for (final c in groupChildren)
               c.id: Rect.fromLTWH(c.x, c.y, c.width, c.height),
@@ -1577,26 +1599,12 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     }
 
     // 2.5b. A resize-handle hit only applies when exactly one frame is
-    // selected - single-frame resize is a separate, single-frame-only
-    // mechanism from the group-scale handles above.
-    if (selectedFrameIds.length == 1) {
+    // selected and nothing else is - a lone selected frame's own handle
+    // only ever changes its own rect (see FrameGeometry.resize's doc
+    // comment); the instant anything else joins the selection, scaling
+    // goes through the combined bounding-box handles above instead.
+    if (selectedFrameIds.length == 1 && selectedClipIdsForScale.isEmpty) {
       final selectedFrame = _findFrameById(frames, selectedFrameIds.first);
-      if (selectedFrame != null &&
-          FrameGeometry.hitTestFrameOnlyResizeHandle(
-            selectedFrame,
-            view,
-            event.localPosition,
-          )) {
-        _exitTextEditUnlessClip(null);
-        _frameResizing = true;
-        _frameOnlyResize = true;
-        _frameResizeId = selectedFrame.id;
-        _frameResizeStartRect = FrameGeometry.boardRect(selectedFrame);
-        _frameResizeChildStart = null; // deliberately never populated
-        ref.read(frameResizeRectProvider.notifier).state =
-            _frameResizeStartRect;
-        return;
-      }
       if (selectedFrame != null &&
           FrameGeometry.hitTestResizeHandle(
             selectedFrame,
@@ -1609,29 +1617,6 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
         _frameResizeStartRect = FrameGeometry.boardRect(selectedFrame);
         ref.read(frameResizeRectProvider.notifier).state =
             _frameResizeStartRect;
-
-        // Same "contents follow the frame" contract as a plain frame move
-        // (see below), but the resize branch needs each child's full
-        // width/height too so FrameGeometry.scaleChildren can scale them.
-        final resizingChildren = clips
-            .where((c) => c.frameId == selectedFrame.id)
-            .toList();
-        if (resizingChildren.isNotEmpty) {
-          _frameResizeChildStart = {for (final c in resizingChildren) c.id: c};
-          ref.read(groupDragProvider.notifier).state = {
-            for (final c in resizingChildren)
-              c.id: DraggingClip(
-                id: c.id,
-                x: c.x,
-                y: c.y,
-                width: c.width,
-                height: c.height,
-                rotation: c.rotation,
-              ),
-          };
-        } else {
-          _frameResizeChildStart = null;
-        }
         return;
       }
     }
@@ -2049,8 +2034,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       if (!snap) {
         final others = [
           for (final c in ref.read(activeClipsProvider).valueOrNull ?? [])
-            if (_frameOnlyResize || c.frameId != _frameResizeId)
-              Rect.fromLTWH(c.x, c.y, c.width, c.height),
+            Rect.fromLTWH(c.x, c.y, c.width, c.height),
           for (final f in ref.read(boardFramesProvider).valueOrNull ?? [])
             if (f.id != _frameResizeId) FrameGeometry.boardRect(f),
         ];
@@ -2064,15 +2048,10 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       } else {
         _setSnapGuides((x: null, y: null));
       }
-      final resized = _frameOnlyResize
-          ? FrameGeometry.resizeFrameOnly(
-              startRect: _frameResizeStartRect!,
-              pointerBoard: resizePointer,
-            )
-          : FrameGeometry.resize(
-              startRect: _frameResizeStartRect!,
-              pointerBoard: resizePointer,
-            );
+      final resized = FrameGeometry.resize(
+        startRect: _frameResizeStartRect!,
+        pointerBoard: resizePointer,
+      );
       final finalRect = snap
           ? Rect.fromLTWH(
               ClipGeometry.snap(resized.left, kBoardGridSpacing),
@@ -2082,25 +2061,6 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
             )
           : resized;
       ref.read(frameResizeRectProvider.notifier).state = finalRect;
-      if (_frameResizeChildStart != null &&
-          _frameResizeChildStart!.isNotEmpty) {
-        final results = FrameGeometry.scaleChildren(
-          startClips: _frameResizeChildStart!,
-          startRect: _frameResizeStartRect!,
-          newRect: finalRect,
-        );
-        ref.read(groupDragProvider.notifier).state = {
-          for (final entry in results.entries)
-            entry.key: DraggingClip(
-              id: entry.key,
-              x: entry.value.x,
-              y: entry.value.y,
-              width: entry.value.width,
-              height: entry.value.height,
-              rotation: _frameResizeChildStart![entry.key]!.rotation,
-            ),
-        };
-      }
       return;
     }
 
@@ -2111,9 +2071,10 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       var scalePointer = boardPos;
       if (!snap) {
         final groupIds = _frameGroupScaleStartFrameRects!.keys.toSet();
+        final movingClipIds = _frameGroupScaleStartChildRects?.keys.toSet();
         final others = [
           for (final c in ref.read(activeClipsProvider).valueOrNull ?? [])
-            if (c.frameId == null || !groupIds.contains(c.frameId))
+            if (movingClipIds == null || !movingClipIds.contains(c.id))
               Rect.fromLTWH(c.x, c.y, c.width, c.height),
           for (final f in ref.read(boardFramesProvider).valueOrNull ?? [])
             if (!groupIds.contains(f.id)) FrameGeometry.boardRect(f),
@@ -2686,12 +2647,8 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     if (_frameResizeId != null) {
       final frameId = _frameResizeId!;
       final beforeRect = _frameResizeStartRect;
-      final beforeResize = _frameResizeChildStart == null
-          ? null
-          : Map<String, BoardClip>.of(_frameResizeChildStart!);
       final framesRepo = ref.read(framesRepositoryProvider);
       final rect = ref.read(frameResizeRectProvider);
-      Map<String, DraggingClip>? afterChildren;
       if (rect != null) {
         await framesRepo.updateTransform(
           frameId,
@@ -2702,79 +2659,35 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
         );
         if (!mounted) return;
       }
-      if (_frameResizeChildStart != null) {
-        final dragMap = ref.read(groupDragProvider);
-        if (dragMap != null) {
-          afterChildren = Map<String, DraggingClip>.of(dragMap);
-          await Future.wait([
-            for (final entry in dragMap.entries)
-              if (_frameResizeChildStart!.containsKey(entry.key))
-                repo.updateTransform(
-                  entry.key,
-                  x: entry.value.x,
-                  y: entry.value.y,
-                  width: entry.value.width,
-                  height: entry.value.height,
-                ),
-          ]);
-          if (!mounted) return;
-        }
-      }
       if (beforeRect != null && rect != null && beforeRect != rect) {
         final afterRect = rect;
-        final afterChildrenSnapshot = afterChildren;
         ref
             .read(undoManagerProvider.notifier)
             .push(
               UndoableAction(
-                undo: () => Future.wait([
-                  framesRepo.updateTransform(
-                    frameId,
-                    x: beforeRect.left,
-                    y: beforeRect.top,
-                    width: beforeRect.width,
-                    height: beforeRect.height,
-                  ),
-                  if (beforeResize != null)
-                    for (final entry in beforeResize.entries)
-                      repo.updateTransform(
-                        entry.key,
-                        x: entry.value.x,
-                        y: entry.value.y,
-                        width: entry.value.width,
-                        height: entry.value.height,
-                      ),
-                ]),
-                redo: () => Future.wait([
-                  framesRepo.updateTransform(
-                    frameId,
-                    x: afterRect.left,
-                    y: afterRect.top,
-                    width: afterRect.width,
-                    height: afterRect.height,
-                  ),
-                  if (afterChildrenSnapshot != null)
-                    for (final entry in afterChildrenSnapshot.entries)
-                      repo.updateTransform(
-                        entry.key,
-                        x: entry.value.x,
-                        y: entry.value.y,
-                        width: entry.value.width,
-                        height: entry.value.height,
-                      ),
-                ]),
+                undo: () => framesRepo.updateTransform(
+                  frameId,
+                  x: beforeRect.left,
+                  y: beforeRect.top,
+                  width: beforeRect.width,
+                  height: beforeRect.height,
+                ),
+                redo: () => framesRepo.updateTransform(
+                  frameId,
+                  x: afterRect.left,
+                  y: afterRect.top,
+                  width: afterRect.width,
+                  height: afterRect.height,
+                ),
               ),
             );
       }
-      ref.read(groupDragProvider.notifier).state = null;
       ref.read(frameResizeRectProvider.notifier).state = null;
       ref.read(snapGuidesProvider.notifier).state = (x: null, y: null);
       ref.read(spacingSnapGuidesProvider.notifier).state = (x: null, y: null);
       _frameResizeId = null;
       _frameResizing = false;
       _frameResizeStartRect = null;
-      _frameOnlyResize = false;
-      _frameResizeChildStart = null;
       return;
     }
 
@@ -3765,6 +3678,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
                               : frameDragRects?[frame.id],
                           selectedFrameIds.contains(frame.id),
                           selectedFrameIds.length == 1 &&
+                              selection.isEmpty &&
                               selectedFrameIds.contains(frame.id),
                           view,
                         ),

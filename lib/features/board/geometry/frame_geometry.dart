@@ -60,7 +60,16 @@ class FrameGeometry {
   static Offset _boardToScreen(Offset boardPoint, BoardViewState view) =>
       boardPoint * view.scale + view.panOffset;
 
-  /// Screen-space position of the single bottom-right resize handle.
+  /// Screen-space position of the single bottom-right resize handle - the
+  /// only resize handle a lone selected frame has. Dragging it only ever
+  /// changes the frame's own rect, never its children's (see [resize] and
+  /// the "frame-only" decision documented on [FrameWidget] and
+  /// [FrameGroupScaleHandles]) - matching Miro, where a frame is a label
+  /// on a region, not a container that rescales its contents just because
+  /// its own boundary moved. Scaling the frame *and* its contents
+  /// together only happens once the selection includes something besides
+  /// this one frame (another frame, or a clip) - see
+  /// [FrameGroupScaleHandles]'s mixed-selection path.
   static Offset resizeHandleScreenPosition(
     FrameRow frame,
     BoardViewState view,
@@ -80,28 +89,6 @@ class FrameGeometry {
         handleHitRadius;
   }
 
-  /// Screen-space position of the frame-only resize handle (top-right
-  /// corner, anchored at the fixed bottom-left) - a separate control from
-  /// [resizeHandleScreenPosition] (bottom-right, anchored top-left, which
-  /// also scales children via [scaleChildren]). Dragging this one only
-  /// ever changes the frame's own rect - see [resizeFrameOnly].
-  static Offset frameOnlyResizeHandleScreenPosition(
-    FrameRow frame,
-    BoardViewState view,
-  ) {
-    return _boardToScreen(Offset(frame.x + frame.width, frame.y), view);
-  }
-
-  static bool hitTestFrameOnlyResizeHandle(
-    FrameRow frame,
-    BoardViewState view,
-    Offset screenPoint,
-  ) {
-    return (frameOnlyResizeHandleScreenPosition(frame, view) - screenPoint)
-            .distance <=
-        handleHitRadius;
-  }
-
   /// Resizes [startRect] by dragging its bottom-right corner to the current
   /// board-space pointer position, keeping the top-left corner fixed -
   /// frames don't rotate, so this is simpler than [ClipGeometry.resize].
@@ -115,36 +102,19 @@ class FrameGeometry {
     return Rect.fromLTWH(startRect.left, startRect.top, width, height);
   }
 
-  /// Resizes [startRect] by dragging its top-right corner to the current
-  /// board-space pointer position, keeping the BOTTOM-LEFT corner fixed -
-  /// the frame-only counterpart to [resize] (which anchors top-left and
-  /// drags the bottom-right corner). Deliberately has no "scale children"
-  /// counterpart: callers simply don't touch any child clip for this
-  /// gesture, which is the entire point of it existing.
-  static Rect resizeFrameOnly({
-    required Rect startRect,
-    required Offset pointerBoard,
-  }) {
-    final anchorX = startRect.left;
-    final anchorY = startRect.bottom;
-    final width = (pointerBoard.dx - anchorX) < minFrameSize
-        ? minFrameSize
-        : pointerBoard.dx - anchorX;
-    final height = (anchorY - pointerBoard.dy) < minFrameSize
-        ? minFrameSize
-        : anchorY - pointerBoard.dy;
-    return Rect.fromLTWH(anchorX, anchorY - height, width, height);
-  }
-
   /// Scales every clip in [startClips] (gesture-start snapshots, keyed by
   /// id) to match a frame resize from [startRect] to [newRect], anchored at
   /// the frame's fixed top-left corner (matching [resize] itself, which
   /// only ever moves the bottom-right corner). Independent per-axis scale
-  /// factors, not locked to a single uniform value - a frame resize is
-  /// already free-form via its single corner handle, so its children follow
-  /// the same non-uniform stretch. No minimum-size clamp: a frame's
-  /// children shrinking proportionally with their container is the whole
-  /// point, not an edge case to guard against.
+  /// factors, not locked to a single uniform value. No minimum-size clamp:
+  /// a frame's children shrinking proportionally with their container is
+  /// the whole point, not an edge case to guard against.
+  ///
+  /// Used only by `apply_frame_preset.dart` (picking a preset size is a
+  /// deliberate "make the frame exactly this shape" action, where
+  /// rescaling the contents to fit is the expected outcome) - the
+  /// interactive resize-handle drag no longer calls this at all, see
+  /// [resize]'s own doc comment for why.
   static Map<String, ({double x, double y, double width, double height})>
   scaleChildren({
     required Map<String, BoardClip> startClips,
@@ -170,14 +140,22 @@ class FrameGeometry {
   }
 
   /// Scales every frame in [startFrameRects], and every clip in
-  /// [startChildRects] nested in one of them, together - anchored at the
-  /// bounding box's opposite corner from [corner], the frame-group
-  /// equivalent of `ClipGeometry.scaleGroup` (that function stays
-  /// untouched - this is a separate function, not a generalization of
-  /// it, so existing clip behavior can't regress). A uniform scale (the
-  /// larger of the two axis ratios), floored so no selected frame's own
-  /// smaller dimension drops below [minFrameSize] - children have no
-  /// such floor, matching [scaleChildren]'s own "shrink freely" behavior.
+  /// [startChildRects], together - anchored at the bounding box's opposite
+  /// corner from [corner], the frame-group equivalent of
+  /// `ClipGeometry.scaleGroup` (that function stays untouched - this is a
+  /// separate function, not a generalization of it, so existing clip
+  /// behavior can't regress). A uniform scale (the larger of the two axis
+  /// ratios), floored so no selected frame's own smaller dimension drops
+  /// below [minFrameSize] - children have no such floor, matching
+  /// [scaleChildren]'s own "shrink freely" behavior.
+  ///
+  /// [startChildRects] isn't only "clips nested in a selected frame" -
+  /// `board_canvas.dart` folds in every directly-selected clip too (a
+  /// mixed frame+clip selection, e.g. 1 frame + 1 loose clip), since both
+  /// get exactly the same no-floor transform here. That's what makes
+  /// "frame selected together with anything else scales everything
+  /// together" come out of the same math this function already had for
+  /// 2+-frame selections - see [FrameGroupScaleHandles]'s doc comment.
   static ({Map<String, Rect> frames, Map<String, Rect> children})
   scaleFrameGroup({
     required Map<String, Rect> startFrameRects,

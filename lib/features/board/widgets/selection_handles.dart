@@ -10,12 +10,20 @@ import '../geometry/selection_geometry.dart';
 /// presentational - all pointer handling/hit-testing for these handles
 /// happens in `board_canvas.dart`'s Listener, per the board's
 /// no-gesture-arena architecture. Renders nothing unless exactly one clip
-/// is selected (group resize/rotate is out of scope for Phase 2).
+/// is selected (group resize/rotate is out of scope for Phase 2), and also
+/// nothing the instant a frame is also selected alongside it - that mixed
+/// selection scales through FrameGroupScaleHandles's combined bounding box
+/// instead (see board_canvas.dart's step 1 pointer-down guard), so this
+/// clip's own corner handles would otherwise sit there as functional but
+/// contradictory dead chrome.
 class SelectionHandles extends ConsumerWidget {
   const SelectionHandles({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    if (ref.watch(selectedFrameIdsProvider).isNotEmpty) {
+      return const SizedBox.shrink();
+    }
     final selection = ref.watch(selectedClipIdsProvider);
     if (selection.length != 1) return const SizedBox.shrink();
     final id = selection.first;
