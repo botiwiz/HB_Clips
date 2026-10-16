@@ -40,6 +40,7 @@ class FramesRepository {
     required double y,
     required double width,
     required double height,
+    String? kanbanBoardId,
   }) async {
     final sortOrder = await _nextSortOrder(boardId);
     await _db
@@ -54,6 +55,7 @@ class FramesRepository {
             width: Value(width),
             height: Value(height),
             sortOrder: Value(sortOrder),
+            kanbanBoardId: Value(kanbanBoardId),
           ),
         );
   }

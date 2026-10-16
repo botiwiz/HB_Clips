@@ -12,6 +12,26 @@ const double kDefaultShapeHeight = 120;
 const double kDefaultLinkClipWidth = 260;
 const double kDefaultLinkClipHeight = 72;
 
+/// Default size for a newly placed kanban-card clip - a vertical
+/// "ticket" footprint (title band + a handful of checklist rows), unlike
+/// the link clip's compact horizontal button. Like every other clip
+/// type, this is only the starting size - there is no auto-grow-to-
+/// content sizing anywhere in this app, so a card with more items than
+/// fit just scrolls/clips until the user drags it bigger.
+const double kDefaultKanbanCardWidth = 240;
+const double kDefaultKanbanCardHeight = 160;
+
+/// Column (Frame) width/height used only by the "Insert Kanban Board"
+/// one-click action (`board_screen.dart._insertKanbanBoard`) - taller
+/// than a bare `createFrame` default (320x240) since a kanban column
+/// needs headroom for several stacked cards from the moment it's
+/// inserted, not just immediately-resized empty space. The gap between
+/// inserted columns deliberately reuses `kBoardGridSpacing` rather than
+/// a new constant, matching this composite's seams to the visible
+/// dot-grid.
+const double kKanbanColumnWidth = 280;
+const double kKanbanColumnHeight = 420;
+
 /// Placeholder board id used before auth/multi-board support (Phase 5+)
 /// exists. Every local clip belongs to this single implicit board.
 const String kLocalBoardId = 'local-board';

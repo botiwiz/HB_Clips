@@ -11,7 +11,7 @@ class Clips extends Table {
   TextColumn get id => text()();
   TextColumn get boardId => text()();
 
-  /// 'image', 'text', or 'shape'.
+  /// 'image', 'text', 'shape', 'link', or 'kanban_card'.
   TextColumn get type => text()();
 
   RealColumn get x => real().withDefault(const Constant(0))();
@@ -33,6 +33,13 @@ class Clips extends Table {
   /// (Miro's frame-containment behavior) - moving a frame moves every clip
   /// with a matching `frameId` along with it.
   TextColumn get frameId => text().nullable()();
+
+  /// The swimlane (horizontal row) this clip is currently nested inside,
+  /// or null - same nullable-FK, auto-set/cleared-by-drag-end-spatial-
+  /// containment convention as [frameId], just on the orthogonal (row)
+  /// axis instead of the column axis. A clip's logical kanban "cell" is
+  /// the independent combination of [frameId] + [swimlaneId].
+  TextColumn get swimlaneId => text().nullable()();
 
   TextColumn get textContent => text().nullable()();
 
@@ -110,6 +117,11 @@ class Clips extends Table {
   /// `kDefaultHighlightColorHex` at render time. One color per note, not
   /// per-range. Ignored for image/shape clips.
   TextColumn get highlightColorHex => text().nullable()();
+
+  /// JSON-encoded checklist items (see `Checklist`) for a kanban-card
+  /// clip - null/empty means no checklist items yet. Ignored for every
+  /// other clip type.
+  TextColumn get checklistJson => text().nullable()();
 
   BoolColumn get isBinned => boolean().withDefault(const Constant(false))();
   DateTimeColumn get binnedAt => dateTime().nullable()();

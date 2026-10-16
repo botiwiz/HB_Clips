@@ -8,6 +8,7 @@ import '../../annotation/controllers/annotation_controller.dart'
 import '../../annotation/stroke_painter.dart';
 import '../controllers/board_controller.dart' show ImagePanZoomLive;
 import '../geometry/highlight_geometry.dart';
+import '../geometry/kanban_card_geometry.dart';
 import '../geometry/text_note_geometry.dart';
 import '../geometry/text_style_ranges.dart';
 import 'gif_playback_view.dart';
@@ -63,7 +64,9 @@ class ClipWidget extends StatelessWidget {
     // chrome as an image clip (not a shape's borderless outline or a text
     // note's plain surface) so it reads as a button, not a floating label.
     final isButtonLike =
-        clip.type == ClipType.image || clip.type == ClipType.link;
+        clip.type == ClipType.image ||
+        clip.type == ClipType.link ||
+        clip.type == ClipType.kanbanCard;
     final cardRadius = isButtonLike ? kImageCornerRadius : kCornerRadius;
     return Opacity(
       opacity: clip.opacity,
@@ -104,6 +107,11 @@ class ClipWidget extends StatelessWidget {
             borderRadius: BorderRadius.circular(cardRadius),
             clipBehavior: Clip.antiAlias,
             child: _buildLink(),
+          ),
+          ClipType.kanbanCard => ClipRRect(
+            borderRadius: BorderRadius.circular(cardRadius),
+            clipBehavior: Clip.antiAlias,
+            child: _buildKanbanCard(),
           ),
         },
       ),
@@ -203,6 +211,103 @@ class ClipWidget extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+
+  /// Purely visual - every row position matches `KanbanCardGeometry`'s
+  /// local rects exactly, scaled by [viewScale] into screen space (the
+  /// same "world rect, scaled for screen" pattern `_buildText` already
+  /// uses). No `GestureDetector`/`Checkbox`/`IconButton` anywhere in
+  /// here - every bit of interactivity is coordinate hit-testing done by
+  /// `board_canvas.dart` against the same geometry, per this codebase's
+  /// rule that `ClipWidget` is a pure, non-interactive renderer.
+  Widget _buildKanbanCard() {
+    final title = clip.textContent ?? '';
+    final items = clip.checklist.items;
+
+    Rect scaled(Rect r) => Rect.fromLTWH(
+      r.left * viewScale,
+      r.top * viewScale,
+      r.width * viewScale,
+      r.height * viewScale,
+    );
+
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Positioned.fromRect(
+          rect: scaled(KanbanCardGeometry.titleRectLocal(clip)),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              title.isEmpty ? 'Untitled' : title,
+              style: TextStyle(
+                color: AppTheme.textPrimary,
+                fontWeight: FontWeight.w600,
+                fontSize: kTextNoteFontSize * viewScale,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ),
+        Positioned.fromRect(
+          rect: scaled(KanbanCardGeometry.linkButtonRectLocal(clip)),
+          child: Icon(
+            Icons.link,
+            size: KanbanCardGeometry.linkButtonSize * viewScale,
+            color: AppTheme.textSecondary,
+          ),
+        ),
+        for (var i = 0; i < items.length; i++)
+          Positioned.fromRect(
+            rect: scaled(KanbanCardGeometry.checklistRowRectLocal(clip, i)),
+            child: Row(
+              children: [
+                Icon(
+                  items[i].done
+                      ? Icons.check_box
+                      : Icons.check_box_outline_blank,
+                  size: 16 * viewScale,
+                  color: items[i].done
+                      ? AppTheme.accent
+                      : AppTheme.textSecondary,
+                ),
+                SizedBox(width: 6 * viewScale),
+                Expanded(
+                  child: Text(
+                    items[i].label,
+                    style: TextStyle(
+                      fontSize: (kTextNoteFontSize - 2) * viewScale,
+                      color: AppTheme.textPrimary,
+                      decoration: items[i].done
+                          ? TextDecoration.lineThrough
+                          : null,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        Positioned.fromRect(
+          rect: scaled(
+            KanbanCardGeometry.addItemRowRectLocal(clip, items.length),
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.add, size: 16 * viewScale, color: AppTheme.textSecondary),
+              SizedBox(width: 6 * viewScale),
+              Text(
+                'Add item',
+                style: TextStyle(
+                  fontSize: (kTextNoteFontSize - 2) * viewScale,
+                  color: AppTheme.textSecondary,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 

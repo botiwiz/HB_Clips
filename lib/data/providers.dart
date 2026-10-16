@@ -12,7 +12,9 @@ import 'repositories/boards_repository.dart';
 import 'repositories/clips_repository.dart';
 import 'repositories/connectors_repository.dart';
 import 'repositories/frames_repository.dart';
+import 'repositories/kanban_boards_repository.dart';
 import 'repositories/strokes_repository.dart';
+import 'repositories/swimlanes_repository.dart';
 import 'repositories/themes_repository.dart';
 
 final databaseProvider = Provider<AppDatabase>((ref) {
@@ -83,6 +85,24 @@ final boardFramesProvider = StreamProvider<List<FrameRow>>((ref) {
 
 final connectorsRepositoryProvider = Provider<ConnectorsRepository>((ref) {
   return ConnectorsRepository(ref.watch(databaseProvider));
+});
+
+final kanbanBoardsRepositoryProvider = Provider<KanbanBoardsRepository>((ref) {
+  return KanbanBoardsRepository(ref.watch(databaseProvider));
+});
+
+final boardKanbanBoardsProvider = StreamProvider<List<KanbanBoardRow>>((ref) {
+  final boardId = ref.watch(currentBoardIdProvider);
+  return ref.watch(kanbanBoardsRepositoryProvider).watchKanbanBoards(boardId);
+});
+
+final swimlanesRepositoryProvider = Provider<SwimlanesRepository>((ref) {
+  return SwimlanesRepository(ref.watch(databaseProvider));
+});
+
+final boardSwimlanesProvider = StreamProvider<List<SwimlaneRow>>((ref) {
+  final boardId = ref.watch(currentBoardIdProvider);
+  return ref.watch(swimlanesRepositoryProvider).watchSwimlanes(boardId);
 });
 
 final activeConnectorsProvider = StreamProvider<List<Connector>>((ref) {

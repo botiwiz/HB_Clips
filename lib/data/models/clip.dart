@@ -2,7 +2,7 @@ import 'dart:convert';
 
 import '../local/database.dart';
 
-enum ClipType { image, text, shape, link }
+enum ClipType { image, text, shape, link, kanbanCard }
 
 /// A flowchart-style vector primitive a shape clip renders as. Fixed at
 /// creation, like [ClipType] itself - never changes after a shape clip is
@@ -74,6 +74,7 @@ extension ClipTypeStorage on ClipType {
     ClipType.text => 'text',
     ClipType.shape => 'shape',
     ClipType.link => 'link',
+    ClipType.kanbanCard => 'kanban_card',
   };
 
   static ClipType fromStorage(String value) => switch (value) {
@@ -81,8 +82,60 @@ extension ClipTypeStorage on ClipType {
     'text' => ClipType.text,
     'shape' => ClipType.shape,
     'link' => ClipType.link,
+    'kanban_card' => ClipType.kanbanCard,
     _ => throw ArgumentError('Unknown clip type: $value'),
   };
+}
+
+/// One row of a kanban card's checklist - a short task label plus
+/// whether it's been checked off. `id` is a client-generated uuid, needed
+/// so toggle/rename/delete can target a stable row even as items are
+/// added or removed around it - a bare index can't do that once the list
+/// is mutated.
+class ChecklistItem {
+  final String id;
+  final String label;
+  final bool done;
+
+  const ChecklistItem({required this.id, required this.label, this.done = false});
+
+  ChecklistItem copyWith({String? label, bool? done}) =>
+      ChecklistItem(id: id, label: label ?? this.label, done: done ?? this.done);
+
+  factory ChecklistItem.fromJsonMap(Map<String, dynamic> map) => ChecklistItem(
+    id: map['id'] as String,
+    label: map['label'] as String,
+    done: map['done'] as bool? ?? false,
+  );
+
+  Map<String, dynamic> toJsonMap() => {'id': id, 'label': label, 'done': done};
+}
+
+/// A kanban card's checklist - variable-length list of [ChecklistItem],
+/// stored as ONE JSON TEXT column (`checklistJson`), same "whole
+/// structured sub-document on one nullable TEXT column" convention as
+/// [TextFormatting]/`textFormattingJson`. Ignored for every non-
+/// `ClipType.kanbanCard` clip.
+class Checklist {
+  final List<ChecklistItem> items;
+
+  const Checklist({this.items = const []});
+
+  static const empty = Checklist();
+
+  factory Checklist.fromJson(String? json) {
+    if (json == null || json.isEmpty) return empty;
+    final decoded = jsonDecode(json) as Map<String, dynamic>;
+    final raw = decoded['items'] as List<dynamic>? ?? const [];
+    return Checklist(
+      items: raw
+          .map((e) => ChecklistItem.fromJsonMap(e as Map<String, dynamic>))
+          .toList(),
+    );
+  }
+
+  String toJson() =>
+      jsonEncode({'items': items.map((i) => i.toJsonMap()).toList()});
 }
 
 extension ShapeKindStorage on ShapeKind {
@@ -122,6 +175,15 @@ class BoardClip {
   final String? backgroundColorHex;
   final String? groupId;
   final String? frameId;
+
+  /// The swimlane (horizontal row) this clip is currently nested inside,
+  /// or null - same nullable-FK, auto-set/cleared-by-drag-end-spatial-
+  /// containment convention as [frameId], just on the orthogonal (row)
+  /// axis instead of the column axis. A clip's logical kanban "cell" is
+  /// the independent combination of [frameId] + [swimlaneId] - see
+  /// `SwimlaneGeometry`'s doc comment for the exact containment
+  /// semantics. Ignored for clips never dragged near a kanban board.
+  final String? swimlaneId;
 
   /// Key into [LocalBlobStore] - an image clip's own bytes, or a link
   /// clip's cached thumbnail (fetched async, see [linkUrl]). Ignored for
@@ -169,6 +231,11 @@ class BoardClip {
   /// per-range.
   final String? highlightColorHex;
 
+  /// A kanban-card clip's checklist items. Empty/default for every other
+  /// clip type. See [Checklist]'s own doc comment for the storage
+  /// convention.
+  final Checklist checklist;
+
   final bool isBinned;
   final DateTime? binnedAt;
   final DateTime createdAt;
@@ -189,6 +256,7 @@ class BoardClip {
     this.backgroundColorHex,
     this.groupId,
     this.frameId,
+    this.swimlaneId,
     this.localFilePath,
     this.linkUrl,
     this.linkTitle,
@@ -204,6 +272,7 @@ class BoardClip {
     this.shapeStrokeColorHex,
     this.shapeStrokeWidth,
     this.highlightColorHex,
+    this.checklist = Checklist.empty,
     this.isBinned = false,
     this.binnedAt,
     required this.createdAt,
@@ -225,6 +294,7 @@ class BoardClip {
     backgroundColorHex: row.backgroundColorHex,
     groupId: row.groupId,
     frameId: row.frameId,
+    swimlaneId: row.swimlaneId,
     localFilePath: row.localFilePath,
     linkUrl: row.linkUrl,
     linkTitle: row.linkTitle,
@@ -242,6 +312,7 @@ class BoardClip {
     shapeStrokeColorHex: row.shapeStrokeColorHex,
     shapeStrokeWidth: row.shapeStrokeWidth,
     highlightColorHex: row.highlightColorHex,
+    checklist: Checklist.fromJson(row.checklistJson),
     isBinned: row.isBinned,
     binnedAt: row.binnedAt,
     createdAt: row.createdAt,
@@ -260,12 +331,14 @@ class BoardClip {
     String? backgroundColorHex,
     String? groupId,
     String? frameId,
+    String? swimlaneId,
     double? imagePanX,
     double? imagePanY,
     double? imageZoom,
     TextFormatting? textFormatting,
     double? fontSize,
     double? sizeLockScale,
+    Checklist? checklist,
     bool? isBinned,
     DateTime? binnedAt,
   }) {
@@ -284,6 +357,7 @@ class BoardClip {
       backgroundColorHex: backgroundColorHex ?? this.backgroundColorHex,
       groupId: groupId ?? this.groupId,
       frameId: frameId ?? this.frameId,
+      swimlaneId: swimlaneId ?? this.swimlaneId,
       localFilePath: localFilePath,
       linkUrl: linkUrl,
       linkTitle: linkTitle,
@@ -299,6 +373,7 @@ class BoardClip {
       shapeStrokeColorHex: shapeStrokeColorHex,
       shapeStrokeWidth: shapeStrokeWidth,
       highlightColorHex: highlightColorHex,
+      checklist: checklist ?? this.checklist,
       isBinned: isBinned ?? this.isBinned,
       binnedAt: binnedAt ?? this.binnedAt,
       createdAt: createdAt,

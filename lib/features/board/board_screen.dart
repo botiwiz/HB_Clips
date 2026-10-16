@@ -6,6 +6,7 @@ import 'package:path/path.dart' as p;
 import 'package:pdf/pdf.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../core/constants.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/color_swatch_button.dart';
 import '../../core/widgets/hsv_color_picker.dart';
@@ -669,6 +670,7 @@ class BoardScreen extends ConsumerWidget {
           y: child.y + dy,
           groupId: null,
           frameId: newFrameId,
+          swimlaneId: child.swimlaneId,
           boardId: targetBoardId,
         );
         if (!context.mounted) return;
@@ -756,6 +758,7 @@ class BoardScreen extends ConsumerWidget {
         y: clip.y + dy,
         groupId: pasteGroupId,
         frameId: null,
+        swimlaneId: null,
         boardId: targetBoardId,
       );
       if (!context.mounted) return;
@@ -843,7 +846,8 @@ class BoardScreen extends ConsumerWidget {
       return KeyEventResult.ignored;
     }
     if (ref.read(editingTextClipIdProvider) != null ||
-        ref.read(renamingFrameIdProvider) != null) {
+        ref.read(renamingFrameIdProvider) != null ||
+        ref.read(editingKanbanFieldProvider) != null) {
       return KeyEventResult.ignored;
     }
     if (isBinKey) {
@@ -890,6 +894,17 @@ class BoardScreen extends ConsumerWidget {
     if (next) {
       ref.read(selectedClipIdsProvider.notifier).state = {};
       ref.read(isDrawModeProvider.notifier).state = false;
+    }
+  }
+
+  void _toggleKanbanCardTool(WidgetRef ref) {
+    final next = !ref.read(isKanbanCardToolActiveProvider);
+    ref.read(isKanbanCardToolActiveProvider.notifier).state = next;
+    if (next) {
+      ref.read(selectedClipIdsProvider.notifier).state = {};
+      ref.read(isDrawModeProvider.notifier).state = false;
+      ref.read(isTextToolActiveProvider.notifier).state = false;
+      ref.read(isShapeToolActiveProvider.notifier).state = false;
     }
   }
 
@@ -1008,6 +1023,83 @@ class BoardScreen extends ConsumerWidget {
               width: width,
               height: height,
             ),
+          ),
+        );
+  }
+
+  /// One-click "add the whole board in" action matching Miro's own
+  /// native Kanban widget: 3 column Frames tagged with a fresh
+  /// `KanbanBoard` id, plus one default swimlane spanning them -
+  /// everything else (dragging cards between columns/lanes, linking,
+  /// checklist editing) is free once these exist, per the Kanban plan's
+  /// "columns = plain Frames" design. Centered the same way [_addFrame]
+  /// centers a plain frame.
+  Future<void> _insertKanbanBoard(BuildContext context, WidgetRef ref) async {
+    const columnNames = ['To Do', 'In Progress', 'Done'];
+    final center = _viewportCenterBoardPoint(ref, MediaQuery.sizeOf(context));
+    final boardId = ref.read(currentBoardIdProvider);
+
+    final kanbanBoardId = _uuid.v4();
+    final frameIds = [for (var _ in columnNames) _uuid.v4()];
+    final swimlaneId = _uuid.v4();
+
+    final totalWidth =
+        columnNames.length * kKanbanColumnWidth +
+        (columnNames.length - 1) * kBoardGridSpacing;
+    final originX = center.dx - totalWidth / 2;
+    final originY = center.dy - kKanbanColumnHeight / 2;
+
+    final framesRepo = ref.read(framesRepositoryProvider);
+    final kanbanBoardsRepo = ref.read(kanbanBoardsRepositoryProvider);
+    final swimlanesRepo = ref.read(swimlanesRepositoryProvider);
+
+    Future<void> createAll() => Future.wait([
+      for (var i = 0; i < columnNames.length; i++)
+        framesRepo.createFrame(
+          id: frameIds[i],
+          boardId: boardId,
+          name: columnNames[i],
+          x: originX + i * (kKanbanColumnWidth + kBoardGridSpacing),
+          y: originY,
+          width: kKanbanColumnWidth,
+          height: kKanbanColumnHeight,
+          kanbanBoardId: kanbanBoardId,
+        ),
+      kanbanBoardsRepo.createKanbanBoard(
+        id: kanbanBoardId,
+        boardId: boardId,
+        name: 'Kanban Board',
+        x: originX,
+        y: originY,
+        width: totalWidth,
+        height: kKanbanColumnHeight,
+      ),
+      swimlanesRepo.createSwimlane(
+        id: swimlaneId,
+        kanbanBoardId: kanbanBoardId,
+        name: 'General',
+        y: originY,
+        height: kKanbanColumnHeight,
+        sortOrder: 0,
+      ),
+    ]);
+
+    await createAll();
+
+    // One combined undo entry for the whole composite insert -
+    // generalizes pushAddClipsUndo's batching precedent from "N clips
+    // via 1 repository" to "3 Frames + 1 KanbanBoard + 1 Swimlane via 3
+    // repositories." Undoing fully removes the Frames (not just unparents
+    // them - deleteKanbanBoard alone only clears their kanbanBoardId).
+    ref
+        .read(undoManagerProvider.notifier)
+        .push(
+          UndoableAction(
+            undo: () => Future.wait([
+              for (final id in frameIds) framesRepo.deleteFrame(id),
+              kanbanBoardsRepo.deleteKanbanBoard(kanbanBoardId),
+            ]),
+            redo: () => createAll(),
           ),
         );
   }
@@ -1261,6 +1353,7 @@ class BoardScreen extends ConsumerWidget {
     final hasSelection = selection.isNotEmpty;
     final isDrawMode = ref.watch(isDrawModeProvider);
     final isTextToolActive = ref.watch(isTextToolActiveProvider);
+    final isKanbanCardToolActive = ref.watch(isKanbanCardToolActiveProvider);
     final panZoomClipId = ref.watch(panZoomClipIdProvider);
     final snapToGrid = ref.watch(snapToGridProvider);
     final framesPanelOpen = ref.watch(framesPanelOpenProvider);
@@ -1419,6 +1512,22 @@ class BoardScreen extends ConsumerWidget {
                             onPressed: () => _toggleTextTool(ref),
                           ),
                           const ShapeToolButton(),
+                          PillIconButton(
+                            tooltip: isKanbanCardToolActive
+                                ? 'Cancel kanban card tool'
+                                : 'Add kanban card',
+                            icon: Icons.view_agenda_outlined,
+                            color: isKanbanCardToolActive
+                                ? AppTheme.accent
+                                : null,
+                            onPressed: () => _toggleKanbanCardTool(ref),
+                          ),
+                          PillIconButton(
+                            tooltip: 'Insert kanban board',
+                            icon: Icons.dashboard_outlined,
+                            onPressed: () =>
+                                _insertKanbanBoard(context, ref),
+                          ),
                           PillIconButton(
                             tooltip: snapToGrid
                                 ? 'Disable snap to grid'

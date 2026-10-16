@@ -8,8 +8,10 @@ import 'tables/boards_table.dart';
 import 'tables/clips_table.dart';
 import 'tables/connectors_table.dart';
 import 'tables/frames_table.dart';
+import 'tables/kanban_boards_table.dart';
 import 'tables/local_blobs_table.dart';
 import 'tables/strokes_table.dart';
+import 'tables/swimlanes_table.dart';
 import 'tables/themes_table.dart';
 
 part 'database.g.dart';
@@ -48,6 +50,8 @@ Future<void> _addColumnIfMissing(
     Connectors,
     AppSettings,
     Themes,
+    KanbanBoards,
+    Swimlanes,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -57,7 +61,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 26;
+  int get schemaVersion => 27;
 
   Future<void> _seedDefaultBoard(Migrator m) {
     return into(boards).insert(
@@ -206,6 +210,13 @@ class AppDatabase extends _$AppDatabase {
         await _addColumnIfMissing(m, clips, clips.linkTitle);
         await _addColumnIfMissing(m, themes, themes.gridCrossInterval);
         await _addColumnIfMissing(m, themes, themes.gridCrossScale);
+      }
+      if (from < 27) {
+        await _addColumnIfMissing(m, clips, clips.checklistJson);
+        await _addColumnIfMissing(m, clips, clips.swimlaneId);
+        await _addColumnIfMissing(m, frames, frames.kanbanBoardId);
+        await m.createTable(kanbanBoards);
+        await m.createTable(swimlanes);
       }
     },
   );

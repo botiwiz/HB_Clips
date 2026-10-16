@@ -9,7 +9,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../../core/constants.dart';
 import '../../../core/theme/app_theme.dart';
-import '../../../data/local/database.dart' show FrameRow;
+import '../../../data/local/database.dart' show FrameRow, SwimlaneRow;
 import '../../../data/models/clip.dart';
 import '../../../data/models/connector.dart';
 import '../../../data/models/stroke.dart';
@@ -24,9 +24,11 @@ import '../controllers/undo_controller.dart';
 import '../geometry/connector_geometry.dart';
 import '../geometry/frame_geometry.dart';
 import '../geometry/image_pan_zoom_geometry.dart';
+import '../geometry/kanban_card_geometry.dart';
 import '../geometry/selection_geometry.dart';
 import '../geometry/snap_geometry.dart';
 import '../geometry/spacing_snap_geometry.dart';
+import '../geometry/swimlane_geometry.dart';
 import '../geometry/view_focus_geometry.dart';
 import '../services/add_image_service.dart';
 import '../services/eyedropper_service.dart';
@@ -46,9 +48,12 @@ import 'frame_group_scale_handles.dart';
 import 'frame_widget.dart';
 import 'frames_panel.dart';
 import 'group_scale_handles.dart';
+import 'kanban_card_field_edit_overlay.dart';
+import 'kanban_card_tool_drag_overlay.dart';
 import 'marquee_overlay.dart';
 import 'selection_handles.dart';
 import 'snap_guides_overlay.dart';
+import 'swimlane_divider_overlay.dart';
 import 'text_clip_edit_overlay.dart';
 import 'shape_style_popover.dart';
 import 'shape_tool_drag_overlay.dart';
@@ -175,6 +180,11 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
   // tool above, for placing a new vector shape clip instead.
   Offset? _shapeToolStartBoard;
   bool _shapeToolMoved = false;
+
+  // Kanban-card tool: identical click-or-drag placement contract as the
+  // shape tool above, for placing a new kanban-card clip instead.
+  Offset? _kanbanCardToolStartBoard;
+  bool _kanbanCardToolMoved = false;
 
   // Frame move/resize/group-scale - only checked once a pointer-down
   // misses every clip (frames sit behind clips, see FrameGeometry's doc
@@ -407,6 +417,28 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     return null;
   }
 
+  /// Swimlane counterpart to [_hitTestFrame] - independent of it (see the
+  /// plan's "frameId and swimlaneId containment never consult each other"
+  /// decision). [framesByKanbanBoard] groups all tagged Frames by their
+  /// `kanbanBoardId` so each lane's column-span can be computed without
+  /// re-filtering the full frame list per lane.
+  SwimlaneRow? _hitTestSwimlane(
+    List<SwimlaneRow> swimlanes,
+    Map<String, List<FrameRow>> framesByKanbanBoard,
+    Offset boardPoint,
+  ) {
+    for (final lane in swimlanes.reversed) {
+      final columnSpan = SwimlaneGeometry.columnSpanBoardRect(
+        framesByKanbanBoard[lane.kanbanBoardId] ?? const [],
+      );
+      if (columnSpan != null &&
+          SwimlaneGeometry.pointInSwimlane(boardPoint, lane, columnSpan)) {
+        return lane;
+      }
+    }
+    return null;
+  }
+
   FrameRow? _findFrameById(List<FrameRow> frames, String id) {
     for (final frame in frames) {
       if (frame.id == id) return frame;
@@ -473,6 +505,8 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     _textToolMoved = false;
     _shapeToolStartBoard = null;
     _shapeToolMoved = false;
+    _kanbanCardToolStartBoard = null;
+    _kanbanCardToolMoved = false;
     _undoTransformBefore = null;
     ref.read(groupDragProvider.notifier).state = null;
     ref.read(marqueeRectProvider.notifier).state = null;
@@ -531,6 +565,8 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     Map<String, DraggingClip> after, {
     Map<String, String?>? frameIdBefore,
     Map<String, String?>? frameIdAfter,
+    Map<String, String?>? swimlaneIdBefore,
+    Map<String, String?>? swimlaneIdAfter,
   }) {
     final before = _undoTransformBefore;
     _undoTransformBefore = null;
@@ -550,7 +586,11 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
         frameIdBefore != null &&
         frameIdAfter != null &&
         frameIdAfter.entries.any((e) => frameIdBefore[e.key] != e.value);
-    if (!changed && !frameIdChanged) return;
+    final swimlaneIdChanged =
+        swimlaneIdBefore != null &&
+        swimlaneIdAfter != null &&
+        swimlaneIdAfter.entries.any((e) => swimlaneIdBefore[e.key] != e.value);
+    if (!changed && !frameIdChanged && !swimlaneIdChanged) return;
     final repo = ref.read(clipsRepositoryProvider);
     ref
         .read(undoManagerProvider.notifier)
@@ -570,6 +610,9 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
               if (frameIdBefore != null)
                 for (final entry in frameIdBefore.entries)
                   repo.setFrameId(entry.key, entry.value),
+              if (swimlaneIdBefore != null)
+                for (final entry in swimlaneIdBefore.entries)
+                  repo.setSwimlaneId(entry.key, entry.value),
             ]),
             redo: () => Future.wait([
               for (final entry in afterSnapshot.entries)
@@ -584,6 +627,9 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
               if (frameIdAfter != null)
                 for (final entry in frameIdAfter.entries)
                   repo.setFrameId(entry.key, entry.value),
+              if (swimlaneIdAfter != null)
+                for (final entry in swimlaneIdAfter.entries)
+                  repo.setSwimlaneId(entry.key, entry.value),
             ]),
           ),
         );
@@ -619,6 +665,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
         newId: newChildId,
         groupId: null,
         frameId: newFrameId,
+        swimlaneId: child.swimlaneId,
       );
       if (!mounted) return;
       newChildIds.add(newChildId);
@@ -686,7 +733,8 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     // zoom-to-selection view snap on key-up, since the frame being
     // renamed is also still selected.
     if (ref.read(editingTextClipIdProvider) != null ||
-        ref.read(renamingFrameIdProvider) != null) {
+        ref.read(renamingFrameIdProvider) != null ||
+        ref.read(editingKanbanFieldProvider) != null) {
       return KeyEventResult.ignored;
     }
     if (event.logicalKey != LogicalKeyboardKey.space) {
@@ -832,6 +880,24 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       }
     }
 
+    // Same click-through guard, for a kanban card's title/checklist-item
+    // inline-edit TextField.
+    final editingKanbanField = ref.read(editingKanbanFieldProvider);
+    if (editingKanbanField != null) {
+      final editingCardClip = ClipGeometry.findById(
+        ref.read(activeClipsProvider).valueOrNull ?? [],
+        editingKanbanField.clipId,
+      );
+      if (editingCardClip != null &&
+          KanbanCardFieldEditOverlay.screenRectFor(
+            editingCardClip,
+            editingKanbanField.itemIndex,
+            ref.read(boardViewProvider),
+          ).contains(event.localPosition)) {
+        return;
+      }
+    }
+
     // A click landing on the frame options menu's trigger button (shown
     // next to a sole selected frame's name) must not fall through to
     // this canvas's own frame-selection/drag logic either - same
@@ -920,6 +986,15 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     }
     if (ref.read(isShapeToolActiveProvider)) {
       _handleShapeToolPointerDown(event);
+      return;
+    }
+    if (ref.read(isKanbanCardToolActiveProvider)) {
+      _handleKanbanCardToolPointerDown(event);
+      return;
+    }
+    final kanbanLinkSource = ref.read(kanbanLinkSourceProvider);
+    if (kanbanLinkSource != null) {
+      _handleKanbanLinkSourcePointerDown(event, kanbanLinkSource);
       return;
     }
     if (ref.read(isDrawModeProvider)) {
@@ -1240,6 +1315,95 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
         }
         return;
       }
+      if (hit.type == ClipType.kanbanCard) {
+        final linkButtonRect = KanbanCardGeometry.toBoardRect(
+          hit,
+          KanbanCardGeometry.linkButtonRectLocal(hit),
+        );
+        if (linkButtonRect.contains(boardPos)) {
+          ref.read(selectedClipIdsProvider.notifier).state = {hit.id};
+          ref.read(kanbanLinkSourceProvider.notifier).state = (
+            clipId: hit.id,
+            side: ConnectorSide.right,
+          );
+          return;
+        }
+        final clipsRepo = ref.read(clipsRepositoryProvider);
+        final items = hit.checklist.items;
+        for (var i = 0; i < items.length; i++) {
+          final checkboxRect = KanbanCardGeometry.toBoardRect(
+            hit,
+            KanbanCardGeometry.checklistCheckboxRectLocal(hit, i),
+          );
+          if (checkboxRect.contains(boardPos)) {
+            ref.read(selectedClipIdsProvider.notifier).state = {hit.id};
+            final before = hit.checklist;
+            final newItems = [...before.items];
+            newItems[i] = newItems[i].copyWith(done: !newItems[i].done);
+            final after = Checklist(items: newItems);
+            clipsRepo.updateChecklist(hit.id, after);
+            ref
+                .read(undoManagerProvider.notifier)
+                .push(
+                  UndoableAction(
+                    undo: () => clipsRepo.updateChecklist(hit.id, before),
+                    redo: () => clipsRepo.updateChecklist(hit.id, after),
+                  ),
+                );
+            return;
+          }
+          final rowRect = KanbanCardGeometry.toBoardRect(
+            hit,
+            KanbanCardGeometry.checklistRowRectLocal(hit, i),
+          );
+          if (rowRect.contains(boardPos) &&
+              _isDoubleClickOn(hit.id, event.localPosition)) {
+            ref.read(selectedClipIdsProvider.notifier).state = {hit.id};
+            ref.read(editingKanbanFieldProvider.notifier).state = (
+              clipId: hit.id,
+              itemIndex: i,
+            );
+            return;
+          }
+        }
+        final addItemRect = KanbanCardGeometry.toBoardRect(
+          hit,
+          KanbanCardGeometry.addItemRowRectLocal(hit, items.length),
+        );
+        if (addItemRect.contains(boardPos)) {
+          ref.read(selectedClipIdsProvider.notifier).state = {hit.id};
+          final before = hit.checklist;
+          final newItem = ChecklistItem(id: _uuid.v4(), label: '');
+          final after = Checklist(items: [...before.items, newItem]);
+          clipsRepo.updateChecklist(hit.id, after);
+          ref
+              .read(undoManagerProvider.notifier)
+              .push(
+                UndoableAction(
+                  undo: () => clipsRepo.updateChecklist(hit.id, before),
+                  redo: () => clipsRepo.updateChecklist(hit.id, after),
+                ),
+              );
+          ref.read(editingKanbanFieldProvider.notifier).state = (
+            clipId: hit.id,
+            itemIndex: before.items.length,
+          );
+          return;
+        }
+        final titleRect = KanbanCardGeometry.toBoardRect(
+          hit,
+          KanbanCardGeometry.titleRectLocal(hit),
+        );
+        if (titleRect.contains(boardPos) &&
+            _isDoubleClickOn(hit.id, event.localPosition)) {
+          ref.read(selectedClipIdsProvider.notifier).state = {hit.id};
+          ref.read(editingKanbanFieldProvider.notifier).state = (
+            clipId: hit.id,
+            itemIndex: null,
+          );
+          return;
+        }
+      }
       if (_multiSelectModifierHeld) {
         final newSelection = {...selection};
         if (!newSelection.remove(hit.id)) newSelection.add(hit.id);
@@ -1293,6 +1457,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
             newId: newId,
             groupId: duplicateGroupId,
             frameId: source.frameId,
+            swimlaneId: source.swimlaneId,
           );
           newIds.add(newId);
           startPositions[newId] = Offset(duplicate.x, duplicate.y);
@@ -1576,6 +1741,10 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     }
     if (_shapeToolStartBoard != null) {
       _handleShapeToolPointerMove(event);
+      return;
+    }
+    if (_kanbanCardToolStartBoard != null) {
+      _handleKanbanCardToolPointerMove(event);
       return;
     }
     if (ref.read(isDrawModeProvider)) {
@@ -2110,6 +2279,10 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       await _handleShapeToolPointerUp(event);
       return;
     }
+    if (_kanbanCardToolStartBoard != null) {
+      await _handleKanbanCardToolPointerUp(event);
+      return;
+    }
     if (ref.read(isDrawModeProvider)) {
       _handleDrawPointerUp(event);
       return;
@@ -2209,7 +2382,9 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       final clipsNow = ref.read(activeClipsProvider).valueOrNull ?? [];
       final target = _hitTestClip(clipsNow, boardPos);
       if (target != null &&
-          (target.type == ClipType.image || target.type == ClipType.shape) &&
+          (target.type == ClipType.image ||
+              target.type == ClipType.shape ||
+              target.type == ClipType.kanbanCard) &&
           target.id != _connectorFromClipId) {
         final rel = ConnectorGeometry.relativePointInClip(target, boardPos);
         final newId = _uuid.v4();
@@ -2393,10 +2568,19 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       final dragMap = ref.read(groupDragProvider);
       if (_groupDragMoved && dragMap != null) {
         final frames = ref.read(boardFramesProvider).valueOrNull ?? [];
+        final swimlanes = ref.read(boardSwimlanesProvider).valueOrNull ?? [];
+        final framesByKanbanBoard = <String, List<FrameRow>>{};
+        for (final f in frames) {
+          if (f.kanbanBoardId != null) {
+            (framesByKanbanBoard[f.kanbanBoardId!] ??= []).add(f);
+          }
+        }
         final clipsNow = ref.read(activeClipsProvider).valueOrNull ?? [];
         final writes = <Future<void>>[];
         final frameIdBefore = <String, String?>{};
         final frameIdAfter = <String, String?>{};
+        final swimlaneIdBefore = <String, String?>{};
+        final swimlaneIdAfter = <String, String?>{};
         for (final entry in dragMap.entries) {
           writes.add(
             repo.updateTransform(entry.key, x: entry.value.x, y: entry.value.y),
@@ -2410,14 +2594,27 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
             entry.value.y + entry.value.height / 2,
           );
           final containingFrame = _hitTestFrame(frames, center);
-          final currentFrameId = ClipGeometry.findById(
-            clipsNow,
-            entry.key,
-          )?.frameId;
+          final currentClip = ClipGeometry.findById(clipsNow, entry.key);
+          final currentFrameId = currentClip?.frameId;
           if (containingFrame?.id != currentFrameId) {
             writes.add(repo.setFrameId(entry.key, containingFrame?.id));
             frameIdBefore[entry.key] = currentFrameId;
             frameIdAfter[entry.key] = containingFrame?.id;
+          }
+
+          // Independent swimlane containment check - deliberately doesn't
+          // consult containingFrame above (see SwimlaneGeometry doc: a
+          // card's lane and column are separate axes).
+          final containingLane = _hitTestSwimlane(
+            swimlanes,
+            framesByKanbanBoard,
+            center,
+          );
+          final currentSwimlaneId = currentClip?.swimlaneId;
+          if (containingLane?.id != currentSwimlaneId) {
+            writes.add(repo.setSwimlaneId(entry.key, containingLane?.id));
+            swimlaneIdBefore[entry.key] = currentSwimlaneId;
+            swimlaneIdAfter[entry.key] = containingLane?.id;
           }
         }
         await Future.wait(writes);
@@ -2432,6 +2629,8 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
             dragMap,
             frameIdBefore: frameIdBefore.isEmpty ? null : frameIdBefore,
             frameIdAfter: frameIdAfter.isEmpty ? null : frameIdAfter,
+            swimlaneIdBefore: swimlaneIdBefore.isEmpty ? null : swimlaneIdBefore,
+            swimlaneIdAfter: swimlaneIdAfter.isEmpty ? null : swimlaneIdAfter,
           );
         }
       } else if (!_groupDragMoved && _pendingCollapseId != null) {
@@ -3193,6 +3392,135 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     ref.read(selectedClipIdsProvider.notifier).state = {id};
   }
 
+  /// Entry point while [isKanbanCardToolActiveProvider] is armed -
+  /// identical click-or-drag placement contract as
+  /// [_handleShapeToolPointerDown].
+  void _handleKanbanCardToolPointerDown(PointerDownEvent event) {
+    if (event.buttons & kPrimaryMouseButton == 0) return;
+    final view = ref.read(boardViewProvider);
+    final boardPos = _screenToBoard(event.localPosition, view);
+    _kanbanCardToolStartBoard = boardPos;
+    _kanbanCardToolMoved = false;
+    ref.read(kanbanCardToolDragRectProvider.notifier).state = Rect.fromPoints(
+      boardPos,
+      boardPos,
+    );
+  }
+
+  void _handleKanbanCardToolPointerMove(PointerMoveEvent event) {
+    final view = ref.read(boardViewProvider);
+    final boardPos = _screenToBoard(event.localPosition, view);
+    final delta = boardPos - _kanbanCardToolStartBoard!;
+    if (delta.distance > 2) _kanbanCardToolMoved = true;
+    ref.read(kanbanCardToolDragRectProvider.notifier).state = Rect.fromPoints(
+      _kanbanCardToolStartBoard!,
+      boardPos,
+    );
+  }
+
+  /// Commits the placement: a plain click places a card at the default
+  /// size centered on the click point; a drag sizes it to the dragged
+  /// rect - same contract as [_handleShapeToolPointerUp]. Immediately
+  /// enters title-edit mode on the new card, same "new clip enters edit
+  /// mode immediately" UX as the text tool.
+  Future<void> _handleKanbanCardToolPointerUp(PointerUpEvent event) async {
+    final startBoard = _kanbanCardToolStartBoard!;
+    final moved = _kanbanCardToolMoved;
+    _kanbanCardToolStartBoard = null;
+    _kanbanCardToolMoved = false;
+    ref.read(kanbanCardToolDragRectProvider.notifier).state = null;
+
+    final view = ref.read(boardViewProvider);
+    final endBoard = _screenToBoard(event.localPosition, view);
+    final rect = ClipGeometry.textToolPlacementRect(
+      start: startBoard,
+      end: endBoard,
+      moved: moved,
+      defaultWidth: kDefaultKanbanCardWidth,
+      defaultHeight: kDefaultKanbanCardHeight,
+    );
+
+    final id = _uuid.v4();
+    await ref
+        .read(clipsRepositoryProvider)
+        .addKanbanCard(
+          id: id,
+          boardId: ref.read(currentBoardIdProvider),
+          x: rect.left,
+          y: rect.top,
+          width: rect.width,
+          height: rect.height,
+        );
+    if (!mounted) return;
+    pushAddClipUndo(ref, id);
+
+    ref.read(isKanbanCardToolActiveProvider.notifier).state = false;
+    ref.read(selectedClipIdsProvider.notifier).state = {id};
+    ref.read(editingKanbanFieldProvider.notifier).state = (
+      clipId: id,
+      itemIndex: null,
+    );
+  }
+
+  /// Entry point while [kanbanLinkSourceProvider] is armed: a single
+  /// click (no drag) either creates a connector to whatever clip is
+  /// under the pointer, or - if the click misses every clip - just
+  /// cancels. Mirrors the existing drag-based connector-creation commit
+  /// in [_handlePointerUp] (same `addConnector` call + undo-push shape)
+  /// but triggered by a plain click instead of a drag-release, and kept
+  /// fully independent of `_connectorFromClipId`/`_connectorFromSide` (by
+  /// design - see [kanbanLinkSourceProvider]'s doc comment).
+  Future<void> _handleKanbanLinkSourcePointerDown(
+    PointerDownEvent event,
+    ({String clipId, ConnectorSide side}) source,
+  ) async {
+    if (event.buttons & kPrimaryMouseButton == 0) return;
+    final view = ref.read(boardViewProvider);
+    final boardPos = _screenToBoard(event.localPosition, view);
+    final clips = ref.read(activeClipsProvider).valueOrNull ?? [];
+    final target = _hitTestClip(clips, boardPos);
+
+    ref.read(kanbanLinkSourceProvider.notifier).state = null; // one-shot
+
+    if (target == null || target.id == source.clipId) return;
+    if (!(target.type == ClipType.image ||
+        target.type == ClipType.shape ||
+        target.type == ClipType.kanbanCard)) {
+      return;
+    }
+
+    final rel = ConnectorGeometry.relativePointInClip(target, boardPos);
+    final newId = _uuid.v4();
+    final boardId = ref.read(currentBoardIdProvider);
+    final connRepo = ref.read(connectorsRepositoryProvider);
+    await connRepo.addConnector(
+      id: newId,
+      boardId: boardId,
+      fromClipId: source.clipId,
+      fromSide: source.side,
+      toClipId: target.id,
+      toRelX: rel.dx,
+      toRelY: rel.dy,
+    );
+    if (!mounted) return;
+    ref
+        .read(undoManagerProvider.notifier)
+        .push(
+          UndoableAction(
+            undo: () => connRepo.deleteConnector(newId),
+            redo: () => connRepo.addConnector(
+              id: newId,
+              boardId: boardId,
+              fromClipId: source.clipId,
+              fromSide: source.side,
+              toClipId: target.id,
+              toRelX: rel.dx,
+              toRelY: rel.dy,
+            ),
+          ),
+        );
+  }
+
   /// Entry point while [panZoomClipIdProvider] names an active clip:
   /// a hit on that same clip starts a pan/zoom drag; a double-click on it
   /// or a click anywhere else exits the mode (a click on the floating
@@ -3309,7 +3637,8 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     if (ref.read(isDrawModeProvider) ||
         ref.read(panZoomClipIdProvider) != null ||
         ref.read(isTextToolActiveProvider) ||
-        ref.read(isShapeToolActiveProvider)) {
+        ref.read(isShapeToolActiveProvider) ||
+        ref.read(isKanbanCardToolActiveProvider)) {
       return;
     }
     final view = ref.read(boardViewProvider);
@@ -3374,6 +3703,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     final defineFrameRect = ref.watch(defineFrameRectProvider);
     final textToolDragRect = ref.watch(textToolDragRectProvider);
     final shapeToolDragRect = ref.watch(shapeToolDragRectProvider);
+    final kanbanCardToolDragRect = ref.watch(kanbanCardToolDragRectProvider);
     final connectorDraft = ref.watch(connectorDraftProvider);
     final frames = ref.watch(boardFramesProvider).valueOrNull ?? [];
     final selectedFrameIds = ref.watch(selectedFrameIdsProvider);
@@ -3454,11 +3784,15 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
                       if (textToolDragRect != null) const TextToolDragOverlay(),
                       if (shapeToolDragRect != null)
                         const ShapeToolDragOverlay(),
+                      if (kanbanCardToolDragRect != null)
+                        const KanbanCardToolDragOverlay(),
+                      const SwimlaneDividerOverlay(),
                       if (connectorDraft != null) const ConnectorDraftOverlay(),
                       const SnapGuidesOverlay(),
                       const TextClipEditOverlay(),
                       const FrameRenameOverlay(),
                       const FrameOptionsMenu(),
+                      const KanbanCardFieldEditOverlay(),
                       if (panZoomClipId == null &&
                           !isDrawMode &&
                           !isTextToolActive) ...[

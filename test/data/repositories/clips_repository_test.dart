@@ -121,6 +121,7 @@ void main() {
       newId: _uuid.v4(),
       groupId: null,
       frameId: null,
+      swimlaneId: null,
       boardId: otherBoardId,
     );
 
@@ -150,10 +151,83 @@ void main() {
       newId: _uuid.v4(),
       groupId: null,
       frameId: null,
+      swimlaneId: null,
     );
 
     expect(duplicate.type, ClipType.link);
     expect(duplicate.linkUrl, 'https://example.com');
     expect(duplicate.linkTitle, 'Example Site');
+  });
+
+  test('addKanbanCard persists title and type == kanbanCard with an empty '
+      'checklist', () async {
+    final id = _uuid.v4();
+    final card = await repo.addKanbanCard(
+      id: id,
+      boardId: kLocalBoardId,
+      x: 0,
+      y: 0,
+      title: 'Ship the feature',
+    );
+
+    expect(card.type, ClipType.kanbanCard);
+    expect(card.textContent, 'Ship the feature');
+    expect(card.checklist.items, isEmpty);
+
+    final clips = await repo.watchActiveClips(kLocalBoardId).first;
+    final clip = clips.firstWhere((c) => c.id == id);
+    expect(clip.type, ClipType.kanbanCard);
+    expect(clip.textContent, 'Ship the feature');
+  });
+
+  test('updateChecklist round-trips a non-empty checklist', () async {
+    final id = _uuid.v4();
+    await repo.addKanbanCard(id: id, boardId: kLocalBoardId, x: 0, y: 0);
+
+    const checklist = Checklist(
+      items: [
+        ChecklistItem(id: 'a', label: 'First', done: true),
+        ChecklistItem(id: 'b', label: 'Second'),
+      ],
+    );
+    await repo.updateChecklist(id, checklist);
+
+    final clips = await repo.watchActiveClips(kLocalBoardId).first;
+    final clip = clips.firstWhere((c) => c.id == id);
+    expect(clip.checklist.items, hasLength(2));
+    expect(clip.checklist.items[0].label, 'First');
+    expect(clip.checklist.items[0].done, isTrue);
+    expect(clip.checklist.items[1].label, 'Second');
+    expect(clip.checklist.items[1].done, isFalse);
+  });
+
+  test('duplicateClip on a kanban card carries checklistJson and '
+      'swimlaneId over', () async {
+    final sourceId = _uuid.v4();
+    await repo.addKanbanCard(
+      id: sourceId,
+      boardId: kLocalBoardId,
+      x: 0,
+      y: 0,
+      title: 'Card',
+    );
+    const checklist = Checklist(items: [ChecklistItem(id: 'a', label: 'X')]);
+    await repo.updateChecklist(sourceId, checklist);
+    await repo.setSwimlaneId(sourceId, 'lane-1');
+    final source = (await repo.watchActiveClips(kLocalBoardId).first)
+        .firstWhere((c) => c.id == sourceId);
+
+    final duplicate = await repo.duplicateClip(
+      source,
+      newId: _uuid.v4(),
+      groupId: null,
+      frameId: null,
+      swimlaneId: source.swimlaneId,
+    );
+
+    expect(duplicate.type, ClipType.kanbanCard);
+    expect(duplicate.checklist.items, hasLength(1));
+    expect(duplicate.checklist.items.single.label, 'X');
+    expect(duplicate.swimlaneId, 'lane-1');
   });
 }
