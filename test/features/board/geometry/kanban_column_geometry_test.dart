@@ -44,6 +44,26 @@ void main() {
       expect(addButton.left, lastColumn.right + kKanbanColumnGap);
     });
 
+    test('dividerRect is null after the last column, and inset within '
+        'every other column\'s own vertical extent at the midpoint of its '
+        'gap with the next one', () {
+      final element = _element(
+        width: KanbanElementGeometry.widthForColumnCount(3),
+      );
+
+      expect(KanbanColumnGeometry.dividerRect(element, 2, 3), isNull);
+
+      for (final index in [0, 1]) {
+        final col = KanbanColumnGeometry.columnRect(element, index);
+        final next = KanbanColumnGeometry.columnRect(element, index + 1);
+        final divider = KanbanColumnGeometry.dividerRect(element, index, 3);
+        expect(divider, isNotNull);
+        expect(divider!.left, (col.right + next.left) / 2);
+        expect(divider.top, greaterThan(col.top));
+        expect(divider.bottom, lessThan(col.bottom));
+      }
+    });
+
     test('clampScrollOffset clamps to [0, overflow] and is 0 when content '
         'already fits', () {
       final element = _element();

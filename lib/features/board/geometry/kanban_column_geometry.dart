@@ -51,6 +51,33 @@ class KanbanColumnGeometry {
     );
   }
 
+  /// Vertical inset (board-space px) a divider line stops short of the
+  /// column's own top/bottom edges - keeps it clear of the header band
+  /// above and the add-task row below, purely cosmetic.
+  static const double _dividerInset = 12;
+
+  /// Board-space divider line between column [index] and the next one, at
+  /// the horizontal midpoint of the gap between them - a zero-width `Rect`
+  /// (only `top`/`bottom`/`left` are meaningful; callers render a fixed-
+  /// width line at `left`, not a board-scaled one, same convention this
+  /// widget's borders already follow) inset vertically from the column's
+  /// own extent. `null` for the last column (nothing after it to divide).
+  static Rect? dividerRect(
+    KanbanElementRow element,
+    int index,
+    int columnCount,
+  ) {
+    if (index >= columnCount - 1) return null;
+    final col = columnRect(element, index);
+    final x = col.right + kKanbanColumnGap / 2;
+    return Rect.fromLTRB(
+      x,
+      col.top + _dividerInset,
+      x,
+      col.bottom - _dividerInset,
+    );
+  }
+
   /// Board-space rect of the scrollable task-list viewport, between the
   /// header and the add-task button.
   static Rect taskListViewportRect(KanbanElementRow element, int index) {

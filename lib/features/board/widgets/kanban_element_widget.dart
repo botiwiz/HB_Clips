@@ -147,6 +147,22 @@ class KanbanElementWidget extends StatelessWidget {
               tasksByColumn[sortedColumns[i].id] ?? const [],
               ghostTask?.columnId == sortedColumns[i].id ? ghostTask : null,
             ),
+          for (var i = 0; i < sortedColumns.length - 1; i++)
+            if (KanbanColumnGeometry.dividerRect(
+                  element,
+                  i,
+                  sortedColumns.length,
+                )
+                case final dividerRect?)
+              Positioned(
+                left: local(dividerRect).left,
+                top: local(dividerRect).top,
+                width: 1,
+                height: local(dividerRect).height,
+                child: IgnorePointer(
+                  child: ColoredBox(color: AppTheme.border),
+                ),
+              ),
           Positioned.fromRect(
             rect: local(
               KanbanColumnGeometry.addColumnButtonRect(
