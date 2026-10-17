@@ -6,15 +6,18 @@ import 'local/database.dart';
 import 'local_blob_store.dart';
 import 'models/clip.dart';
 import 'models/connector.dart';
+import 'models/kanban.dart';
 import 'models/stroke.dart';
 import 'repositories/app_settings_repository.dart';
 import 'repositories/boards_repository.dart';
 import 'repositories/clips_repository.dart';
 import 'repositories/connectors_repository.dart';
 import 'repositories/frames_repository.dart';
-import 'repositories/kanban_boards_repository.dart';
+import 'repositories/kanban_columns_repository.dart';
+import 'repositories/kanban_elements_repository.dart';
+import 'repositories/kanban_task_links_repository.dart';
+import 'repositories/kanban_tasks_repository.dart';
 import 'repositories/strokes_repository.dart';
-import 'repositories/swimlanes_repository.dart';
 import 'repositories/themes_repository.dart';
 
 final databaseProvider = Provider<AppDatabase>((ref) {
@@ -87,22 +90,74 @@ final connectorsRepositoryProvider = Provider<ConnectorsRepository>((ref) {
   return ConnectorsRepository(ref.watch(databaseProvider));
 });
 
-final kanbanBoardsRepositoryProvider = Provider<KanbanBoardsRepository>((ref) {
-  return KanbanBoardsRepository(ref.watch(databaseProvider));
+final kanbanElementsRepositoryProvider = Provider<KanbanElementsRepository>((
+  ref,
+) {
+  return KanbanElementsRepository(ref.watch(databaseProvider));
 });
 
-final boardKanbanBoardsProvider = StreamProvider<List<KanbanBoardRow>>((ref) {
+final boardKanbanElementsProvider = StreamProvider<List<KanbanElementRow>>((
+  ref,
+) {
   final boardId = ref.watch(currentBoardIdProvider);
-  return ref.watch(kanbanBoardsRepositoryProvider).watchKanbanBoards(boardId);
+  return ref
+      .watch(kanbanElementsRepositoryProvider)
+      .watchKanbanElements(boardId);
 });
 
-final swimlanesRepositoryProvider = Provider<SwimlanesRepository>((ref) {
-  return SwimlanesRepository(ref.watch(databaseProvider));
+final kanbanColumnsRepositoryProvider = Provider<KanbanColumnsRepository>((
+  ref,
+) {
+  return KanbanColumnsRepository(ref.watch(databaseProvider));
 });
 
-final boardSwimlanesProvider = StreamProvider<List<SwimlaneRow>>((ref) {
+/// Every column belonging to any kanban element on the current board, in
+/// one subscription - `KanbanElementWidget` groups these by
+/// `kanbanElementId` and sorts by `sortOrder` itself (see
+/// `KanbanColumnGeometry`), same "watch everything for the board, filter/
+/// group in-memory" convention `boardFramesProvider` already follows.
+final boardKanbanColumnsProvider = StreamProvider<List<KanbanColumnRow>>((
+  ref,
+) {
   final boardId = ref.watch(currentBoardIdProvider);
-  return ref.watch(swimlanesRepositoryProvider).watchSwimlanes(boardId);
+  return ref
+      .watch(kanbanColumnsRepositoryProvider)
+      .watchColumnsForBoard(boardId);
+});
+
+final kanbanTasksRepositoryProvider = Provider<KanbanTasksRepository>((ref) {
+  return KanbanTasksRepository(ref.watch(databaseProvider));
+});
+
+/// Every task belonging to any column of any kanban element on the
+/// current board, in one subscription - consumers group by
+/// `KanbanTask.columnId` and sort by `sortOrder` themselves (see
+/// `KanbanColumnGeometry`). A single board-wide stream (rather than one
+/// scoped per element) is what lets e.g. `KanbanTaskFieldEditOverlay`
+/// find "the task currently being edited" by id alone, without first
+/// having to know which element it belongs to.
+final boardKanbanTasksProvider = StreamProvider<List<KanbanTask>>((ref) {
+  final boardId = ref.watch(currentBoardIdProvider);
+  return ref.watch(kanbanTasksRepositoryProvider).watchTasksForBoard(boardId);
+});
+
+final kanbanTaskLinksRepositoryProvider = Provider<KanbanTaskLinksRepository>((
+  ref,
+) {
+  return KanbanTaskLinksRepository(ref.watch(databaseProvider));
+});
+
+/// Every kanban-task link on the current board, in one subscription -
+/// `ClipWidget`/`FrameWidget`'s link-badge rendering filters this by their
+/// own clip/frame id (same "watch everything for the parent scope, filter
+/// client-side" convention the rest of this provider file already uses).
+final boardKanbanTaskLinksProvider = StreamProvider<List<KanbanTaskLinkRow>>((
+  ref,
+) {
+  final boardId = ref.watch(currentBoardIdProvider);
+  return ref
+      .watch(kanbanTaskLinksRepositoryProvider)
+      .watchLinksForBoard(boardId);
 });
 
 final activeConnectorsProvider = StreamProvider<List<Connector>>((ref) {

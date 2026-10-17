@@ -12,25 +12,37 @@ const double kDefaultShapeHeight = 120;
 const double kDefaultLinkClipWidth = 260;
 const double kDefaultLinkClipHeight = 72;
 
-/// Default size for a newly placed kanban-card clip - a vertical
-/// "ticket" footprint (title band + a handful of checklist rows), unlike
-/// the link clip's compact horizontal button. Like every other clip
-/// type, this is only the starting size - there is no auto-grow-to-
-/// content sizing anywhere in this app, so a card with more items than
-/// fit just scrolls/clips until the user drags it bigger.
-const double kDefaultKanbanCardWidth = 240;
-const double kDefaultKanbanCardHeight = 160;
-
-/// Column (Frame) width/height used only by the "Insert Kanban Board"
-/// one-click action (`board_screen.dart._insertKanbanBoard`) - taller
-/// than a bare `createFrame` default (320x240) since a kanban column
-/// needs headroom for several stacked cards from the moment it's
-/// inserted, not just immediately-resized empty space. The gap between
-/// inserted columns deliberately reuses `kBoardGridSpacing` rather than
-/// a new constant, matching this composite's seams to the visible
-/// dot-grid.
+/// Fixed width of every kanban column - Trello-style lists are a
+/// constant width (the board scrolls vertically per list, not
+/// horizontally per column). `kanban_elements.width` is always derived
+/// from this times column count plus [kKanbanColumnGap]/
+/// [kKanbanElementPadding], never independently set - see
+/// `KanbanElementGeometry`.
 const double kKanbanColumnWidth = 280;
-const double kKanbanColumnHeight = 420;
+
+/// Horizontal gap between adjacent kanban columns.
+const double kKanbanColumnGap = 16;
+
+/// Board-space height reserved for one column's header band (name +
+/// add/delete chrome), above its task list.
+const double kKanbanColumnHeaderHeight = 32;
+
+/// Board-space height of a kanban element's own title band, above every
+/// column's header.
+const double kKanbanElementHeaderHeight = 32;
+
+/// Default height for a newly inserted kanban element - the one
+/// interactively user-resizable dimension (see `kanban_elements.height`'s
+/// doc comment; width is always derived, never a user drag).
+const double kKanbanElementDefaultHeight = 480;
+
+/// Board-space padding around a kanban element's column content on every
+/// side.
+const double kKanbanElementPadding = 12;
+
+/// Minimum board-space height of one task row inside a column - a task
+/// with a longer title/checklist grows taller, never shorter than this.
+const double kKanbanTaskRowMinHeight = 44;
 
 /// Placeholder board id used before auth/multi-board support (Phase 5+)
 /// exists. Every local clip belongs to this single implicit board.

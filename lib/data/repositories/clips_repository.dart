@@ -145,32 +145,6 @@ class ClipsRepository {
     );
   }
 
-  Future<BoardClip> addKanbanCard({
-    required String id,
-    required String boardId,
-    required double x,
-    required double y,
-    double width = kDefaultKanbanCardWidth,
-    double height = kDefaultKanbanCardHeight,
-    String title = '',
-  }) async {
-    final zIndex = await _nextZIndex(boardId);
-    return _insertClip(
-      ClipsCompanion.insert(
-        id: id,
-        boardId: boardId,
-        type: 'kanban_card',
-        x: Value(x),
-        y: Value(y),
-        width: Value(width),
-        height: Value(height),
-        zIndex: Value(zIndex),
-        textContent: Value(title),
-        checklistJson: Value(Checklist.empty.toJson()),
-      ),
-    );
-  }
-
   /// Fills in a link clip's title and/or cached thumbnail path once the
   /// async metadata fetch (kicked off right after the clip is created)
   /// completes - safe to call with partial data (e.g. a title found but
@@ -201,10 +175,10 @@ class ClipsRepository {
   /// params. Shared by Alt-drag-duplicate and internal copy/paste - the
   /// two gestures that clone a clip rather than placing a fresh empty
   /// one via [addImageClip]/[addTextNote]/[addShapeClip]. Callers always
-  /// pass [groupId]/[frameId]/[swimlaneId] explicitly (even as null) since
-  /// there's no sensible shared default between "duplicate in place" (keep
-  /// the source's own group/frame/lane) and "paste elsewhere" (start
-  /// ungrouped and unparented). [boardId] defaults to [source]'s own board - pass
+  /// pass [groupId]/[frameId] explicitly (even as null) since there's no
+  /// sensible shared default between "duplicate in place" (keep the
+  /// source's own group/frame) and "paste elsewhere" (start ungrouped and
+  /// unparented). [boardId] defaults to [source]'s own board - pass
   /// it explicitly to land the duplicate on a *different* board (a
   /// cross-board paste); z-ordering is then computed against that target
   /// board, not the source board's. `localFilePath` is reused as-is with
@@ -217,7 +191,6 @@ class ClipsRepository {
     double? y,
     required String? groupId,
     required String? frameId,
-    required String? swimlaneId,
     String? boardId,
   }) async {
     final targetBoardId = boardId ?? source.boardId;
@@ -238,7 +211,6 @@ class ClipsRepository {
         backgroundColorHex: Value(source.backgroundColorHex),
         groupId: Value(groupId),
         frameId: Value(frameId),
-        swimlaneId: Value(swimlaneId),
         localFilePath: Value(source.localFilePath),
         linkUrl: Value(source.linkUrl),
         linkTitle: Value(source.linkTitle),
@@ -254,7 +226,6 @@ class ClipsRepository {
         shapeStrokeColorHex: Value(source.shapeStrokeColorHex),
         shapeStrokeWidth: Value(source.shapeStrokeWidth),
         highlightColorHex: Value(source.highlightColorHex),
-        checklistJson: Value(source.checklist.toJson()),
       ),
     );
   }
@@ -320,19 +291,6 @@ class ClipsRepository {
     return (_db.update(_db.clips)..where((c) => c.id.equals(id))).write(
       ClipsCompanion(
         textFormattingJson: Value(formatting.toJson()),
-        updatedAt: Value(DateTime.now()),
-      ),
-    );
-  }
-
-  /// Sets a kanban card's full checklist. Ignored for non-kanban-card
-  /// clips. Callers write the whole structure each time (one item
-  /// toggled, added, renamed, or removed) - same "whole-document setter"
-  /// convention as [updateTextFormatting].
-  Future<void> updateChecklist(String id, Checklist checklist) {
-    return (_db.update(_db.clips)..where((c) => c.id.equals(id))).write(
-      ClipsCompanion(
-        checklistJson: Value(checklist.toJson()),
         updatedAt: Value(DateTime.now()),
       ),
     );
@@ -414,19 +372,6 @@ class ClipsRepository {
   Future<void> setFrameId(String id, String? frameId) {
     return (_db.update(_db.clips)..where((c) => c.id.equals(id))).write(
       ClipsCompanion(frameId: Value(frameId), updatedAt: Value(DateTime.now())),
-    );
-  }
-
-  /// Sets or clears which swimlane this clip is nested inside - called
-  /// whenever a clip drag ends and its new center point has entered or
-  /// left a swimlane's y-range (same drag-end spatial-containment
-  /// convention as [setFrameId], on the orthogonal axis).
-  Future<void> setSwimlaneId(String id, String? swimlaneId) {
-    return (_db.update(_db.clips)..where((c) => c.id.equals(id))).write(
-      ClipsCompanion(
-        swimlaneId: Value(swimlaneId),
-        updatedAt: Value(DateTime.now()),
-      ),
     );
   }
 
@@ -516,14 +461,39 @@ class ClipsRepository {
     );
   }
 
+  /// Permanently removes a clip, cascading to any `kanban_task_links` rows
+  /// that linked it to a kanban task - same cascade-on-real-deletion
+  /// convention `FramesRepository.deleteFrame` follows.
   Future<void> deleteForever(String id) {
-    return (_db.delete(_db.clips)..where((c) => c.id.equals(id))).go();
+    return _db.transaction(() async {
+      await (_db.delete(
+        _db.kanbanTaskLinks,
+      )..where((l) => l.clipId.equals(id))).go();
+      await (_db.delete(_db.clips)..where((c) => c.id.equals(id))).go();
+    });
   }
 
   Future<void> emptyBin(String boardId) {
-    return (_db.delete(
-      _db.clips,
-    )..where((c) => c.boardId.equals(boardId) & c.isBinned.equals(true))).go();
+    return _db.transaction(() async {
+      final binnedIds = await (_db.selectOnly(_db.clips)
+            ..addColumns([_db.clips.id])
+            ..where(
+              _db.clips.boardId.equals(boardId) &
+                  _db.clips.isBinned.equals(true),
+            ))
+          .map((row) => row.read(_db.clips.id)!)
+          .get();
+      if (binnedIds.isNotEmpty) {
+        await (_db.delete(
+          _db.kanbanTaskLinks,
+        )..where((l) => l.clipId.isIn(binnedIds))).go();
+      }
+      await (_db.delete(_db.clips)
+            ..where(
+              (c) => c.boardId.equals(boardId) & c.isBinned.equals(true),
+            ))
+          .go();
+    });
   }
 
   /// Assigns [groupId] to every clip in [ids], so clicking any one of them

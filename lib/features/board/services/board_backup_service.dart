@@ -255,10 +255,9 @@ Future<BoardBackupSummary> _populateBoardFromManifest(
           newId: newId,
           groupId: newGroupId,
           frameId: newFrameId,
-          // Backups don't carry kanban-board/swimlane data this round (see
-          // Kanban plan's "explicitly out of scope" list) - a restored
-          // clip always lands with no swimlane membership.
-          swimlaneId: null,
+          // Backups don't carry kanban-element/column/task/link data this
+          // round (see the Kanban-rebuild plan's "explicitly out of scope"
+          // list).
         );
     clipIdMap[c.id] = newId;
   }

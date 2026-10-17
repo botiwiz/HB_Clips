@@ -40,7 +40,6 @@ class FramesRepository {
     required double y,
     required double width,
     required double height,
-    String? kanbanBoardId,
   }) async {
     final sortOrder = await _nextSortOrder(boardId);
     await _db
@@ -55,7 +54,6 @@ class FramesRepository {
             width: Value(width),
             height: Value(height),
             sortOrder: Value(sortOrder),
-            kanbanBoardId: Value(kanbanBoardId),
           ),
         );
   }
@@ -163,6 +161,13 @@ class FramesRepository {
           ),
         );
       }
+
+      // Unlike children, any kanban_task_links pointing at this frame are
+      // deleted outright, not reparented - the frame itself is really
+      // gone, so there's nothing left for the link to mean.
+      await (_db.delete(
+        _db.kanbanTaskLinks,
+      )..where((l) => l.frameId.equals(id))).go();
 
       await (_db.delete(_db.frames)..where((f) => f.id.equals(id))).go();
     });

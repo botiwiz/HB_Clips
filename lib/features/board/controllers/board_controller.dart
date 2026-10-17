@@ -267,15 +267,6 @@ final selectedShapeKindProvider = StateProvider<ShapeKind>(
 /// ephemeral-preview role as [textToolDragRectProvider].
 final shapeToolDragRectProvider = StateProvider<Rect?>((ref) => null);
 
-/// Whether the one-shot kanban-card tool is armed - same "arm, use once,
-/// auto-revert" contract as [isTextToolActiveProvider]/
-/// [isShapeToolActiveProvider], for placing a new kanban-card clip.
-final isKanbanCardToolActiveProvider = StateProvider<bool>((ref) => false);
-
-/// Live board-space rect of an in-progress kanban-card-tool click-drag -
-/// same ephemeral-preview role as [shapeToolDragRectProvider].
-final kanbanCardToolDragRectProvider = StateProvider<Rect?>((ref) => null);
-
 /// The most recently applied fill color (null = no fill), stroke color,
 /// and stroke width for ANY shape clip - updated by `ShapeStylePopover`
 /// every time one of its controls actually changes a shape's style, and
@@ -297,15 +288,6 @@ final lastShapeStrokeWidthProvider = StateProvider<double?>((ref) => null);
 /// for exactly one clip" role [panZoomClipIdProvider] plays for image
 /// pan/zoom.
 final editingTextClipIdProvider = StateProvider<String?>((ref) => null);
-
-/// Which single-line field of which kanban card is actively being
-/// edited as a focused `TextField` (via `KanbanCardFieldEditOverlay`) -
-/// null when none. `itemIndex == null` means the card's own title
-/// (`textContent`); a non-null `itemIndex` means that checklist item's
-/// label. Same single-id "only one thing in inline-edit mode at a time"
-/// role [editingTextClipIdProvider] plays for text notes.
-final editingKanbanFieldProvider =
-    StateProvider<({String clipId, int? itemIndex})?>((ref) => null);
 
 /// Whether the text-edit toolbar's anchored highlight-color picker bar is
 /// currently open - read by `board_canvas.dart`'s click-through guard
@@ -355,17 +337,6 @@ class ConnectorDraft {
 }
 
 final connectorDraftProvider = StateProvider<ConnectorDraft?>((ref) => null);
-
-/// Armed by a kanban card's link button: the next click on another clip
-/// creates a `Connector` from [clipId]'s [side] to whatever was clicked,
-/// then this clears back to null - same "arm, use once, auto-revert"
-/// contract as [isTextToolActiveProvider]/[isShapeToolActiveProvider],
-/// not [connectorDraftProvider]'s own continuous-drag mechanism (which
-/// stays untouched - this is a deliberately separate, independent code
-/// path, not a reuse of the drag-start plumbing). A click that misses
-/// every clip just clears this (cancel) without creating anything.
-final kanbanLinkSourceProvider =
-    StateProvider<({String clipId, ConnectorSide side})?>((ref) => null);
 
 /// The connector currently selected by clicking its curve - null when
 /// none is selected. Mutually exclusive with clip/frame selection: picking

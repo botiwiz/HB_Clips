@@ -8,10 +8,12 @@ import 'tables/boards_table.dart';
 import 'tables/clips_table.dart';
 import 'tables/connectors_table.dart';
 import 'tables/frames_table.dart';
-import 'tables/kanban_boards_table.dart';
+import 'tables/kanban_columns_table.dart';
+import 'tables/kanban_elements_table.dart';
+import 'tables/kanban_task_links_table.dart';
+import 'tables/kanban_tasks_table.dart';
 import 'tables/local_blobs_table.dart';
 import 'tables/strokes_table.dart';
-import 'tables/swimlanes_table.dart';
 import 'tables/themes_table.dart';
 
 part 'database.g.dart';
@@ -50,8 +52,10 @@ Future<void> _addColumnIfMissing(
     Connectors,
     AppSettings,
     Themes,
-    KanbanBoards,
-    Swimlanes,
+    KanbanElements,
+    KanbanColumns,
+    KanbanTasks,
+    KanbanTaskLinks,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -61,7 +65,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 27;
+  int get schemaVersion => 28;
 
   Future<void> _seedDefaultBoard(Migrator m) {
     return into(boards).insert(
@@ -211,12 +215,38 @@ class AppDatabase extends _$AppDatabase {
         await _addColumnIfMissing(m, themes, themes.gridCrossInterval);
         await _addColumnIfMissing(m, themes, themes.gridCrossScale);
       }
-      if (from < 27) {
-        await _addColumnIfMissing(m, clips, clips.checklistJson);
-        await _addColumnIfMissing(m, clips, clips.swimlaneId);
-        await _addColumnIfMissing(m, frames, frames.kanbanBoardId);
-        await m.createTable(kanbanBoards);
-        await m.createTable(swimlanes);
+      // `from < 27` used to add `clips.checklistJson`/`clips.swimlaneId`,
+      // `frames.kanbanBoardId`, and create the `kanban_boards`/`swimlanes`
+      // tables - all belonging to the Miro-style free-floating kanban
+      // feature now fully replaced (not migrated) by the `from < 28` step
+      // below. That step's `TableMigration` calls rebuild `clips`/`frames`
+      // from their CURRENT Dart definitions regardless of which columns
+      // existed before, and `deleteTable` is `DROP TABLE IF EXISTS`, so
+      // jumping straight from a pre-27 database to 28 is already handled
+      // correctly without this step - it's removed outright rather than
+      // kept as a dead no-op referencing columns/tables that no longer
+      // exist in the Dart schema.
+      if (from < 28) {
+        // Clean break per the Kanban-to-Trello rebuild: the old
+        // free-floating Miro-style kanban board/swimlane feature is fully
+        // replaced, not migrated (confirmed no production board data
+        // depends on the old format). Delete any kanban-card clips
+        // outright first so they don't trip ClipTypeStorage.fromStorage
+        // on a now-unknown type value, then rebuild clips/frames from
+        // their current (kanban-card/swimlane-free) Dart definitions -
+        // same TableMigration column-drop precedent as the `from < 12`
+        // step above - and drop the old tables entirely.
+        await (m.database.delete(
+          clips,
+        )..where((c) => c.type.equals('kanban_card'))).go();
+        await m.alterTable(TableMigration(clips));
+        await m.alterTable(TableMigration(frames));
+        await m.deleteTable('swimlanes');
+        await m.deleteTable('kanban_boards');
+        await m.createTable(kanbanElements);
+        await m.createTable(kanbanColumns);
+        await m.createTable(kanbanTasks);
+        await m.createTable(kanbanTaskLinks);
       }
     },
   );

@@ -10,7 +10,7 @@ import '../../core/constants.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/color_swatch_button.dart';
 import '../../core/widgets/hsv_color_picker.dart';
-import '../../data/local/database.dart' show FrameRow;
+import '../../data/local/database.dart' show FrameRow, KanbanElementRow;
 import '../../data/models/clip.dart';
 import '../../data/models/connector.dart';
 import '../../data/models/stroke.dart';
@@ -26,10 +26,12 @@ import 'controllers/board_controller.dart';
 import 'controllers/auto_backup_scheduler.dart';
 import 'controllers/backup_folder_prompt_controller.dart';
 import 'controllers/board_view_persistence_controller.dart';
+import 'controllers/kanban_controller.dart';
 import 'controllers/undo_controller.dart';
 import 'geometry/copy_paste_remap.dart';
 import 'geometry/frame_geometry.dart';
 import 'geometry/frame_presets.dart';
+import 'geometry/kanban_element_geometry.dart';
 import 'geometry/pdf_export_selection.dart';
 import 'geometry/selection_geometry.dart';
 import 'services/add_image_service.dart' show pushAddClipUndo;
@@ -313,6 +315,16 @@ class BoardScreen extends ConsumerWidget {
   }
 
   void _binSelected(WidgetRef ref) {
+    // A selected kanban element takes priority over everything else - it
+    // has its own entirely separate selection slot
+    // (`selectedKanbanElementIdProvider`), never mixed into the generic
+    // clip/frame/connector selection.
+    final selectedKanbanElementId = ref.read(selectedKanbanElementIdProvider);
+    if (selectedKanbanElementId != null) {
+      _deleteKanbanElement(ref, selectedKanbanElementId);
+      return;
+    }
+
     // A selected connector takes priority over a clip selection - the two
     // are mutually exclusive per `board_canvas.dart`'s click-to-select
     // rules, so this is just precedence, not a real conflict.
@@ -374,6 +386,89 @@ class BoardScreen extends ConsumerWidget {
             undo: () =>
                 Future.wait([for (final id in ids) repo.restoreClip(id)]),
             redo: () => Future.wait([for (final id in ids) repo.binClip(id)]),
+          ),
+        );
+  }
+
+  /// Deletes a kanban element, snapshotting its full subtree (every
+  /// column, every task with its checklist, and every link those tasks
+  /// held) so undo can recreate it exactly - unlike `_deleteFrames`'
+  /// unparent-not-delete cascade, nothing here survives a real delete
+  /// (see `KanbanElementsRepository.deleteKanbanElement`'s doc comment),
+  /// so undo must recreate the whole subtree rather than just reversing
+  /// one unparenting write.
+  void _deleteKanbanElement(WidgetRef ref, String elementId) {
+    final elements = ref.read(boardKanbanElementsProvider).valueOrNull ?? [];
+    KanbanElementRow? element;
+    for (final e in elements) {
+      if (e.id == elementId) {
+        element = e;
+        break;
+      }
+    }
+    if (element == null) return;
+
+    final columns =
+        (ref.read(boardKanbanColumnsProvider).valueOrNull ?? [])
+            .where((c) => c.kanbanElementId == elementId)
+            .toList();
+    final columnIds = columns.map((c) => c.id).toSet();
+    final tasks = (ref.read(boardKanbanTasksProvider).valueOrNull ?? [])
+        .where((t) => columnIds.contains(t.columnId))
+        .toList();
+    final taskIds = tasks.map((t) => t.id).toSet();
+    final links = (ref.read(boardKanbanTaskLinksProvider).valueOrNull ?? [])
+        .where((l) => taskIds.contains(l.taskId))
+        .toList();
+
+    final elementsRepo = ref.read(kanbanElementsRepositoryProvider);
+    final columnsRepo = ref.read(kanbanColumnsRepositoryProvider);
+    final tasksRepo = ref.read(kanbanTasksRepositoryProvider);
+    final linksRepo = ref.read(kanbanTaskLinksRepositoryProvider);
+
+    final capturedElement = element;
+    elementsRepo.deleteKanbanElement(elementId);
+    ref.read(selectedKanbanElementIdProvider.notifier).state = null;
+
+    ref
+        .read(undoManagerProvider.notifier)
+        .push(
+          UndoableAction(
+            undo: () async {
+              await elementsRepo.createKanbanElement(
+                id: capturedElement.id,
+                boardId: capturedElement.boardId,
+                name: capturedElement.name,
+                x: capturedElement.x,
+                y: capturedElement.y,
+                width: capturedElement.width,
+                height: capturedElement.height,
+              );
+              for (final column in columns) {
+                await columnsRepo.createColumn(
+                  id: column.id,
+                  kanbanElementId: column.kanbanElementId,
+                  name: column.name,
+                  sortOrder: column.sortOrder,
+                );
+              }
+              for (final task in tasks) {
+                await tasksRepo.recreateTask(
+                  id: task.id,
+                  columnId: task.columnId,
+                  title: task.title,
+                  checklist: task.checklist,
+                  sortOrder: task.sortOrder,
+                );
+              }
+              if (links.isNotEmpty) {
+                await linksRepo.addLinks([
+                  for (final l in links)
+                    (id: l.id, taskId: l.taskId, clipId: l.clipId, frameId: l.frameId),
+                ]);
+              }
+            },
+            redo: () => elementsRepo.deleteKanbanElement(elementId),
           ),
         );
   }
@@ -670,7 +765,6 @@ class BoardScreen extends ConsumerWidget {
           y: child.y + dy,
           groupId: null,
           frameId: newFrameId,
-          swimlaneId: child.swimlaneId,
           boardId: targetBoardId,
         );
         if (!context.mounted) return;
@@ -758,7 +852,6 @@ class BoardScreen extends ConsumerWidget {
         y: clip.y + dy,
         groupId: pasteGroupId,
         frameId: null,
-        swimlaneId: null,
         boardId: targetBoardId,
       );
       if (!context.mounted) return;
@@ -847,7 +940,7 @@ class BoardScreen extends ConsumerWidget {
     }
     if (ref.read(editingTextClipIdProvider) != null ||
         ref.read(renamingFrameIdProvider) != null ||
-        ref.read(editingKanbanFieldProvider) != null) {
+        ref.read(editingKanbanTaskFieldProvider) != null) {
       return KeyEventResult.ignored;
     }
     if (isBinKey) {
@@ -894,17 +987,6 @@ class BoardScreen extends ConsumerWidget {
     if (next) {
       ref.read(selectedClipIdsProvider.notifier).state = {};
       ref.read(isDrawModeProvider.notifier).state = false;
-    }
-  }
-
-  void _toggleKanbanCardTool(WidgetRef ref) {
-    final next = !ref.read(isKanbanCardToolActiveProvider);
-    ref.read(isKanbanCardToolActiveProvider.notifier).state = next;
-    if (next) {
-      ref.read(selectedClipIdsProvider.notifier).state = {};
-      ref.read(isDrawModeProvider.notifier).state = false;
-      ref.read(isTextToolActiveProvider.notifier).state = false;
-      ref.read(isShapeToolActiveProvider.notifier).state = false;
     }
   }
 
@@ -1027,78 +1109,64 @@ class BoardScreen extends ConsumerWidget {
         );
   }
 
-  /// One-click "add the whole board in" action matching Miro's own
-  /// native Kanban widget: 3 column Frames tagged with a fresh
-  /// `KanbanBoard` id, plus one default swimlane spanning them -
-  /// everything else (dragging cards between columns/lanes, linking,
-  /// checklist editing) is free once these exist, per the Kanban plan's
-  /// "columns = plain Frames" design. Centered the same way [_addFrame]
-  /// centers a plain frame.
-  Future<void> _insertKanbanBoard(BuildContext context, WidgetRef ref) async {
+  /// One-click "add a kanban board in" action: one rigid, self-contained
+  /// [KanbanElementRow] seeded with 3 columns ("To Do"/"In Progress"/
+  /// "Done") - the Trello-parity replacement for the old "3 tagged Frames
+  /// + 1 KanbanBoard + 1 Swimlane" composite. Centered the same way
+  /// [_addFrame] centers a plain frame.
+  Future<void> _insertKanbanElement(
+    BuildContext context,
+    WidgetRef ref,
+  ) async {
     const columnNames = ['To Do', 'In Progress', 'Done'];
     final center = _viewportCenterBoardPoint(ref, MediaQuery.sizeOf(context));
     final boardId = ref.read(currentBoardIdProvider);
 
-    final kanbanBoardId = _uuid.v4();
-    final frameIds = [for (var _ in columnNames) _uuid.v4()];
-    final swimlaneId = _uuid.v4();
+    final elementId = _uuid.v4();
+    final columnIds = [for (var _ in columnNames) _uuid.v4()];
 
-    final totalWidth =
-        columnNames.length * kKanbanColumnWidth +
-        (columnNames.length - 1) * kBoardGridSpacing;
-    final originX = center.dx - totalWidth / 2;
-    final originY = center.dy - kKanbanColumnHeight / 2;
+    final width = KanbanElementGeometry.widthForColumnCount(
+      columnNames.length,
+    );
+    const height = kKanbanElementDefaultHeight;
+    final originX = center.dx - width / 2;
+    final originY = center.dy - height / 2;
 
-    final framesRepo = ref.read(framesRepositoryProvider);
-    final kanbanBoardsRepo = ref.read(kanbanBoardsRepositoryProvider);
-    final swimlanesRepo = ref.read(swimlanesRepositoryProvider);
+    final elementsRepo = ref.read(kanbanElementsRepositoryProvider);
+    final columnsRepo = ref.read(kanbanColumnsRepositoryProvider);
 
     Future<void> createAll() => Future.wait([
-      for (var i = 0; i < columnNames.length; i++)
-        framesRepo.createFrame(
-          id: frameIds[i],
-          boardId: boardId,
-          name: columnNames[i],
-          x: originX + i * (kKanbanColumnWidth + kBoardGridSpacing),
-          y: originY,
-          width: kKanbanColumnWidth,
-          height: kKanbanColumnHeight,
-          kanbanBoardId: kanbanBoardId,
-        ),
-      kanbanBoardsRepo.createKanbanBoard(
-        id: kanbanBoardId,
+      elementsRepo.createKanbanElement(
+        id: elementId,
         boardId: boardId,
         name: 'Kanban Board',
         x: originX,
         y: originY,
-        width: totalWidth,
-        height: kKanbanColumnHeight,
+        width: width,
+        height: height,
       ),
-      swimlanesRepo.createSwimlane(
-        id: swimlaneId,
-        kanbanBoardId: kanbanBoardId,
-        name: 'General',
-        y: originY,
-        height: kKanbanColumnHeight,
-        sortOrder: 0,
-      ),
+      for (var i = 0; i < columnNames.length; i++)
+        columnsRepo.createColumn(
+          id: columnIds[i],
+          kanbanElementId: elementId,
+          name: columnNames[i],
+          sortOrder: i.toDouble(),
+        ),
     ]);
 
     await createAll();
 
     // One combined undo entry for the whole composite insert -
-    // generalizes pushAddClipsUndo's batching precedent from "N clips
-    // via 1 repository" to "3 Frames + 1 KanbanBoard + 1 Swimlane via 3
-    // repositories." Undoing fully removes the Frames (not just unparents
-    // them - deleteKanbanBoard alone only clears their kanbanBoardId).
+    // generalizes pushAddClipsUndo's batching precedent from "N clips via
+    // 1 repository" to "1 element + 3 columns via 2 repositories."
+    // deleteKanbanElement alone already cascades to its columns (and
+    // their tasks/links, though there are none yet here), so undo is a
+    // single call.
     ref
         .read(undoManagerProvider.notifier)
         .push(
           UndoableAction(
-            undo: () => Future.wait([
-              for (final id in frameIds) framesRepo.deleteFrame(id),
-              kanbanBoardsRepo.deleteKanbanBoard(kanbanBoardId),
-            ]),
+            undo: () => elementsRepo.deleteKanbanElement(elementId),
             redo: () => createAll(),
           ),
         );
@@ -1353,7 +1421,6 @@ class BoardScreen extends ConsumerWidget {
     final hasSelection = selection.isNotEmpty;
     final isDrawMode = ref.watch(isDrawModeProvider);
     final isTextToolActive = ref.watch(isTextToolActiveProvider);
-    final isKanbanCardToolActive = ref.watch(isKanbanCardToolActiveProvider);
     final panZoomClipId = ref.watch(panZoomClipIdProvider);
     final snapToGrid = ref.watch(snapToGridProvider);
     final framesPanelOpen = ref.watch(framesPanelOpenProvider);
@@ -1513,20 +1580,10 @@ class BoardScreen extends ConsumerWidget {
                           ),
                           const ShapeToolButton(),
                           PillIconButton(
-                            tooltip: isKanbanCardToolActive
-                                ? 'Cancel kanban card tool'
-                                : 'Add kanban card',
-                            icon: Icons.view_agenda_outlined,
-                            color: isKanbanCardToolActive
-                                ? AppTheme.accent
-                                : null,
-                            onPressed: () => _toggleKanbanCardTool(ref),
-                          ),
-                          PillIconButton(
                             tooltip: 'Insert kanban board',
                             icon: Icons.dashboard_outlined,
                             onPressed: () =>
-                                _insertKanbanBoard(context, ref),
+                                _insertKanbanElement(context, ref),
                           ),
                           PillIconButton(
                             tooltip: snapToGrid

@@ -23,11 +23,17 @@ class FrameWidget extends StatelessWidget {
   // so showing this one too would be non-functional dead chrome.
   final bool showResizeHandles;
 
+  /// Whether this frame has at least one `kanban_task_links` row pointing
+  /// at it - same corner-badge role `ClipWidget.hasKanbanLink` plays for
+  /// clips, computed the same way by `BoardCanvas`.
+  final bool hasKanbanLink;
+
   const FrameWidget({
     super.key,
     required this.frame,
     required this.selected,
     required this.showResizeHandles,
+    this.hasKanbanLink = false,
   });
 
   @override
@@ -85,6 +91,28 @@ class FrameWidget extends StatelessWidget {
                     color: AppTheme.canvasBackground,
                     width: 1,
                   ),
+                ),
+              ),
+            ),
+          if (hasKanbanLink)
+            Positioned(
+              right: -8,
+              top: -8,
+              child: Container(
+                width: 16,
+                height: 16,
+                decoration: BoxDecoration(
+                  color: AppTheme.accent,
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: AppTheme.canvasBackground,
+                    width: 1,
+                  ),
+                ),
+                child: const Icon(
+                  Icons.link,
+                  size: 11,
+                  color: Colors.white,
                 ),
               ),
             ),

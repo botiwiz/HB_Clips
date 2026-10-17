@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:hb_clips/data/models/clip.dart';
+import 'package:hb_clips/data/models/kanban.dart';
 
 void main() {
   group('Checklist.fromJson/toJson', () {

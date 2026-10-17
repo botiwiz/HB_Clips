@@ -26,15 +26,6 @@ class Frames extends Table {
   /// null-means-default convention as `Clips.backgroundColorHex`.
   TextColumn get backgroundColorHex => text().nullable()();
 
-  /// The kanban board this Frame is column N of, or null for a plain
-  /// Frame with no kanban-board association - same nullable-FK,
-  /// ignored-when-null convention as `Clips.frameId`. Tagged
-  /// automatically when a Frame is created as part of "Insert Kanban
-  /// Board"; never auto-cleared by any spatial drag (unlike
-  /// `Clips.frameId`/`Clips.swimlaneId` - a column's board membership is
-  /// permanent identity, not a spatial containment fact).
-  TextColumn get kanbanBoardId => text().nullable()();
-
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
 

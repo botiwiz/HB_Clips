@@ -9,9 +9,11 @@ import 'package:uuid/uuid.dart';
 
 import '../../../core/constants.dart';
 import '../../../core/theme/app_theme.dart';
-import '../../../data/local/database.dart' show FrameRow, SwimlaneRow;
+import '../../../data/local/database.dart'
+    show FrameRow, KanbanColumnRow, KanbanElementRow, KanbanTaskLinkRow;
 import '../../../data/models/clip.dart';
 import '../../../data/models/connector.dart';
+import '../../../data/models/kanban.dart';
 import '../../../data/models/stroke.dart';
 import '../../../data/providers.dart';
 import '../../annotation/controllers/annotation_controller.dart';
@@ -20,15 +22,17 @@ import '../../annotation/drawing_overlay.dart';
 import '../../annotation/geometry/eraser_geometry.dart';
 import '../../annotation/stroke_painter.dart';
 import '../controllers/board_controller.dart';
+import '../controllers/kanban_controller.dart';
 import '../controllers/undo_controller.dart';
 import '../geometry/connector_geometry.dart';
 import '../geometry/frame_geometry.dart';
 import '../geometry/image_pan_zoom_geometry.dart';
-import '../geometry/kanban_card_geometry.dart';
+import '../geometry/kanban_column_geometry.dart';
+import '../geometry/kanban_element_geometry.dart';
+import '../geometry/kanban_task_geometry.dart';
 import '../geometry/selection_geometry.dart';
 import '../geometry/snap_geometry.dart';
 import '../geometry/spacing_snap_geometry.dart';
-import '../geometry/swimlane_geometry.dart';
 import '../geometry/view_focus_geometry.dart';
 import '../services/add_image_service.dart';
 import '../services/eyedropper_service.dart';
@@ -40,6 +44,7 @@ import 'clip_widget.dart';
 import 'connector_draft_overlay.dart';
 import 'connector_handles.dart';
 import 'connectors_overlay.dart';
+import 'context_menu_overlay.dart';
 import 'define_frame_overlay.dart';
 import 'dot_grid_background.dart';
 import 'frame_options_menu.dart';
@@ -48,12 +53,12 @@ import 'frame_group_scale_handles.dart';
 import 'frame_widget.dart';
 import 'frames_panel.dart';
 import 'group_scale_handles.dart';
-import 'kanban_card_field_edit_overlay.dart';
-import 'kanban_card_tool_drag_overlay.dart';
+import 'kanban_element_widget.dart';
+import 'kanban_task_field_edit_overlay.dart';
+import 'link_to_task_banner.dart';
 import 'marquee_overlay.dart';
 import 'selection_handles.dart';
 import 'snap_guides_overlay.dart';
-import 'swimlane_divider_overlay.dart';
 import 'text_clip_edit_overlay.dart';
 import 'shape_style_popover.dart';
 import 'shape_tool_drag_overlay.dart';
@@ -181,10 +186,28 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
   Offset? _shapeToolStartBoard;
   bool _shapeToolMoved = false;
 
-  // Kanban-card tool: identical click-or-drag placement contract as the
-  // shape tool above, for placing a new kanban-card clip instead.
-  Offset? _kanbanCardToolStartBoard;
-  bool _kanbanCardToolMoved = false;
+  // Whole-kanban-element select/drag - a kanban element always moves as
+  // one rigid unit (never mixed into the generic clip/frame multi-select),
+  // so this is its own dedicated single-id field set, not a map the way
+  // frame move is (there's no multi-element-drag concept).
+  String? _kanbanElementDragId;
+  Offset? _kanbanElementDragStartPointer;
+  Rect? _kanbanElementDragStartRect;
+  bool _kanbanElementDragMoved = false;
+
+  // Kanban-element bottom-edge resize (height only - width is always
+  // derived from column count, see KanbanElementGeometry.widthForColumnCount).
+  String? _kanbanElementResizeId;
+  Rect? _kanbanElementResizeStartRect;
+
+  // Kanban-task drag-to-reorder/drag-across-columns - live preview state
+  // lives in draggingTaskProvider (consumed by KanbanElementWidget for the
+  // ghost render); these fields hold only what's needed to commit/undo on
+  // pointer-up.
+  String? _kanbanTaskDragId;
+  String? _kanbanTaskDragStartColumnId;
+  double? _kanbanTaskDragStartSortOrder;
+  bool _kanbanTaskDragMoved = false;
 
   // Frame move/resize/group-scale - only checked once a pointer-down
   // misses every clip (frames sit behind clips, see FrameGeometry's doc
@@ -412,23 +435,16 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     return null;
   }
 
-  /// Swimlane counterpart to [_hitTestFrame] - independent of it (see the
-  /// plan's "frameId and swimlaneId containment never consult each other"
-  /// decision). [framesByKanbanBoard] groups all tagged Frames by their
-  /// `kanbanBoardId` so each lane's column-span can be computed without
-  /// re-filtering the full frame list per lane.
-  SwimlaneRow? _hitTestSwimlane(
-    List<SwimlaneRow> swimlanes,
-    Map<String, List<FrameRow>> framesByKanbanBoard,
+  /// Kanban-element counterpart to [_hitTestFrame] - a plain outer-rect
+  /// containment test, since (unlike a Frame) a kanban element's rect is
+  /// its own authoritative geometry, nothing to derive.
+  KanbanElementRow? _hitTestKanbanElement(
+    List<KanbanElementRow> elements,
     Offset boardPoint,
   ) {
-    for (final lane in swimlanes.reversed) {
-      final columnSpan = SwimlaneGeometry.columnSpanBoardRect(
-        framesByKanbanBoard[lane.kanbanBoardId] ?? const [],
-      );
-      if (columnSpan != null &&
-          SwimlaneGeometry.pointInSwimlane(boardPoint, lane, columnSpan)) {
-        return lane;
+    for (final element in elements.reversed) {
+      if (KanbanElementGeometry.pointInElement(boardPoint, element)) {
+        return element;
       }
     }
     return null;
@@ -439,6 +455,425 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       if (frame.id == id) return frame;
     }
     return null;
+  }
+
+  KanbanElementRow? _findKanbanElementById(
+    List<KanbanElementRow> elements,
+    String id,
+  ) {
+    for (final element in elements) {
+      if (element.id == id) return element;
+    }
+    return null;
+  }
+
+  /// Dispatches a pointer-down against the kanban element at [boardPos]
+  /// (or the currently-selected element's resize handle, checked first
+  /// since it can sit slightly outside that element's own outer rect) -
+  /// resize handle, whole-element move, a task row (arms a possible
+  /// drag; pointer-up decides click-vs-drag), the `[+]` add-task button,
+  /// or the add-column affordance. Returns true if the event was
+  /// consumed (caller must not fall through to frame/clip handling).
+  bool _handleKanbanElementPointerDown(
+    PointerDownEvent event,
+    Offset boardPos,
+    List<KanbanElementRow> elements,
+  ) {
+    final selectedElementId = ref.read(selectedKanbanElementIdProvider);
+    final view = ref.read(boardViewProvider);
+
+    if (selectedElementId != null) {
+      final selectedElement = _findKanbanElementById(
+        elements,
+        selectedElementId,
+      );
+      if (selectedElement != null &&
+          KanbanElementGeometry.hitTestResizeHandle(
+            selectedElement,
+            view,
+            event.localPosition,
+          )) {
+        _kanbanElementResizeId = selectedElement.id;
+        _kanbanElementResizeStartRect = KanbanElementGeometry.outerRect(
+          selectedElement,
+        );
+        ref.read(kanbanElementResizeRectProvider.notifier).state =
+            _kanbanElementResizeStartRect;
+        return true;
+      }
+    }
+
+    final hit = _hitTestKanbanElement(elements, boardPos);
+    if (hit == null) {
+      if (selectedElementId != null) {
+        ref.read(selectedKanbanElementIdProvider.notifier).state = null;
+      }
+      return false;
+    }
+
+    ref.read(selectedKanbanElementIdProvider.notifier).state = hit.id;
+    ref.read(selectedClipIdsProvider.notifier).state = {};
+    ref.read(selectedFrameIdsProvider.notifier).state = {};
+    ref.read(selectedConnectorIdProvider.notifier).state = null;
+
+    final columns =
+        (ref.read(boardKanbanColumnsProvider).valueOrNull ?? [])
+            .where((c) => c.kanbanElementId == hit.id)
+            .toList()
+          ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+    final elementTasks = ref.read(boardKanbanTasksProvider).valueOrNull ?? [];
+
+    if (KanbanColumnGeometry.addColumnButtonRect(
+      hit,
+      columns.length,
+    ).contains(boardPos)) {
+      _addKanbanColumn(hit, columns.length);
+      return true;
+    }
+
+    for (var i = 0; i < columns.length; i++) {
+      final column = columns[i];
+      if (KanbanColumnGeometry.addTaskButtonRect(
+        hit,
+        i,
+      ).contains(boardPos)) {
+        _addKanbanTask(column);
+        return true;
+      }
+      final columnTasks =
+          elementTasks.where((t) => t.columnId == column.id).toList()
+            ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+      final scrollOffset =
+          ref.read(kanbanColumnScrollOffsetProvider)[column.id] ?? 0.0;
+      for (var rowIndex = 0; rowIndex < columnTasks.length; rowIndex++) {
+        final rowRect = KanbanTaskGeometry.taskRowRect(
+          hit,
+          i,
+          rowIndex,
+          scrollOffset,
+        );
+        if (rowRect.contains(boardPos)) {
+          _kanbanTaskDragId = columnTasks[rowIndex].id;
+          _kanbanTaskDragStartColumnId = column.id;
+          _kanbanTaskDragStartSortOrder = columnTasks[rowIndex].sortOrder;
+          _gestureStartPointerBoard = boardPos;
+          return true;
+        }
+      }
+    }
+
+    // Header/background click (not a resize handle, button, or task row)
+    // - starts a whole-element drag.
+    _kanbanElementDragId = hit.id;
+    _kanbanElementDragStartPointer = boardPos;
+    _kanbanElementDragStartRect = KanbanElementGeometry.outerRect(hit);
+    ref.read(kanbanElementDragRectProvider.notifier).state =
+        _kanbanElementDragStartRect;
+    return true;
+  }
+
+  Future<void> _addKanbanColumn(
+    KanbanElementRow element,
+    int currentColumnCount,
+  ) async {
+    final columnsRepo = ref.read(kanbanColumnsRepositoryProvider);
+    final elementsRepo = ref.read(kanbanElementsRepositoryProvider);
+    final newColumnId = _uuid.v4();
+    final oldWidth = element.width;
+    final newWidth = KanbanElementGeometry.widthForColumnCount(
+      currentColumnCount + 1,
+    );
+    await columnsRepo.createColumn(
+      id: newColumnId,
+      kanbanElementId: element.id,
+      name: 'List',
+    );
+    await elementsRepo.updateTransform(element.id, width: newWidth);
+    if (!mounted) return;
+    ref
+        .read(undoManagerProvider.notifier)
+        .push(
+          UndoableAction(
+            undo: () => Future.wait([
+              columnsRepo.deleteColumn(newColumnId),
+              elementsRepo.updateTransform(element.id, width: oldWidth),
+            ]),
+            redo: () => Future.wait([
+              columnsRepo.createColumn(
+                id: newColumnId,
+                kanbanElementId: element.id,
+                name: 'List',
+              ),
+              elementsRepo.updateTransform(element.id, width: newWidth),
+            ]),
+          ),
+        );
+  }
+
+  Future<void> _addKanbanTask(KanbanColumnRow column) async {
+    final tasksRepo = ref.read(kanbanTasksRepositoryProvider);
+    final newTaskId = _uuid.v4();
+    await tasksRepo.addTask(id: newTaskId, columnId: column.id);
+    if (!mounted) return;
+    ref
+        .read(undoManagerProvider.notifier)
+        .push(
+          UndoableAction(
+            undo: () => tasksRepo.deleteTask(newTaskId),
+            redo: () => tasksRepo.addTask(id: newTaskId, columnId: column.id),
+          ),
+        );
+    ref.read(editingKanbanTaskFieldProvider.notifier).state = newTaskId;
+  }
+
+  KanbanTask? _findTaskById(List<KanbanTask> tasks, String id) {
+    for (final task in tasks) {
+      if (task.id == id) return task;
+    }
+    return null;
+  }
+
+  KanbanColumnRow? _findColumnById(List<KanbanColumnRow> columns, String id) {
+    for (final column in columns) {
+      if (column.id == id) return column;
+    }
+    return null;
+  }
+
+  bool _hitTestClipLinkBadge(
+    BoardClip clip,
+    BoardViewState view,
+    Offset screenPoint,
+  ) {
+    final topRight =
+        Offset(clip.x + clip.width, clip.y) * view.scale + view.panOffset;
+    return (topRight - screenPoint).distance <= 12;
+  }
+
+  bool _hitTestFrameLinkBadge(
+    FrameRow frame,
+    BoardViewState view,
+    Offset screenPoint,
+  ) {
+    final topRight =
+        Offset(frame.x + frame.width, frame.y) * view.scale + view.panOffset;
+    return (topRight - screenPoint).distance <= 12;
+  }
+
+  /// Pans/fits the viewport to [taskId]'s kanban element, selects that
+  /// element, and opens the task's detail overlay - the "navigate back"
+  /// half of the link-badge feature (clicking a clip/frame's badge).
+  void _jumpToTaskById(String taskId) {
+    final task = _findTaskById(
+      ref.read(boardKanbanTasksProvider).valueOrNull ?? [],
+      taskId,
+    );
+    if (task == null) return;
+    final column = _findColumnById(
+      ref.read(boardKanbanColumnsProvider).valueOrNull ?? [],
+      task.columnId,
+    );
+    if (column == null) return;
+    final element = _findKanbanElementById(
+      ref.read(boardKanbanElementsProvider).valueOrNull ?? [],
+      column.kanbanElementId,
+    );
+    if (element == null) return;
+    ref
+        .read(boardViewProvider.notifier)
+        .fitRect(KanbanElementGeometry.outerRect(element), _canvasSize);
+    ref.read(selectedKanbanElementIdProvider.notifier).state = element.id;
+    ref.read(editingKanbanTaskFieldProvider.notifier).state = taskId;
+  }
+
+  /// A click on a clip/frame's kanban-link badge navigates to the linked
+  /// task(s) instead of selecting/dragging the object - a single link
+  /// jumps straight there, several offer a picker (reusing
+  /// `ContextMenuOverlay`, same as the "pick which kanban element" picker
+  /// below).
+  void _navigateToLinkedTask(Offset screenPosition, List<KanbanTaskLinkRow> links) {
+    if (links.length == 1) {
+      _jumpToTaskById(links.first.taskId);
+      return;
+    }
+    final tasks = ref.read(boardKanbanTasksProvider).valueOrNull ?? [];
+    final items = [
+      for (final link in links)
+        if (_findTaskById(tasks, link.taskId) case final task?)
+          ContextMenuItem(
+            label: task.title.isEmpty ? 'Untitled' : task.title,
+            onSelected: () => _jumpToTaskById(link.taskId),
+          ),
+    ];
+    if (items.isEmpty) return;
+    ref.read(contextMenuProvider.notifier).state = ContextMenuRequest(
+      screenPosition: screenPosition,
+      items: items,
+    );
+  }
+
+  /// Right-click handler: resolves the subject (keeping the current
+  /// selection if the hit object is already part of it, else replacing
+  /// the selection with just the hit object) and opens the
+  /// "Link to task..." context menu. A right-click on empty canvas is a
+  /// no-op - no generic context menu exists for that case.
+  void _handleRightClick(
+    PointerDownEvent event,
+    Offset boardPos,
+    Set<String> currentClipSelection,
+    List<BoardClip> clips,
+  ) {
+    final frames = ref.read(boardFramesProvider).valueOrNull ?? [];
+    final hitClip = _hitTestClip(clips, boardPos);
+    final hitFrame = hitClip == null
+        ? _hitTestFrameForSelection(frames, boardPos)
+        : null;
+    if (hitClip == null && hitFrame == null) return;
+
+    final currentFrameSelection = ref.read(selectedFrameIdsProvider);
+    Set<String> clipIds;
+    Set<String> frameIds;
+    final hitAlreadySelected =
+        (hitClip != null && currentClipSelection.contains(hitClip.id)) ||
+        (hitFrame != null && currentFrameSelection.contains(hitFrame.id));
+    if (hitAlreadySelected) {
+      clipIds = currentClipSelection;
+      frameIds = currentFrameSelection;
+    } else if (hitClip != null) {
+      clipIds = {hitClip.id};
+      frameIds = {};
+      ref.read(selectedClipIdsProvider.notifier).state = clipIds;
+      ref.read(selectedFrameIdsProvider.notifier).state = frameIds;
+    } else {
+      clipIds = {};
+      frameIds = {hitFrame!.id};
+      ref.read(selectedClipIdsProvider.notifier).state = clipIds;
+      ref.read(selectedFrameIdsProvider.notifier).state = frameIds;
+    }
+
+    final screenPosition = event.localPosition;
+    ref.read(contextMenuProvider.notifier).state = ContextMenuRequest(
+      screenPosition: screenPosition,
+      items: [
+        ContextMenuItem(
+          label: 'Link to task...',
+          onSelected: () =>
+              _startLinkToTask(screenPosition, clipIds, frameIds),
+        ),
+      ],
+    );
+  }
+
+  void _startLinkToTask(
+    Offset screenPosition,
+    Set<String> clipIds,
+    Set<String> frameIds,
+  ) {
+    final elements = ref.read(boardKanbanElementsProvider).valueOrNull ?? [];
+    if (elements.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No kanban board here yet')),
+      );
+      return;
+    }
+    if (elements.length == 1) {
+      _jumpToKanbanElementAndArmLink(elements.first, clipIds, frameIds);
+      return;
+    }
+    ref.read(contextMenuProvider.notifier).state = ContextMenuRequest(
+      screenPosition: screenPosition,
+      items: [
+        for (final element in elements)
+          ContextMenuItem(
+            label: element.name,
+            onSelected: () =>
+                _jumpToKanbanElementAndArmLink(element, clipIds, frameIds),
+          ),
+      ],
+    );
+  }
+
+  void _jumpToKanbanElementAndArmLink(
+    KanbanElementRow element,
+    Set<String> clipIds,
+    Set<String> frameIds,
+  ) {
+    ref
+        .read(boardViewProvider.notifier)
+        .fitRect(KanbanElementGeometry.outerRect(element), _canvasSize);
+    ref.read(linkToTaskSourceProvider.notifier).state = (
+      clipIds: clipIds,
+      frameIds: frameIds,
+    );
+  }
+
+  /// Entry point while [linkToTaskSourceProvider] is armed: a hit on a
+  /// task creates one `kanban_task_links` row per id in the armed
+  /// clip/frame set, in one transaction/one undo entry; a miss anywhere
+  /// (empty canvas, another clip, outside every kanban element) just
+  /// clears the arm - same cancel-on-miss contract the old
+  /// `kanbanLinkSourceProvider` connector-arrow tool followed.
+  Future<void> _handleLinkToTaskPointerDown(
+    PointerDownEvent event,
+    ({Set<String> clipIds, Set<String> frameIds}) source,
+  ) async {
+    ref.read(linkToTaskSourceProvider.notifier).state = null; // one-shot
+    if (event.buttons & kPrimaryMouseButton == 0) return;
+
+    final view = ref.read(boardViewProvider);
+    final boardPos = _screenToBoard(event.localPosition, view);
+    final elements = ref.read(boardKanbanElementsProvider).valueOrNull ?? [];
+    final hitElement = _hitTestKanbanElement(elements, boardPos);
+    if (hitElement == null) return;
+
+    final columns =
+        (ref.read(boardKanbanColumnsProvider).valueOrNull ?? [])
+            .where((c) => c.kanbanElementId == hitElement.id)
+            .toList()
+          ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+    final elementTasks = ref.read(boardKanbanTasksProvider).valueOrNull ?? [];
+
+    KanbanTask? hitTask;
+    for (var i = 0; i < columns.length && hitTask == null; i++) {
+      final columnTasks =
+          elementTasks.where((t) => t.columnId == columns[i].id).toList()
+            ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+      final scrollOffset =
+          ref.read(kanbanColumnScrollOffsetProvider)[columns[i].id] ?? 0.0;
+      for (var rowIndex = 0; rowIndex < columnTasks.length; rowIndex++) {
+        final rowRect = KanbanTaskGeometry.taskRowRect(
+          hitElement,
+          i,
+          rowIndex,
+          scrollOffset,
+        );
+        if (rowRect.contains(boardPos)) {
+          hitTask = columnTasks[rowIndex];
+          break;
+        }
+      }
+    }
+    if (hitTask == null) return;
+
+    final linksRepo = ref.read(kanbanTaskLinksRepositoryProvider);
+    final links = [
+      for (final clipId in source.clipIds)
+        (id: _uuid.v4(), taskId: hitTask.id, clipId: clipId, frameId: null),
+      for (final frameId in source.frameIds)
+        (id: _uuid.v4(), taskId: hitTask.id, clipId: null, frameId: frameId),
+    ];
+    if (links.isEmpty) return;
+    await linksRepo.addLinks(links);
+    if (!mounted) return;
+    ref
+        .read(undoManagerProvider.notifier)
+        .push(
+          UndoableAction(
+            undo: () =>
+                Future.wait([for (final l in links) linksRepo.deleteLink(l.id)]),
+            redo: () => linksRepo.addLinks(links),
+          ),
+        );
   }
 
   bool get _multiSelectModifierHeld =>
@@ -498,8 +933,16 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     _textToolMoved = false;
     _shapeToolStartBoard = null;
     _shapeToolMoved = false;
-    _kanbanCardToolStartBoard = null;
-    _kanbanCardToolMoved = false;
+    _kanbanElementDragId = null;
+    _kanbanElementDragStartPointer = null;
+    _kanbanElementDragStartRect = null;
+    _kanbanElementDragMoved = false;
+    _kanbanElementResizeId = null;
+    _kanbanElementResizeStartRect = null;
+    _kanbanTaskDragId = null;
+    _kanbanTaskDragStartColumnId = null;
+    _kanbanTaskDragStartSortOrder = null;
+    _kanbanTaskDragMoved = false;
     _undoTransformBefore = null;
     ref.read(groupDragProvider.notifier).state = null;
     ref.read(marqueeRectProvider.notifier).state = null;
@@ -513,6 +956,9 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     ref.read(textToolDragRectProvider.notifier).state = null;
     ref.read(shapeToolDragRectProvider.notifier).state = null;
     ref.read(connectorDraftProvider.notifier).state = null;
+    ref.read(kanbanElementDragRectProvider.notifier).state = null;
+    ref.read(kanbanElementResizeRectProvider.notifier).state = null;
+    ref.read(draggingTaskProvider.notifier).state = null;
   }
 
   /// Updates [snapGuidesProvider] only when it actually changed, avoiding a
@@ -558,8 +1004,6 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     Map<String, DraggingClip> after, {
     Map<String, String?>? frameIdBefore,
     Map<String, String?>? frameIdAfter,
-    Map<String, String?>? swimlaneIdBefore,
-    Map<String, String?>? swimlaneIdAfter,
   }) {
     final before = _undoTransformBefore;
     _undoTransformBefore = null;
@@ -579,11 +1023,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
         frameIdBefore != null &&
         frameIdAfter != null &&
         frameIdAfter.entries.any((e) => frameIdBefore[e.key] != e.value);
-    final swimlaneIdChanged =
-        swimlaneIdBefore != null &&
-        swimlaneIdAfter != null &&
-        swimlaneIdAfter.entries.any((e) => swimlaneIdBefore[e.key] != e.value);
-    if (!changed && !frameIdChanged && !swimlaneIdChanged) return;
+    if (!changed && !frameIdChanged) return;
     final repo = ref.read(clipsRepositoryProvider);
     ref
         .read(undoManagerProvider.notifier)
@@ -603,9 +1043,6 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
               if (frameIdBefore != null)
                 for (final entry in frameIdBefore.entries)
                   repo.setFrameId(entry.key, entry.value),
-              if (swimlaneIdBefore != null)
-                for (final entry in swimlaneIdBefore.entries)
-                  repo.setSwimlaneId(entry.key, entry.value),
             ]),
             redo: () => Future.wait([
               for (final entry in afterSnapshot.entries)
@@ -620,9 +1057,6 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
               if (frameIdAfter != null)
                 for (final entry in frameIdAfter.entries)
                   repo.setFrameId(entry.key, entry.value),
-              if (swimlaneIdAfter != null)
-                for (final entry in swimlaneIdAfter.entries)
-                  repo.setSwimlaneId(entry.key, entry.value),
             ]),
           ),
         );
@@ -658,7 +1092,6 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
         newId: newChildId,
         groupId: null,
         frameId: newFrameId,
-        swimlaneId: child.swimlaneId,
       );
       if (!mounted) return;
       newChildIds.add(newChildId);
@@ -727,7 +1160,19 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     // renamed is also still selected.
     if (ref.read(editingTextClipIdProvider) != null ||
         ref.read(renamingFrameIdProvider) != null ||
-        ref.read(editingKanbanFieldProvider) != null) {
+        ref.read(editingKanbanTaskFieldProvider) != null) {
+      return KeyEventResult.ignored;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.escape &&
+        event is KeyDownEvent) {
+      if (ref.read(linkToTaskSourceProvider) != null) {
+        ref.read(linkToTaskSourceProvider.notifier).state = null;
+        return KeyEventResult.handled;
+      }
+      if (ref.read(contextMenuProvider) != null) {
+        ref.read(contextMenuProvider.notifier).state = null;
+        return KeyEventResult.handled;
+      }
       return KeyEventResult.ignored;
     }
     if (event.logicalKey != LogicalKeyboardKey.space) {
@@ -873,22 +1318,40 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       }
     }
 
-    // Same click-through guard, for a kanban card's title/checklist-item
-    // inline-edit TextField.
-    final editingKanbanField = ref.read(editingKanbanFieldProvider);
-    if (editingKanbanField != null) {
-      final editingCardClip = ClipGeometry.findById(
-        ref.read(activeClipsProvider).valueOrNull ?? [],
-        editingKanbanField.clipId,
+    // Same click-through guard, for a kanban task's expanded detail/edit
+    // overlay (title + checklist) - a click outside it closes it (same
+    // explicit-clear-on-outside-click contract as the context menu guard
+    // just below), since the overlay itself only closes on Escape or a
+    // focus change it can detect internally, neither of which fires for a
+    // click that lands on the canvas's own bare Listener.
+    final editingKanbanTaskId = ref.read(editingKanbanTaskFieldProvider);
+    if (editingKanbanTaskId != null) {
+      final rect = KanbanTaskFieldEditOverlay.screenRectFor(
+        ref,
+        editingKanbanTaskId,
+        ref.read(boardViewProvider),
       );
-      if (editingCardClip != null &&
-          KanbanCardFieldEditOverlay.screenRectFor(
-            editingCardClip,
-            editingKanbanField.itemIndex,
-            ref.read(boardViewProvider),
-          ).contains(event.localPosition)) {
+      if (rect != null && rect.contains(event.localPosition)) {
         return;
       }
+      ref.read(editingKanbanTaskFieldProvider.notifier).state = null;
+    }
+
+    // Same click-through guard, for an open right-click context menu -
+    // a click on the menu itself (handled entirely by ContextMenuOverlay's
+    // own InkWells) must not also fall through to this canvas's selection
+    // logic. A click anywhere else, while the menu is open, dismisses it
+    // (no special-case needed - the generic "replace selection"/"empty
+    // canvas" branches further down already clear provider state as a
+    // side effect of a plain click landing elsewhere).
+    final openContextMenu = ref.read(contextMenuProvider);
+    if (openContextMenu != null) {
+      if (ContextMenuOverlay.screenRectFor(
+        openContextMenu,
+      ).contains(event.localPosition)) {
+        return;
+      }
+      ref.read(contextMenuProvider.notifier).state = null;
     }
 
     // A click landing on the frame options menu's trigger button (shown
@@ -981,13 +1444,9 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       _handleShapeToolPointerDown(event);
       return;
     }
-    if (ref.read(isKanbanCardToolActiveProvider)) {
-      _handleKanbanCardToolPointerDown(event);
-      return;
-    }
-    final kanbanLinkSource = ref.read(kanbanLinkSourceProvider);
-    if (kanbanLinkSource != null) {
-      _handleKanbanLinkSourcePointerDown(event, kanbanLinkSource);
+    final linkToTaskSource = ref.read(linkToTaskSourceProvider);
+    if (linkToTaskSource != null) {
+      _handleLinkToTaskPointerDown(event, linkToTaskSource);
       return;
     }
     if (ref.read(isDrawModeProvider)) {
@@ -1053,9 +1512,17 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       return;
     }
 
-    // A plain right-click isn't wired to anything yet (reserved for a
-    // future context menu) - it shouldn't select or drag whatever's
-    // underneath it either.
+    // A right-click opens the "Link to task..." context menu - resolved
+    // against whatever's directly under the cursor (keeping the current
+    // selection as the link subject if the hit object is already part of
+    // it, so a multi-selection can be bulk-linked; otherwise replacing
+    // the selection with just the hit object, standard desktop right-
+    // click convention). A right-click on empty canvas is a no-op (no
+    // generic context menu exists for that case).
+    if (event.buttons & kSecondaryMouseButton != 0) {
+      _handleRightClick(event, boardPos, selection, clips);
+      return;
+    }
     if (event.buttons & kPrimaryMouseButton == 0) return;
 
     // 0.3. The endpoint handle of the currently-selected connector, if
@@ -1092,6 +1559,51 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
         }
       }
       ref.read(selectedConnectorIdProvider.notifier).state = null;
+    }
+
+    // 0.35. Kanban element hit-test - takes priority over frame/clip
+    // selection below, since an element's own click dispatch (resize
+    // handle, whole-element move, task row click/drag-start, add-task,
+    // add-column) is entirely independent of the generic clip/frame
+    // system (see the Kanban-rebuild plan's architectural decision: a
+    // kanban element owns its columns/tasks as structured child data,
+    // never generic Frames/Clips).
+    final kanbanElements =
+        ref.read(boardKanbanElementsProvider).valueOrNull ?? [];
+    if (_handleKanbanElementPointerDown(event, boardPos, kanbanElements)) {
+      return;
+    }
+
+    // 0.34. A click on a clip/frame's kanban-link badge navigates to the
+    // linked task(s) instead of selecting/dragging the object itself -
+    // checked before the generic clip/frame hit-tests below, since the
+    // badge sits right at a corner of the object's own rect.
+    final kanbanLinksForBadges =
+        ref.read(boardKanbanTaskLinksProvider).valueOrNull ?? [];
+    if (kanbanLinksForBadges.isNotEmpty) {
+      for (final clip in clips) {
+        if (_hitTestClipLinkBadge(clip, view, event.localPosition)) {
+          final linksForClip = kanbanLinksForBadges
+              .where((l) => l.clipId == clip.id)
+              .toList();
+          if (linksForClip.isNotEmpty) {
+            _navigateToLinkedTask(event.localPosition, linksForClip);
+            return;
+          }
+        }
+      }
+      final framesForBadges = ref.read(boardFramesProvider).valueOrNull ?? [];
+      for (final frame in framesForBadges) {
+        if (_hitTestFrameLinkBadge(frame, view, event.localPosition)) {
+          final linksForFrame = kanbanLinksForBadges
+              .where((l) => l.frameId == frame.id)
+              .toList();
+          if (linksForFrame.isNotEmpty) {
+            _navigateToLinkedTask(event.localPosition, linksForFrame);
+            return;
+          }
+        }
+      }
     }
 
     // 0. A click landing on the Arrange-selection button is left entirely
@@ -1317,95 +1829,6 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
         }
         return;
       }
-      if (hit.type == ClipType.kanbanCard) {
-        final linkButtonRect = KanbanCardGeometry.toBoardRect(
-          hit,
-          KanbanCardGeometry.linkButtonRectLocal(hit),
-        );
-        if (linkButtonRect.contains(boardPos)) {
-          ref.read(selectedClipIdsProvider.notifier).state = {hit.id};
-          ref.read(kanbanLinkSourceProvider.notifier).state = (
-            clipId: hit.id,
-            side: ConnectorSide.right,
-          );
-          return;
-        }
-        final clipsRepo = ref.read(clipsRepositoryProvider);
-        final items = hit.checklist.items;
-        for (var i = 0; i < items.length; i++) {
-          final checkboxRect = KanbanCardGeometry.toBoardRect(
-            hit,
-            KanbanCardGeometry.checklistCheckboxRectLocal(hit, i),
-          );
-          if (checkboxRect.contains(boardPos)) {
-            ref.read(selectedClipIdsProvider.notifier).state = {hit.id};
-            final before = hit.checklist;
-            final newItems = [...before.items];
-            newItems[i] = newItems[i].copyWith(done: !newItems[i].done);
-            final after = Checklist(items: newItems);
-            clipsRepo.updateChecklist(hit.id, after);
-            ref
-                .read(undoManagerProvider.notifier)
-                .push(
-                  UndoableAction(
-                    undo: () => clipsRepo.updateChecklist(hit.id, before),
-                    redo: () => clipsRepo.updateChecklist(hit.id, after),
-                  ),
-                );
-            return;
-          }
-          final rowRect = KanbanCardGeometry.toBoardRect(
-            hit,
-            KanbanCardGeometry.checklistRowRectLocal(hit, i),
-          );
-          if (rowRect.contains(boardPos) &&
-              _isDoubleClickOn(hit.id, event.localPosition)) {
-            ref.read(selectedClipIdsProvider.notifier).state = {hit.id};
-            ref.read(editingKanbanFieldProvider.notifier).state = (
-              clipId: hit.id,
-              itemIndex: i,
-            );
-            return;
-          }
-        }
-        final addItemRect = KanbanCardGeometry.toBoardRect(
-          hit,
-          KanbanCardGeometry.addItemRowRectLocal(hit, items.length),
-        );
-        if (addItemRect.contains(boardPos)) {
-          ref.read(selectedClipIdsProvider.notifier).state = {hit.id};
-          final before = hit.checklist;
-          final newItem = ChecklistItem(id: _uuid.v4(), label: '');
-          final after = Checklist(items: [...before.items, newItem]);
-          clipsRepo.updateChecklist(hit.id, after);
-          ref
-              .read(undoManagerProvider.notifier)
-              .push(
-                UndoableAction(
-                  undo: () => clipsRepo.updateChecklist(hit.id, before),
-                  redo: () => clipsRepo.updateChecklist(hit.id, after),
-                ),
-              );
-          ref.read(editingKanbanFieldProvider.notifier).state = (
-            clipId: hit.id,
-            itemIndex: before.items.length,
-          );
-          return;
-        }
-        final titleRect = KanbanCardGeometry.toBoardRect(
-          hit,
-          KanbanCardGeometry.titleRectLocal(hit),
-        );
-        if (titleRect.contains(boardPos) &&
-            _isDoubleClickOn(hit.id, event.localPosition)) {
-          ref.read(selectedClipIdsProvider.notifier).state = {hit.id};
-          ref.read(editingKanbanFieldProvider.notifier).state = (
-            clipId: hit.id,
-            itemIndex: null,
-          );
-          return;
-        }
-      }
       if (_multiSelectModifierHeld) {
         final newSelection = {...selection};
         if (!newSelection.remove(hit.id)) newSelection.add(hit.id);
@@ -1459,7 +1882,6 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
             newId: newId,
             groupId: duplicateGroupId,
             frameId: source.frameId,
-            swimlaneId: source.swimlaneId,
           );
           newIds.add(newId);
           startPositions[newId] = Offset(duplicate.x, duplicate.y);
@@ -1728,10 +2150,6 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       _handleShapeToolPointerMove(event);
       return;
     }
-    if (_kanbanCardToolStartBoard != null) {
-      _handleKanbanCardToolPointerMove(event);
-      return;
-    }
     if (ref.read(isDrawModeProvider)) {
       _handleDrawPointerMove(event);
       return;
@@ -1742,6 +2160,91 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     }
     final view = ref.read(boardViewProvider);
     final boardPos = _screenToBoard(event.localPosition, view);
+
+    if (_kanbanElementResizeId != null &&
+        _kanbanElementResizeStartRect != null) {
+      final start = _kanbanElementResizeStartRect!;
+      final newHeight = (boardPos.dy - start.top).clamp(
+        kKanbanColumnHeaderHeight + kKanbanTaskRowMinHeight * 2,
+        double.infinity,
+      );
+      ref.read(kanbanElementResizeRectProvider.notifier).state = Rect.fromLTWH(
+        start.left,
+        start.top,
+        start.width,
+        newHeight.toDouble(),
+      );
+      return;
+    }
+
+    if (_kanbanElementDragId != null &&
+        _kanbanElementDragStartPointer != null &&
+        _kanbanElementDragStartRect != null) {
+      final delta = boardPos - _kanbanElementDragStartPointer!;
+      if (delta.distance > 2) _kanbanElementDragMoved = true;
+      final start = _kanbanElementDragStartRect!;
+      ref.read(kanbanElementDragRectProvider.notifier).state = Rect.fromLTWH(
+        start.left + delta.dx,
+        start.top + delta.dy,
+        start.width,
+        start.height,
+      );
+      return;
+    }
+
+    if (_kanbanTaskDragId != null) {
+      final elements = ref.read(boardKanbanElementsProvider).valueOrNull ?? [];
+      final columns = ref.read(boardKanbanColumnsProvider).valueOrNull ?? [];
+      final column = _findColumnById(columns, _kanbanTaskDragStartColumnId!);
+      final element = column == null
+          ? null
+          : _findKanbanElementById(elements, column.kanbanElementId);
+      if (element != null) {
+        _kanbanTaskDragMoved = true;
+        final content = KanbanElementGeometry.contentRect(element);
+        final clamped = KanbanTaskGeometry.clampGhostCenter(
+          content,
+          boardPos,
+        );
+        final siblingColumns =
+            columns.where((c) => c.kanbanElementId == element.id).toList()
+              ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+        final columnIndex = KanbanColumnGeometry.columnIndexForPoint(
+          element,
+          siblingColumns.length,
+          clamped,
+        );
+        final targetColumn = siblingColumns[columnIndex];
+        final tasks = ref.read(boardKanbanTasksProvider).valueOrNull ?? [];
+        final siblingTasks =
+            tasks
+                .where(
+                  (t) =>
+                      t.columnId == targetColumn.id &&
+                      t.id != _kanbanTaskDragId,
+                )
+                .toList()
+              ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+        final scrollOffset =
+            ref.read(kanbanColumnScrollOffsetProvider)[targetColumn.id] ??
+            0.0;
+        final insertionIndex = KanbanTaskGeometry.insertionIndexForPoint(
+          element,
+          columnIndex,
+          siblingTasks.length,
+          scrollOffset,
+          clamped,
+        );
+        ref.read(draggingTaskProvider.notifier).state = DraggingTask(
+          taskId: _kanbanTaskDragId!,
+          kanbanElementId: element.id,
+          columnIndex: columnIndex,
+          insertionIndex: insertionIndex,
+          clampedCenter: clamped,
+        );
+      }
+      return;
+    }
 
     if (_connectorFromClipId != null && _connectorFromSide != null) {
       ref.read(connectorDraftProvider.notifier).state = ConnectorDraft(
@@ -2240,10 +2743,6 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       await _handleShapeToolPointerUp(event);
       return;
     }
-    if (_kanbanCardToolStartBoard != null) {
-      await _handleKanbanCardToolPointerUp(event);
-      return;
-    }
     if (ref.read(isDrawModeProvider)) {
       _handleDrawPointerUp(event);
       return;
@@ -2286,6 +2785,130 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       _panZoomGestureStartBoard = null;
       return;
     }
+
+    if (_kanbanElementResizeId != null) {
+      final id = _kanbanElementResizeId!;
+      final startRect = _kanbanElementResizeStartRect!;
+      final finalRect =
+          ref.read(kanbanElementResizeRectProvider) ?? startRect;
+      final elementsRepo = ref.read(kanbanElementsRepositoryProvider);
+      if (finalRect.height != startRect.height) {
+        await elementsRepo.updateTransform(id, height: finalRect.height);
+        if (!mounted) return;
+        ref
+            .read(undoManagerProvider.notifier)
+            .push(
+              UndoableAction(
+                undo: () =>
+                    elementsRepo.updateTransform(id, height: startRect.height),
+                redo: () =>
+                    elementsRepo.updateTransform(id, height: finalRect.height),
+              ),
+            );
+      }
+      _resetGestureState();
+      return;
+    }
+
+    if (_kanbanElementDragId != null) {
+      final id = _kanbanElementDragId!;
+      final startRect = _kanbanElementDragStartRect!;
+      final finalRect = ref.read(kanbanElementDragRectProvider) ?? startRect;
+      if (_kanbanElementDragMoved) {
+        final elementsRepo = ref.read(kanbanElementsRepositoryProvider);
+        await elementsRepo.updateTransform(
+          id,
+          x: finalRect.left,
+          y: finalRect.top,
+        );
+        if (!mounted) return;
+        ref
+            .read(undoManagerProvider.notifier)
+            .push(
+              UndoableAction(
+                undo: () => elementsRepo.updateTransform(
+                  id,
+                  x: startRect.left,
+                  y: startRect.top,
+                ),
+                redo: () => elementsRepo.updateTransform(
+                  id,
+                  x: finalRect.left,
+                  y: finalRect.top,
+                ),
+              ),
+            );
+      }
+      _resetGestureState();
+      return;
+    }
+
+    if (_kanbanTaskDragId != null) {
+      final taskId = _kanbanTaskDragId!;
+      final startColumnId = _kanbanTaskDragStartColumnId!;
+      final startSortOrder = _kanbanTaskDragStartSortOrder!;
+      if (!_kanbanTaskDragMoved) {
+        // A plain click (no drag) opens the task's expanded detail/edit
+        // overlay instead of committing a move.
+        ref.read(editingKanbanTaskFieldProvider.notifier).state = taskId;
+        _resetGestureState();
+        return;
+      }
+      final dragging = ref.read(draggingTaskProvider);
+      if (dragging != null) {
+        final elements = ref.read(boardKanbanElementsProvider).valueOrNull ?? [];
+        final element = _findKanbanElementById(
+          elements,
+          dragging.kanbanElementId,
+        );
+        if (element != null) {
+          final columns =
+              (ref.read(boardKanbanColumnsProvider).valueOrNull ?? [])
+                  .where((c) => c.kanbanElementId == element.id)
+                  .toList()
+                ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+          final targetColumn = columns[dragging.columnIndex];
+          final siblingOrders =
+              (ref.read(boardKanbanTasksProvider).valueOrNull ?? [])
+                  .where(
+                    (t) => t.columnId == targetColumn.id && t.id != taskId,
+                  )
+                  .map((t) => t.sortOrder)
+                  .toList()
+                ..sort();
+          final newSortOrder = KanbanTaskGeometry.sortOrderForInsertion(
+            siblingOrders,
+            dragging.insertionIndex,
+          );
+          final tasksRepo = ref.read(kanbanTasksRepositoryProvider);
+          await tasksRepo.moveTask(
+            taskId,
+            columnId: targetColumn.id,
+            sortOrder: newSortOrder,
+          );
+          if (!mounted) return;
+          ref
+              .read(undoManagerProvider.notifier)
+              .push(
+                UndoableAction(
+                  undo: () => tasksRepo.moveTask(
+                    taskId,
+                    columnId: startColumnId,
+                    sortOrder: startSortOrder,
+                  ),
+                  redo: () => tasksRepo.moveTask(
+                    taskId,
+                    columnId: targetColumn.id,
+                    sortOrder: newSortOrder,
+                  ),
+                ),
+              );
+        }
+      }
+      _resetGestureState();
+      return;
+    }
+
     final repo = ref.read(clipsRepositoryProvider);
 
     if (_retargetingConnectorId != null) {
@@ -2343,9 +2966,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       final clipsNow = ref.read(activeClipsProvider).valueOrNull ?? [];
       final target = _hitTestClip(clipsNow, boardPos);
       if (target != null &&
-          (target.type == ClipType.image ||
-              target.type == ClipType.shape ||
-              target.type == ClipType.kanbanCard) &&
+          (target.type == ClipType.image || target.type == ClipType.shape) &&
           target.id != _connectorFromClipId) {
         final rel = ConnectorGeometry.relativePointInClip(target, boardPos);
         final newId = _uuid.v4();
@@ -2529,19 +3150,10 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       final dragMap = ref.read(groupDragProvider);
       if (_groupDragMoved && dragMap != null) {
         final frames = ref.read(boardFramesProvider).valueOrNull ?? [];
-        final swimlanes = ref.read(boardSwimlanesProvider).valueOrNull ?? [];
-        final framesByKanbanBoard = <String, List<FrameRow>>{};
-        for (final f in frames) {
-          if (f.kanbanBoardId != null) {
-            (framesByKanbanBoard[f.kanbanBoardId!] ??= []).add(f);
-          }
-        }
         final clipsNow = ref.read(activeClipsProvider).valueOrNull ?? [];
         final writes = <Future<void>>[];
         final frameIdBefore = <String, String?>{};
         final frameIdAfter = <String, String?>{};
-        final swimlaneIdBefore = <String, String?>{};
-        final swimlaneIdAfter = <String, String?>{};
         for (final entry in dragMap.entries) {
           writes.add(
             repo.updateTransform(entry.key, x: entry.value.x, y: entry.value.y),
@@ -2562,21 +3174,6 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
             frameIdBefore[entry.key] = currentFrameId;
             frameIdAfter[entry.key] = containingFrame?.id;
           }
-
-          // Independent swimlane containment check - deliberately doesn't
-          // consult containingFrame above (see SwimlaneGeometry doc: a
-          // card's lane and column are separate axes).
-          final containingLane = _hitTestSwimlane(
-            swimlanes,
-            framesByKanbanBoard,
-            center,
-          );
-          final currentSwimlaneId = currentClip?.swimlaneId;
-          if (containingLane?.id != currentSwimlaneId) {
-            writes.add(repo.setSwimlaneId(entry.key, containingLane?.id));
-            swimlaneIdBefore[entry.key] = currentSwimlaneId;
-            swimlaneIdAfter[entry.key] = containingLane?.id;
-          }
         }
         await Future.wait(writes);
         if (!mounted) return;
@@ -2590,8 +3187,6 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
             dragMap,
             frameIdBefore: frameIdBefore.isEmpty ? null : frameIdBefore,
             frameIdAfter: frameIdAfter.isEmpty ? null : frameIdAfter,
-            swimlaneIdBefore: swimlaneIdBefore.isEmpty ? null : swimlaneIdBefore,
-            swimlaneIdAfter: swimlaneIdAfter.isEmpty ? null : swimlaneIdAfter,
           );
         }
       } else if (!_groupDragMoved && _pendingCollapseId != null) {
@@ -3305,135 +3900,6 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     ref.read(selectedClipIdsProvider.notifier).state = {id};
   }
 
-  /// Entry point while [isKanbanCardToolActiveProvider] is armed -
-  /// identical click-or-drag placement contract as
-  /// [_handleShapeToolPointerDown].
-  void _handleKanbanCardToolPointerDown(PointerDownEvent event) {
-    if (event.buttons & kPrimaryMouseButton == 0) return;
-    final view = ref.read(boardViewProvider);
-    final boardPos = _screenToBoard(event.localPosition, view);
-    _kanbanCardToolStartBoard = boardPos;
-    _kanbanCardToolMoved = false;
-    ref.read(kanbanCardToolDragRectProvider.notifier).state = Rect.fromPoints(
-      boardPos,
-      boardPos,
-    );
-  }
-
-  void _handleKanbanCardToolPointerMove(PointerMoveEvent event) {
-    final view = ref.read(boardViewProvider);
-    final boardPos = _screenToBoard(event.localPosition, view);
-    final delta = boardPos - _kanbanCardToolStartBoard!;
-    if (delta.distance > 2) _kanbanCardToolMoved = true;
-    ref.read(kanbanCardToolDragRectProvider.notifier).state = Rect.fromPoints(
-      _kanbanCardToolStartBoard!,
-      boardPos,
-    );
-  }
-
-  /// Commits the placement: a plain click places a card at the default
-  /// size centered on the click point; a drag sizes it to the dragged
-  /// rect - same contract as [_handleShapeToolPointerUp]. Immediately
-  /// enters title-edit mode on the new card, same "new clip enters edit
-  /// mode immediately" UX as the text tool.
-  Future<void> _handleKanbanCardToolPointerUp(PointerUpEvent event) async {
-    final startBoard = _kanbanCardToolStartBoard!;
-    final moved = _kanbanCardToolMoved;
-    _kanbanCardToolStartBoard = null;
-    _kanbanCardToolMoved = false;
-    ref.read(kanbanCardToolDragRectProvider.notifier).state = null;
-
-    final view = ref.read(boardViewProvider);
-    final endBoard = _screenToBoard(event.localPosition, view);
-    final rect = ClipGeometry.textToolPlacementRect(
-      start: startBoard,
-      end: endBoard,
-      moved: moved,
-      defaultWidth: kDefaultKanbanCardWidth,
-      defaultHeight: kDefaultKanbanCardHeight,
-    );
-
-    final id = _uuid.v4();
-    await ref
-        .read(clipsRepositoryProvider)
-        .addKanbanCard(
-          id: id,
-          boardId: ref.read(currentBoardIdProvider),
-          x: rect.left,
-          y: rect.top,
-          width: rect.width,
-          height: rect.height,
-        );
-    if (!mounted) return;
-    pushAddClipUndo(ref, id);
-
-    ref.read(isKanbanCardToolActiveProvider.notifier).state = false;
-    ref.read(selectedClipIdsProvider.notifier).state = {id};
-    ref.read(editingKanbanFieldProvider.notifier).state = (
-      clipId: id,
-      itemIndex: null,
-    );
-  }
-
-  /// Entry point while [kanbanLinkSourceProvider] is armed: a single
-  /// click (no drag) either creates a connector to whatever clip is
-  /// under the pointer, or - if the click misses every clip - just
-  /// cancels. Mirrors the existing drag-based connector-creation commit
-  /// in [_handlePointerUp] (same `addConnector` call + undo-push shape)
-  /// but triggered by a plain click instead of a drag-release, and kept
-  /// fully independent of `_connectorFromClipId`/`_connectorFromSide` (by
-  /// design - see [kanbanLinkSourceProvider]'s doc comment).
-  Future<void> _handleKanbanLinkSourcePointerDown(
-    PointerDownEvent event,
-    ({String clipId, ConnectorSide side}) source,
-  ) async {
-    if (event.buttons & kPrimaryMouseButton == 0) return;
-    final view = ref.read(boardViewProvider);
-    final boardPos = _screenToBoard(event.localPosition, view);
-    final clips = ref.read(activeClipsProvider).valueOrNull ?? [];
-    final target = _hitTestClip(clips, boardPos);
-
-    ref.read(kanbanLinkSourceProvider.notifier).state = null; // one-shot
-
-    if (target == null || target.id == source.clipId) return;
-    if (!(target.type == ClipType.image ||
-        target.type == ClipType.shape ||
-        target.type == ClipType.kanbanCard)) {
-      return;
-    }
-
-    final rel = ConnectorGeometry.relativePointInClip(target, boardPos);
-    final newId = _uuid.v4();
-    final boardId = ref.read(currentBoardIdProvider);
-    final connRepo = ref.read(connectorsRepositoryProvider);
-    await connRepo.addConnector(
-      id: newId,
-      boardId: boardId,
-      fromClipId: source.clipId,
-      fromSide: source.side,
-      toClipId: target.id,
-      toRelX: rel.dx,
-      toRelY: rel.dy,
-    );
-    if (!mounted) return;
-    ref
-        .read(undoManagerProvider.notifier)
-        .push(
-          UndoableAction(
-            undo: () => connRepo.deleteConnector(newId),
-            redo: () => connRepo.addConnector(
-              id: newId,
-              boardId: boardId,
-              fromClipId: source.clipId,
-              fromSide: source.side,
-              toClipId: target.id,
-              toRelX: rel.dx,
-              toRelY: rel.dy,
-            ),
-          ),
-        );
-  }
-
   /// Entry point while [panZoomClipIdProvider] names an active clip:
   /// a hit on that same clip starts a pan/zoom drag; a double-click on it
   /// or a click anywhere else exits the mode (a click on the floating
@@ -3550,8 +4016,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     if (ref.read(isDrawModeProvider) ||
         ref.read(panZoomClipIdProvider) != null ||
         ref.read(isTextToolActiveProvider) ||
-        ref.read(isShapeToolActiveProvider) ||
-        ref.read(isKanbanCardToolActiveProvider)) {
+        ref.read(isShapeToolActiveProvider)) {
       return;
     }
     final view = ref.read(boardViewProvider);
@@ -3616,8 +4081,14 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     final defineFrameRect = ref.watch(defineFrameRectProvider);
     final textToolDragRect = ref.watch(textToolDragRectProvider);
     final shapeToolDragRect = ref.watch(shapeToolDragRectProvider);
-    final kanbanCardToolDragRect = ref.watch(kanbanCardToolDragRectProvider);
     final connectorDraft = ref.watch(connectorDraftProvider);
+    final kanbanElements = ref.watch(boardKanbanElementsProvider).valueOrNull ?? [];
+    final kanbanColumns = ref.watch(boardKanbanColumnsProvider).valueOrNull ?? [];
+    final kanbanTasks = ref.watch(boardKanbanTasksProvider).valueOrNull ?? [];
+    final selectedKanbanElementId = ref.watch(selectedKanbanElementIdProvider);
+    final kanbanElementDragRect = ref.watch(kanbanElementDragRectProvider);
+    final kanbanElementResizeRect = ref.watch(kanbanElementResizeRectProvider);
+    final draggingTask = ref.watch(draggingTaskProvider);
     final frames = ref.watch(boardFramesProvider).valueOrNull ?? [];
     final selectedFrameIds = ref.watch(selectedFrameIdsProvider);
     final frameDragRects = ref.watch(frameDragRectsProvider);
@@ -3698,15 +4169,41 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
                       if (textToolDragRect != null) const TextToolDragOverlay(),
                       if (shapeToolDragRect != null)
                         const ShapeToolDragOverlay(),
-                      if (kanbanCardToolDragRect != null)
-                        const KanbanCardToolDragOverlay(),
-                      const SwimlaneDividerOverlay(),
+                      for (final element in kanbanElements)
+                        _positionedKanbanElement(
+                          element,
+                          kanbanColumns
+                              .where((c) => c.kanbanElementId == element.id)
+                              .toList(),
+                          kanbanTasks
+                              .where(
+                                (t) => kanbanColumns.any(
+                                  (c) =>
+                                      c.id == t.columnId &&
+                                      c.kanbanElementId == element.id,
+                                ),
+                              )
+                              .toList(),
+                          selectedKanbanElementId == element.id,
+                          element.id == _kanbanElementDragId
+                              ? kanbanElementDragRect
+                              : null,
+                          element.id == _kanbanElementResizeId
+                              ? kanbanElementResizeRect
+                              : null,
+                          draggingTask?.kanbanElementId == element.id
+                              ? draggingTask
+                              : null,
+                          view,
+                        ),
                       if (connectorDraft != null) const ConnectorDraftOverlay(),
                       const SnapGuidesOverlay(),
                       const TextClipEditOverlay(),
                       const FrameRenameOverlay(),
                       const FrameOptionsMenu(),
-                      const KanbanCardFieldEditOverlay(),
+                      const KanbanTaskFieldEditOverlay(),
+                      const ContextMenuOverlay(),
+                      const LinkToTaskBanner(),
                       if (panZoomClipId == null &&
                           !isDrawMode &&
                           !isTextToolActive) ...[
@@ -3736,6 +4233,49 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
             ),
           );
         },
+      ),
+    );
+  }
+
+  /// Mirrors [_positionedFrame]'s "live drag/resize preview overrides the
+  /// stored rect" shape. A pure position drag only needs the Positioned
+  /// wrapper's own left/top to move (every rect [KanbanElementWidget]
+  /// renders internally is already expressed relative to the element's
+  /// own top-left, so it's translation-invariant) - but a height resize
+  /// changes the element's *content* layout too (column/task-list extent,
+  /// resize-handle position), so that case passes the widget a transient
+  /// [KanbanElementRow.copyWith] carrying the live preview height, never
+  /// persisted until pointer-up commits it.
+  Widget _positionedKanbanElement(
+    KanbanElementRow element,
+    List<KanbanColumnRow> columns,
+    List<KanbanTask> tasks,
+    bool selected,
+    Rect? dragRect,
+    Rect? resizeRect,
+    DraggingTask? draggingTask,
+    BoardViewState view,
+  ) {
+    final rect =
+        dragRect ?? resizeRect ?? KanbanElementGeometry.outerRect(element);
+    final liveElement = resizeRect != null
+        ? element.copyWith(height: resizeRect.height)
+        : element;
+    final topLeft = _boardToScreen(rect.topLeft, view);
+    return Positioned(
+      key: ValueKey('kanban-element-${element.id}'),
+      left: topLeft.dx,
+      top: topLeft.dy,
+      width: rect.width * view.scale,
+      height: rect.height * view.scale,
+      child: KanbanElementWidget(
+        element: liveElement,
+        columns: columns,
+        tasks: tasks,
+        selected: selected,
+        columnScrollOffsets: ref.watch(kanbanColumnScrollOffsetProvider),
+        draggingTask: draggingTask,
+        viewScale: view.scale,
       ),
     );
   }

@@ -8,7 +8,6 @@ import '../../annotation/controllers/annotation_controller.dart'
 import '../../annotation/stroke_painter.dart';
 import '../controllers/board_controller.dart' show ImagePanZoomLive;
 import '../geometry/highlight_geometry.dart';
-import '../geometry/kanban_card_geometry.dart';
 import '../geometry/text_note_geometry.dart';
 import '../geometry/text_style_ranges.dart';
 import 'gif_playback_view.dart';
@@ -39,12 +38,21 @@ class ClipWidget extends StatelessWidget {
   /// regardless of zoom. Unused for image clips.
   final double viewScale;
 
+  /// Whether this clip has at least one `kanban_task_links` row pointing
+  /// at it - draws a small badge in the top-right corner. Computed by
+  /// `BoardCanvas` from `boardKanbanTaskLinksProvider` (filtered by this
+  /// clip's id), not watched by this widget directly - same "caller
+  /// resolves the live provider state, this widget just renders the
+  /// result" convention [panZoomLive]/[viewScale] already follow.
+  final bool hasKanbanLink;
+
   const ClipWidget({
     super.key,
     required this.clip,
     required this.selected,
     required this.viewScale,
     this.panZoomLive,
+    this.hasKanbanLink = false,
   });
 
   @override
@@ -64,11 +72,9 @@ class ClipWidget extends StatelessWidget {
     // chrome as an image clip (not a shape's borderless outline or a text
     // note's plain surface) so it reads as a button, not a floating label.
     final isButtonLike =
-        clip.type == ClipType.image ||
-        clip.type == ClipType.link ||
-        clip.type == ClipType.kanbanCard;
+        clip.type == ClipType.image || clip.type == ClipType.link;
     final cardRadius = isButtonLike ? kImageCornerRadius : kCornerRadius;
-    return Opacity(
+    final card = Opacity(
       opacity: clip.opacity,
       child: Container(
         decoration: BoxDecoration(
@@ -108,13 +114,20 @@ class ClipWidget extends StatelessWidget {
             clipBehavior: Clip.antiAlias,
             child: _buildLink(),
           ),
-          ClipType.kanbanCard => ClipRRect(
-            borderRadius: BorderRadius.circular(cardRadius),
-            clipBehavior: Clip.antiAlias,
-            child: _buildKanbanCard(),
-          ),
         },
       ),
+    );
+    if (!hasKanbanLink) return card;
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        card,
+        Positioned(
+          right: -6 * viewScale,
+          top: -6 * viewScale,
+          child: _KanbanLinkBadge(size: 16 * viewScale),
+        ),
+      ],
     );
   }
 
@@ -214,103 +227,6 @@ class ClipWidget extends StatelessWidget {
     );
   }
 
-  /// Purely visual - every row position matches `KanbanCardGeometry`'s
-  /// local rects exactly, scaled by [viewScale] into screen space (the
-  /// same "world rect, scaled for screen" pattern `_buildText` already
-  /// uses). No `GestureDetector`/`Checkbox`/`IconButton` anywhere in
-  /// here - every bit of interactivity is coordinate hit-testing done by
-  /// `board_canvas.dart` against the same geometry, per this codebase's
-  /// rule that `ClipWidget` is a pure, non-interactive renderer.
-  Widget _buildKanbanCard() {
-    final title = clip.textContent ?? '';
-    final items = clip.checklist.items;
-
-    Rect scaled(Rect r) => Rect.fromLTWH(
-      r.left * viewScale,
-      r.top * viewScale,
-      r.width * viewScale,
-      r.height * viewScale,
-    );
-
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        Positioned.fromRect(
-          rect: scaled(KanbanCardGeometry.titleRectLocal(clip)),
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: Text(
-              title.isEmpty ? 'Untitled' : title,
-              style: TextStyle(
-                color: AppTheme.textPrimary,
-                fontWeight: FontWeight.w600,
-                fontSize: kTextNoteFontSize * viewScale,
-              ),
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-        ),
-        Positioned.fromRect(
-          rect: scaled(KanbanCardGeometry.linkButtonRectLocal(clip)),
-          child: Icon(
-            Icons.link,
-            size: KanbanCardGeometry.linkButtonSize * viewScale,
-            color: AppTheme.textSecondary,
-          ),
-        ),
-        for (var i = 0; i < items.length; i++)
-          Positioned.fromRect(
-            rect: scaled(KanbanCardGeometry.checklistRowRectLocal(clip, i)),
-            child: Row(
-              children: [
-                Icon(
-                  items[i].done
-                      ? Icons.check_box
-                      : Icons.check_box_outline_blank,
-                  size: 16 * viewScale,
-                  color: items[i].done
-                      ? AppTheme.accent
-                      : AppTheme.textSecondary,
-                ),
-                SizedBox(width: 6 * viewScale),
-                Expanded(
-                  child: Text(
-                    items[i].label,
-                    style: TextStyle(
-                      fontSize: (kTextNoteFontSize - 2) * viewScale,
-                      color: AppTheme.textPrimary,
-                      decoration: items[i].done
-                          ? TextDecoration.lineThrough
-                          : null,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        Positioned.fromRect(
-          rect: scaled(
-            KanbanCardGeometry.addItemRowRectLocal(clip, items.length),
-          ),
-          child: Row(
-            children: [
-              Icon(Icons.add, size: 16 * viewScale, color: AppTheme.textSecondary),
-              SizedBox(width: 6 * viewScale),
-              Text(
-                'Add item',
-                style: TextStyle(
-                  fontSize: (kTextNoteFontSize - 2) * viewScale,
-                  color: AppTheme.textSecondary,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
   Widget _buildText() {
     // Note: [viewScale] is the caller's already-resolved effective scale -
     // `clip.sizeLockScale ?? view.scale` - not necessarily the board's raw
@@ -400,6 +316,31 @@ class ClipWidget extends StatelessWidget {
             : AppTheme.border,
         strokeWidth: clip.shapeStrokeWidth ?? kDefaultStrokeWidth,
       ),
+    );
+  }
+}
+
+/// Small corner badge shown on any clip with at least one
+/// `kanban_task_links` row pointing at it - clicking it (hit-tested by
+/// `board_canvas.dart` against the same corner position) navigates back
+/// to the linked task(s). Purely visual here, per this widget's
+/// pure-renderer rule.
+class _KanbanLinkBadge extends StatelessWidget {
+  final double size;
+
+  const _KanbanLinkBadge({required this.size});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: AppTheme.accent,
+        shape: BoxShape.circle,
+        border: Border.all(color: AppTheme.canvasBackground, width: 1),
+      ),
+      child: Icon(Icons.link, size: size * 0.7, color: Colors.white),
     );
   }
 }

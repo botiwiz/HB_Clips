@@ -133,17 +133,6 @@ class $ClipsTable extends Clips with TableInfo<$ClipsTable, ClipRow> {
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
-  static const VerificationMeta _swimlaneIdMeta = const VerificationMeta(
-    'swimlaneId',
-  );
-  @override
-  late final GeneratedColumn<String> swimlaneId = GeneratedColumn<String>(
-    'swimlane_id',
-    aliasedName,
-    true,
-    type: DriftSqlType.string,
-    requiredDuringInsert: false,
-  );
   static const VerificationMeta _textContentMeta = const VerificationMeta(
     'textContent',
   );
@@ -336,17 +325,6 @@ class $ClipsTable extends Clips with TableInfo<$ClipsTable, ClipRow> {
         type: DriftSqlType.string,
         requiredDuringInsert: false,
       );
-  static const VerificationMeta _checklistJsonMeta = const VerificationMeta(
-    'checklistJson',
-  );
-  @override
-  late final GeneratedColumn<String> checklistJson = GeneratedColumn<String>(
-    'checklist_json',
-    aliasedName,
-    true,
-    type: DriftSqlType.string,
-    requiredDuringInsert: false,
-  );
   static const VerificationMeta _isBinnedMeta = const VerificationMeta(
     'isBinned',
   );
@@ -411,7 +389,6 @@ class $ClipsTable extends Clips with TableInfo<$ClipsTable, ClipRow> {
     opacity,
     groupId,
     frameId,
-    swimlaneId,
     textContent,
     backgroundColorHex,
     localFilePath,
@@ -429,7 +406,6 @@ class $ClipsTable extends Clips with TableInfo<$ClipsTable, ClipRow> {
     shapeStrokeColorHex,
     shapeStrokeWidth,
     highlightColorHex,
-    checklistJson,
     isBinned,
     binnedAt,
     createdAt,
@@ -514,12 +490,6 @@ class $ClipsTable extends Clips with TableInfo<$ClipsTable, ClipRow> {
       context.handle(
         _frameIdMeta,
         frameId.isAcceptableOrUnknown(data['frame_id']!, _frameIdMeta),
-      );
-    }
-    if (data.containsKey('swimlane_id')) {
-      context.handle(
-        _swimlaneIdMeta,
-        swimlaneId.isAcceptableOrUnknown(data['swimlane_id']!, _swimlaneIdMeta),
       );
     }
     if (data.containsKey('text_content')) {
@@ -654,15 +624,6 @@ class $ClipsTable extends Clips with TableInfo<$ClipsTable, ClipRow> {
         ),
       );
     }
-    if (data.containsKey('checklist_json')) {
-      context.handle(
-        _checklistJsonMeta,
-        checklistJson.isAcceptableOrUnknown(
-          data['checklist_json']!,
-          _checklistJsonMeta,
-        ),
-      );
-    }
     if (data.containsKey('is_binned')) {
       context.handle(
         _isBinnedMeta,
@@ -744,10 +705,6 @@ class $ClipsTable extends Clips with TableInfo<$ClipsTable, ClipRow> {
         DriftSqlType.string,
         data['${effectivePrefix}frame_id'],
       ),
-      swimlaneId: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}swimlane_id'],
-      ),
       textContent: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}text_content'],
@@ -816,10 +773,6 @@ class $ClipsTable extends Clips with TableInfo<$ClipsTable, ClipRow> {
         DriftSqlType.string,
         data['${effectivePrefix}highlight_color_hex'],
       ),
-      checklistJson: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}checklist_json'],
-      ),
       isBinned: attachedDatabase.typeMapping.read(
         DriftSqlType.bool,
         data['${effectivePrefix}is_binned'],
@@ -850,7 +803,7 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
   final String id;
   final String boardId;
 
-  /// 'image', 'text', 'shape', 'link', or 'kanban_card'.
+  /// 'image', 'text', 'shape', or 'link'.
   final String type;
   final double x;
   final double y;
@@ -871,13 +824,6 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
   /// (Miro's frame-containment behavior) - moving a frame moves every clip
   /// with a matching `frameId` along with it.
   final String? frameId;
-
-  /// The swimlane (horizontal row) this clip is currently nested inside,
-  /// or null - same nullable-FK, auto-set/cleared-by-drag-end-spatial-
-  /// containment convention as [frameId], just on the orthogonal (row)
-  /// axis instead of the column axis. A clip's logical kanban "cell" is
-  /// the independent combination of [frameId] + [swimlaneId].
-  final String? swimlaneId;
   final String? textContent;
 
   /// Custom background color for a text note, as `#RRGGBB`. Null uses the
@@ -954,11 +900,6 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
   /// `kDefaultHighlightColorHex` at render time. One color per note, not
   /// per-range. Ignored for image/shape clips.
   final String? highlightColorHex;
-
-  /// JSON-encoded checklist items (see `Checklist`) for a kanban-card
-  /// clip - null/empty means no checklist items yet. Ignored for every
-  /// other clip type.
-  final String? checklistJson;
   final bool isBinned;
   final DateTime? binnedAt;
   final DateTime createdAt;
@@ -976,7 +917,6 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
     required this.opacity,
     this.groupId,
     this.frameId,
-    this.swimlaneId,
     this.textContent,
     this.backgroundColorHex,
     this.localFilePath,
@@ -994,7 +934,6 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
     this.shapeStrokeColorHex,
     this.shapeStrokeWidth,
     this.highlightColorHex,
-    this.checklistJson,
     required this.isBinned,
     this.binnedAt,
     required this.createdAt,
@@ -1018,9 +957,6 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
     }
     if (!nullToAbsent || frameId != null) {
       map['frame_id'] = Variable<String>(frameId);
-    }
-    if (!nullToAbsent || swimlaneId != null) {
-      map['swimlane_id'] = Variable<String>(swimlaneId);
     }
     if (!nullToAbsent || textContent != null) {
       map['text_content'] = Variable<String>(textContent);
@@ -1067,9 +1003,6 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
     if (!nullToAbsent || highlightColorHex != null) {
       map['highlight_color_hex'] = Variable<String>(highlightColorHex);
     }
-    if (!nullToAbsent || checklistJson != null) {
-      map['checklist_json'] = Variable<String>(checklistJson);
-    }
     map['is_binned'] = Variable<bool>(isBinned);
     if (!nullToAbsent || binnedAt != null) {
       map['binned_at'] = Variable<DateTime>(binnedAt);
@@ -1097,9 +1030,6 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
       frameId: frameId == null && nullToAbsent
           ? const Value.absent()
           : Value(frameId),
-      swimlaneId: swimlaneId == null && nullToAbsent
-          ? const Value.absent()
-          : Value(swimlaneId),
       textContent: textContent == null && nullToAbsent
           ? const Value.absent()
           : Value(textContent),
@@ -1145,9 +1075,6 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
       highlightColorHex: highlightColorHex == null && nullToAbsent
           ? const Value.absent()
           : Value(highlightColorHex),
-      checklistJson: checklistJson == null && nullToAbsent
-          ? const Value.absent()
-          : Value(checklistJson),
       isBinned: Value(isBinned),
       binnedAt: binnedAt == null && nullToAbsent
           ? const Value.absent()
@@ -1175,7 +1102,6 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
       opacity: serializer.fromJson<double>(json['opacity']),
       groupId: serializer.fromJson<String?>(json['groupId']),
       frameId: serializer.fromJson<String?>(json['frameId']),
-      swimlaneId: serializer.fromJson<String?>(json['swimlaneId']),
       textContent: serializer.fromJson<String?>(json['textContent']),
       backgroundColorHex: serializer.fromJson<String?>(
         json['backgroundColorHex'],
@@ -1203,7 +1129,6 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
       highlightColorHex: serializer.fromJson<String?>(
         json['highlightColorHex'],
       ),
-      checklistJson: serializer.fromJson<String?>(json['checklistJson']),
       isBinned: serializer.fromJson<bool>(json['isBinned']),
       binnedAt: serializer.fromJson<DateTime?>(json['binnedAt']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
@@ -1226,7 +1151,6 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
       'opacity': serializer.toJson<double>(opacity),
       'groupId': serializer.toJson<String?>(groupId),
       'frameId': serializer.toJson<String?>(frameId),
-      'swimlaneId': serializer.toJson<String?>(swimlaneId),
       'textContent': serializer.toJson<String?>(textContent),
       'backgroundColorHex': serializer.toJson<String?>(backgroundColorHex),
       'localFilePath': serializer.toJson<String?>(localFilePath),
@@ -1244,7 +1168,6 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
       'shapeStrokeColorHex': serializer.toJson<String?>(shapeStrokeColorHex),
       'shapeStrokeWidth': serializer.toJson<double?>(shapeStrokeWidth),
       'highlightColorHex': serializer.toJson<String?>(highlightColorHex),
-      'checklistJson': serializer.toJson<String?>(checklistJson),
       'isBinned': serializer.toJson<bool>(isBinned),
       'binnedAt': serializer.toJson<DateTime?>(binnedAt),
       'createdAt': serializer.toJson<DateTime>(createdAt),
@@ -1265,7 +1188,6 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
     double? opacity,
     Value<String?> groupId = const Value.absent(),
     Value<String?> frameId = const Value.absent(),
-    Value<String?> swimlaneId = const Value.absent(),
     Value<String?> textContent = const Value.absent(),
     Value<String?> backgroundColorHex = const Value.absent(),
     Value<String?> localFilePath = const Value.absent(),
@@ -1283,7 +1205,6 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
     Value<String?> shapeStrokeColorHex = const Value.absent(),
     Value<double?> shapeStrokeWidth = const Value.absent(),
     Value<String?> highlightColorHex = const Value.absent(),
-    Value<String?> checklistJson = const Value.absent(),
     bool? isBinned,
     Value<DateTime?> binnedAt = const Value.absent(),
     DateTime? createdAt,
@@ -1301,7 +1222,6 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
     opacity: opacity ?? this.opacity,
     groupId: groupId.present ? groupId.value : this.groupId,
     frameId: frameId.present ? frameId.value : this.frameId,
-    swimlaneId: swimlaneId.present ? swimlaneId.value : this.swimlaneId,
     textContent: textContent.present ? textContent.value : this.textContent,
     backgroundColorHex: backgroundColorHex.present
         ? backgroundColorHex.value
@@ -1337,9 +1257,6 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
     highlightColorHex: highlightColorHex.present
         ? highlightColorHex.value
         : this.highlightColorHex,
-    checklistJson: checklistJson.present
-        ? checklistJson.value
-        : this.checklistJson,
     isBinned: isBinned ?? this.isBinned,
     binnedAt: binnedAt.present ? binnedAt.value : this.binnedAt,
     createdAt: createdAt ?? this.createdAt,
@@ -1359,9 +1276,6 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
       opacity: data.opacity.present ? data.opacity.value : this.opacity,
       groupId: data.groupId.present ? data.groupId.value : this.groupId,
       frameId: data.frameId.present ? data.frameId.value : this.frameId,
-      swimlaneId: data.swimlaneId.present
-          ? data.swimlaneId.value
-          : this.swimlaneId,
       textContent: data.textContent.present
           ? data.textContent.value
           : this.textContent,
@@ -1399,9 +1313,6 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
       highlightColorHex: data.highlightColorHex.present
           ? data.highlightColorHex.value
           : this.highlightColorHex,
-      checklistJson: data.checklistJson.present
-          ? data.checklistJson.value
-          : this.checklistJson,
       isBinned: data.isBinned.present ? data.isBinned.value : this.isBinned,
       binnedAt: data.binnedAt.present ? data.binnedAt.value : this.binnedAt,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
@@ -1424,7 +1335,6 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
           ..write('opacity: $opacity, ')
           ..write('groupId: $groupId, ')
           ..write('frameId: $frameId, ')
-          ..write('swimlaneId: $swimlaneId, ')
           ..write('textContent: $textContent, ')
           ..write('backgroundColorHex: $backgroundColorHex, ')
           ..write('localFilePath: $localFilePath, ')
@@ -1442,7 +1352,6 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
           ..write('shapeStrokeColorHex: $shapeStrokeColorHex, ')
           ..write('shapeStrokeWidth: $shapeStrokeWidth, ')
           ..write('highlightColorHex: $highlightColorHex, ')
-          ..write('checklistJson: $checklistJson, ')
           ..write('isBinned: $isBinned, ')
           ..write('binnedAt: $binnedAt, ')
           ..write('createdAt: $createdAt, ')
@@ -1465,7 +1374,6 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
     opacity,
     groupId,
     frameId,
-    swimlaneId,
     textContent,
     backgroundColorHex,
     localFilePath,
@@ -1483,7 +1391,6 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
     shapeStrokeColorHex,
     shapeStrokeWidth,
     highlightColorHex,
-    checklistJson,
     isBinned,
     binnedAt,
     createdAt,
@@ -1505,7 +1412,6 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
           other.opacity == this.opacity &&
           other.groupId == this.groupId &&
           other.frameId == this.frameId &&
-          other.swimlaneId == this.swimlaneId &&
           other.textContent == this.textContent &&
           other.backgroundColorHex == this.backgroundColorHex &&
           other.localFilePath == this.localFilePath &&
@@ -1523,7 +1429,6 @@ class ClipRow extends DataClass implements Insertable<ClipRow> {
           other.shapeStrokeColorHex == this.shapeStrokeColorHex &&
           other.shapeStrokeWidth == this.shapeStrokeWidth &&
           other.highlightColorHex == this.highlightColorHex &&
-          other.checklistJson == this.checklistJson &&
           other.isBinned == this.isBinned &&
           other.binnedAt == this.binnedAt &&
           other.createdAt == this.createdAt &&
@@ -1543,7 +1448,6 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
   final Value<double> opacity;
   final Value<String?> groupId;
   final Value<String?> frameId;
-  final Value<String?> swimlaneId;
   final Value<String?> textContent;
   final Value<String?> backgroundColorHex;
   final Value<String?> localFilePath;
@@ -1561,7 +1465,6 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
   final Value<String?> shapeStrokeColorHex;
   final Value<double?> shapeStrokeWidth;
   final Value<String?> highlightColorHex;
-  final Value<String?> checklistJson;
   final Value<bool> isBinned;
   final Value<DateTime?> binnedAt;
   final Value<DateTime> createdAt;
@@ -1580,7 +1483,6 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
     this.opacity = const Value.absent(),
     this.groupId = const Value.absent(),
     this.frameId = const Value.absent(),
-    this.swimlaneId = const Value.absent(),
     this.textContent = const Value.absent(),
     this.backgroundColorHex = const Value.absent(),
     this.localFilePath = const Value.absent(),
@@ -1598,7 +1500,6 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
     this.shapeStrokeColorHex = const Value.absent(),
     this.shapeStrokeWidth = const Value.absent(),
     this.highlightColorHex = const Value.absent(),
-    this.checklistJson = const Value.absent(),
     this.isBinned = const Value.absent(),
     this.binnedAt = const Value.absent(),
     this.createdAt = const Value.absent(),
@@ -1618,7 +1519,6 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
     this.opacity = const Value.absent(),
     this.groupId = const Value.absent(),
     this.frameId = const Value.absent(),
-    this.swimlaneId = const Value.absent(),
     this.textContent = const Value.absent(),
     this.backgroundColorHex = const Value.absent(),
     this.localFilePath = const Value.absent(),
@@ -1636,7 +1536,6 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
     this.shapeStrokeColorHex = const Value.absent(),
     this.shapeStrokeWidth = const Value.absent(),
     this.highlightColorHex = const Value.absent(),
-    this.checklistJson = const Value.absent(),
     this.isBinned = const Value.absent(),
     this.binnedAt = const Value.absent(),
     this.createdAt = const Value.absent(),
@@ -1658,7 +1557,6 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
     Expression<double>? opacity,
     Expression<String>? groupId,
     Expression<String>? frameId,
-    Expression<String>? swimlaneId,
     Expression<String>? textContent,
     Expression<String>? backgroundColorHex,
     Expression<String>? localFilePath,
@@ -1676,7 +1574,6 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
     Expression<String>? shapeStrokeColorHex,
     Expression<double>? shapeStrokeWidth,
     Expression<String>? highlightColorHex,
-    Expression<String>? checklistJson,
     Expression<bool>? isBinned,
     Expression<DateTime>? binnedAt,
     Expression<DateTime>? createdAt,
@@ -1696,7 +1593,6 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
       if (opacity != null) 'opacity': opacity,
       if (groupId != null) 'group_id': groupId,
       if (frameId != null) 'frame_id': frameId,
-      if (swimlaneId != null) 'swimlane_id': swimlaneId,
       if (textContent != null) 'text_content': textContent,
       if (backgroundColorHex != null)
         'background_color_hex': backgroundColorHex,
@@ -1717,7 +1613,6 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
         'shape_stroke_color_hex': shapeStrokeColorHex,
       if (shapeStrokeWidth != null) 'shape_stroke_width': shapeStrokeWidth,
       if (highlightColorHex != null) 'highlight_color_hex': highlightColorHex,
-      if (checklistJson != null) 'checklist_json': checklistJson,
       if (isBinned != null) 'is_binned': isBinned,
       if (binnedAt != null) 'binned_at': binnedAt,
       if (createdAt != null) 'created_at': createdAt,
@@ -1739,7 +1634,6 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
     Value<double>? opacity,
     Value<String?>? groupId,
     Value<String?>? frameId,
-    Value<String?>? swimlaneId,
     Value<String?>? textContent,
     Value<String?>? backgroundColorHex,
     Value<String?>? localFilePath,
@@ -1757,7 +1651,6 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
     Value<String?>? shapeStrokeColorHex,
     Value<double?>? shapeStrokeWidth,
     Value<String?>? highlightColorHex,
-    Value<String?>? checklistJson,
     Value<bool>? isBinned,
     Value<DateTime?>? binnedAt,
     Value<DateTime>? createdAt,
@@ -1777,7 +1670,6 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
       opacity: opacity ?? this.opacity,
       groupId: groupId ?? this.groupId,
       frameId: frameId ?? this.frameId,
-      swimlaneId: swimlaneId ?? this.swimlaneId,
       textContent: textContent ?? this.textContent,
       backgroundColorHex: backgroundColorHex ?? this.backgroundColorHex,
       localFilePath: localFilePath ?? this.localFilePath,
@@ -1795,7 +1687,6 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
       shapeStrokeColorHex: shapeStrokeColorHex ?? this.shapeStrokeColorHex,
       shapeStrokeWidth: shapeStrokeWidth ?? this.shapeStrokeWidth,
       highlightColorHex: highlightColorHex ?? this.highlightColorHex,
-      checklistJson: checklistJson ?? this.checklistJson,
       isBinned: isBinned ?? this.isBinned,
       binnedAt: binnedAt ?? this.binnedAt,
       createdAt: createdAt ?? this.createdAt,
@@ -1842,9 +1733,6 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
     }
     if (frameId.present) {
       map['frame_id'] = Variable<String>(frameId.value);
-    }
-    if (swimlaneId.present) {
-      map['swimlane_id'] = Variable<String>(swimlaneId.value);
     }
     if (textContent.present) {
       map['text_content'] = Variable<String>(textContent.value);
@@ -1899,9 +1787,6 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
     if (highlightColorHex.present) {
       map['highlight_color_hex'] = Variable<String>(highlightColorHex.value);
     }
-    if (checklistJson.present) {
-      map['checklist_json'] = Variable<String>(checklistJson.value);
-    }
     if (isBinned.present) {
       map['is_binned'] = Variable<bool>(isBinned.value);
     }
@@ -1935,7 +1820,6 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
           ..write('opacity: $opacity, ')
           ..write('groupId: $groupId, ')
           ..write('frameId: $frameId, ')
-          ..write('swimlaneId: $swimlaneId, ')
           ..write('textContent: $textContent, ')
           ..write('backgroundColorHex: $backgroundColorHex, ')
           ..write('localFilePath: $localFilePath, ')
@@ -1953,7 +1837,6 @@ class ClipsCompanion extends UpdateCompanion<ClipRow> {
           ..write('shapeStrokeColorHex: $shapeStrokeColorHex, ')
           ..write('shapeStrokeWidth: $shapeStrokeWidth, ')
           ..write('highlightColorHex: $highlightColorHex, ')
-          ..write('checklistJson: $checklistJson, ')
           ..write('isBinned: $isBinned, ')
           ..write('binnedAt: $binnedAt, ')
           ..write('createdAt: $createdAt, ')
@@ -3506,17 +3389,6 @@ class $FramesTable extends Frames with TableInfo<$FramesTable, FrameRow> {
         type: DriftSqlType.string,
         requiredDuringInsert: false,
       );
-  static const VerificationMeta _kanbanBoardIdMeta = const VerificationMeta(
-    'kanbanBoardId',
-  );
-  @override
-  late final GeneratedColumn<String> kanbanBoardId = GeneratedColumn<String>(
-    'kanban_board_id',
-    aliasedName,
-    true,
-    type: DriftSqlType.string,
-    requiredDuringInsert: false,
-  );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -3552,7 +3424,6 @@ class $FramesTable extends Frames with TableInfo<$FramesTable, FrameRow> {
     height,
     sortOrder,
     backgroundColorHex,
-    kanbanBoardId,
     createdAt,
     updatedAt,
   ];
@@ -3620,15 +3491,6 @@ class $FramesTable extends Frames with TableInfo<$FramesTable, FrameRow> {
         ),
       );
     }
-    if (data.containsKey('kanban_board_id')) {
-      context.handle(
-        _kanbanBoardIdMeta,
-        kanbanBoardId.isAcceptableOrUnknown(
-          data['kanban_board_id']!,
-          _kanbanBoardIdMeta,
-        ),
-      );
-    }
     if (data.containsKey('created_at')) {
       context.handle(
         _createdAtMeta,
@@ -3686,10 +3548,6 @@ class $FramesTable extends Frames with TableInfo<$FramesTable, FrameRow> {
         DriftSqlType.string,
         data['${effectivePrefix}background_color_hex'],
       ),
-      kanbanBoardId: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}kanban_board_id'],
-      ),
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
@@ -3728,15 +3586,6 @@ class FrameRow extends DataClass implements Insertable<FrameRow> {
   /// `#RRGGBB`. Null uses the default neutral gray - same
   /// null-means-default convention as `Clips.backgroundColorHex`.
   final String? backgroundColorHex;
-
-  /// The kanban board this Frame is column N of, or null for a plain
-  /// Frame with no kanban-board association - same nullable-FK,
-  /// ignored-when-null convention as `Clips.frameId`. Tagged
-  /// automatically when a Frame is created as part of "Insert Kanban
-  /// Board"; never auto-cleared by any spatial drag (unlike
-  /// `Clips.frameId`/`Clips.swimlaneId` - a column's board membership is
-  /// permanent identity, not a spatial containment fact).
-  final String? kanbanBoardId;
   final DateTime createdAt;
   final DateTime updatedAt;
   const FrameRow({
@@ -3749,7 +3598,6 @@ class FrameRow extends DataClass implements Insertable<FrameRow> {
     required this.height,
     required this.sortOrder,
     this.backgroundColorHex,
-    this.kanbanBoardId,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -3766,9 +3614,6 @@ class FrameRow extends DataClass implements Insertable<FrameRow> {
     map['sort_order'] = Variable<int>(sortOrder);
     if (!nullToAbsent || backgroundColorHex != null) {
       map['background_color_hex'] = Variable<String>(backgroundColorHex);
-    }
-    if (!nullToAbsent || kanbanBoardId != null) {
-      map['kanban_board_id'] = Variable<String>(kanbanBoardId);
     }
     map['created_at'] = Variable<DateTime>(createdAt);
     map['updated_at'] = Variable<DateTime>(updatedAt);
@@ -3788,9 +3633,6 @@ class FrameRow extends DataClass implements Insertable<FrameRow> {
       backgroundColorHex: backgroundColorHex == null && nullToAbsent
           ? const Value.absent()
           : Value(backgroundColorHex),
-      kanbanBoardId: kanbanBoardId == null && nullToAbsent
-          ? const Value.absent()
-          : Value(kanbanBoardId),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
     );
@@ -3813,7 +3655,6 @@ class FrameRow extends DataClass implements Insertable<FrameRow> {
       backgroundColorHex: serializer.fromJson<String?>(
         json['backgroundColorHex'],
       ),
-      kanbanBoardId: serializer.fromJson<String?>(json['kanbanBoardId']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
     );
@@ -3831,7 +3672,6 @@ class FrameRow extends DataClass implements Insertable<FrameRow> {
       'height': serializer.toJson<double>(height),
       'sortOrder': serializer.toJson<int>(sortOrder),
       'backgroundColorHex': serializer.toJson<String?>(backgroundColorHex),
-      'kanbanBoardId': serializer.toJson<String?>(kanbanBoardId),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
     };
@@ -3847,7 +3687,6 @@ class FrameRow extends DataClass implements Insertable<FrameRow> {
     double? height,
     int? sortOrder,
     Value<String?> backgroundColorHex = const Value.absent(),
-    Value<String?> kanbanBoardId = const Value.absent(),
     DateTime? createdAt,
     DateTime? updatedAt,
   }) => FrameRow(
@@ -3862,9 +3701,6 @@ class FrameRow extends DataClass implements Insertable<FrameRow> {
     backgroundColorHex: backgroundColorHex.present
         ? backgroundColorHex.value
         : this.backgroundColorHex,
-    kanbanBoardId: kanbanBoardId.present
-        ? kanbanBoardId.value
-        : this.kanbanBoardId,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
   );
@@ -3881,9 +3717,6 @@ class FrameRow extends DataClass implements Insertable<FrameRow> {
       backgroundColorHex: data.backgroundColorHex.present
           ? data.backgroundColorHex.value
           : this.backgroundColorHex,
-      kanbanBoardId: data.kanbanBoardId.present
-          ? data.kanbanBoardId.value
-          : this.kanbanBoardId,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
@@ -3901,7 +3734,6 @@ class FrameRow extends DataClass implements Insertable<FrameRow> {
           ..write('height: $height, ')
           ..write('sortOrder: $sortOrder, ')
           ..write('backgroundColorHex: $backgroundColorHex, ')
-          ..write('kanbanBoardId: $kanbanBoardId, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
@@ -3919,7 +3751,6 @@ class FrameRow extends DataClass implements Insertable<FrameRow> {
     height,
     sortOrder,
     backgroundColorHex,
-    kanbanBoardId,
     createdAt,
     updatedAt,
   );
@@ -3936,7 +3767,6 @@ class FrameRow extends DataClass implements Insertable<FrameRow> {
           other.height == this.height &&
           other.sortOrder == this.sortOrder &&
           other.backgroundColorHex == this.backgroundColorHex &&
-          other.kanbanBoardId == this.kanbanBoardId &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt);
 }
@@ -3951,7 +3781,6 @@ class FramesCompanion extends UpdateCompanion<FrameRow> {
   final Value<double> height;
   final Value<int> sortOrder;
   final Value<String?> backgroundColorHex;
-  final Value<String?> kanbanBoardId;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
   final Value<int> rowid;
@@ -3965,7 +3794,6 @@ class FramesCompanion extends UpdateCompanion<FrameRow> {
     this.height = const Value.absent(),
     this.sortOrder = const Value.absent(),
     this.backgroundColorHex = const Value.absent(),
-    this.kanbanBoardId = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -3980,7 +3808,6 @@ class FramesCompanion extends UpdateCompanion<FrameRow> {
     this.height = const Value.absent(),
     this.sortOrder = const Value.absent(),
     this.backgroundColorHex = const Value.absent(),
-    this.kanbanBoardId = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -3996,7 +3823,6 @@ class FramesCompanion extends UpdateCompanion<FrameRow> {
     Expression<double>? height,
     Expression<int>? sortOrder,
     Expression<String>? backgroundColorHex,
-    Expression<String>? kanbanBoardId,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
     Expression<int>? rowid,
@@ -4012,7 +3838,6 @@ class FramesCompanion extends UpdateCompanion<FrameRow> {
       if (sortOrder != null) 'sort_order': sortOrder,
       if (backgroundColorHex != null)
         'background_color_hex': backgroundColorHex,
-      if (kanbanBoardId != null) 'kanban_board_id': kanbanBoardId,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (rowid != null) 'rowid': rowid,
@@ -4029,7 +3854,6 @@ class FramesCompanion extends UpdateCompanion<FrameRow> {
     Value<double>? height,
     Value<int>? sortOrder,
     Value<String?>? backgroundColorHex,
-    Value<String?>? kanbanBoardId,
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
     Value<int>? rowid,
@@ -4044,7 +3868,6 @@ class FramesCompanion extends UpdateCompanion<FrameRow> {
       height: height ?? this.height,
       sortOrder: sortOrder ?? this.sortOrder,
       backgroundColorHex: backgroundColorHex ?? this.backgroundColorHex,
-      kanbanBoardId: kanbanBoardId ?? this.kanbanBoardId,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       rowid: rowid ?? this.rowid,
@@ -4081,9 +3904,6 @@ class FramesCompanion extends UpdateCompanion<FrameRow> {
     if (backgroundColorHex.present) {
       map['background_color_hex'] = Variable<String>(backgroundColorHex.value);
     }
-    if (kanbanBoardId.present) {
-      map['kanban_board_id'] = Variable<String>(kanbanBoardId.value);
-    }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
@@ -4108,7 +3928,6 @@ class FramesCompanion extends UpdateCompanion<FrameRow> {
           ..write('height: $height, ')
           ..write('sortOrder: $sortOrder, ')
           ..write('backgroundColorHex: $backgroundColorHex, ')
-          ..write('kanbanBoardId: $kanbanBoardId, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('rowid: $rowid')
@@ -6070,12 +5889,12 @@ class ThemesCompanion extends UpdateCompanion<ThemeRow> {
   }
 }
 
-class $KanbanBoardsTable extends KanbanBoards
-    with TableInfo<$KanbanBoardsTable, KanbanBoardRow> {
+class $KanbanElementsTable extends KanbanElements
+    with TableInfo<$KanbanElementsTable, KanbanElementRow> {
   @override
   final GeneratedDatabase attachedDatabase;
   final String? _alias;
-  $KanbanBoardsTable(this.attachedDatabase, [this._alias]);
+  $KanbanElementsTable(this.attachedDatabase, [this._alias]);
   static const VerificationMeta _idMeta = const VerificationMeta('id');
   @override
   late final GeneratedColumn<String> id = GeneratedColumn<String>(
@@ -6144,7 +5963,7 @@ class $KanbanBoardsTable extends KanbanBoards
     false,
     type: DriftSqlType.double,
     requiredDuringInsert: false,
-    defaultValue: const Constant(0),
+    defaultValue: const Constant(480),
   );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
@@ -6186,10 +6005,10 @@ class $KanbanBoardsTable extends KanbanBoards
   String get aliasedName => _alias ?? actualTableName;
   @override
   String get actualTableName => $name;
-  static const String $name = 'kanban_boards';
+  static const String $name = 'kanban_elements';
   @override
   VerificationContext validateIntegrity(
-    Insertable<KanbanBoardRow> instance, {
+    Insertable<KanbanElementRow> instance, {
     bool isInserting = false,
   }) {
     final context = VerificationContext();
@@ -6249,9 +6068,9 @@ class $KanbanBoardsTable extends KanbanBoards
   @override
   Set<GeneratedColumn> get $primaryKey => {id};
   @override
-  KanbanBoardRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+  KanbanElementRow map(Map<String, dynamic> data, {String? tablePrefix}) {
     final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
-    return KanbanBoardRow(
+    return KanbanElementRow(
       id: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}id'],
@@ -6292,22 +6111,31 @@ class $KanbanBoardsTable extends KanbanBoards
   }
 
   @override
-  $KanbanBoardsTable createAlias(String alias) {
-    return $KanbanBoardsTable(attachedDatabase, alias);
+  $KanbanElementsTable createAlias(String alias) {
+    return $KanbanElementsTable(attachedDatabase, alias);
   }
 }
 
-class KanbanBoardRow extends DataClass implements Insertable<KanbanBoardRow> {
+class KanbanElementRow extends DataClass
+    implements Insertable<KanbanElementRow> {
   final String id;
   final String boardId;
   final String name;
   final double x;
   final double y;
+
+  /// Derived from column count * column width + gaps, recomputed whenever
+  /// a column is added/removed - not independently user-resizable (see
+  /// [height]).
   final double width;
+
+  /// The one interactively user-resizable dimension (one bottom-edge
+  /// handle) - columns are a fixed width, Trello-style, so only the
+  /// element's vertical extent is a drag gesture.
   final double height;
   final DateTime createdAt;
   final DateTime updatedAt;
-  const KanbanBoardRow({
+  const KanbanElementRow({
     required this.id,
     required this.boardId,
     required this.name,
@@ -6333,8 +6161,8 @@ class KanbanBoardRow extends DataClass implements Insertable<KanbanBoardRow> {
     return map;
   }
 
-  KanbanBoardsCompanion toCompanion(bool nullToAbsent) {
-    return KanbanBoardsCompanion(
+  KanbanElementsCompanion toCompanion(bool nullToAbsent) {
+    return KanbanElementsCompanion(
       id: Value(id),
       boardId: Value(boardId),
       name: Value(name),
@@ -6347,12 +6175,12 @@ class KanbanBoardRow extends DataClass implements Insertable<KanbanBoardRow> {
     );
   }
 
-  factory KanbanBoardRow.fromJson(
+  factory KanbanElementRow.fromJson(
     Map<String, dynamic> json, {
     ValueSerializer? serializer,
   }) {
     serializer ??= driftRuntimeOptions.defaultSerializer;
-    return KanbanBoardRow(
+    return KanbanElementRow(
       id: serializer.fromJson<String>(json['id']),
       boardId: serializer.fromJson<String>(json['boardId']),
       name: serializer.fromJson<String>(json['name']),
@@ -6380,7 +6208,7 @@ class KanbanBoardRow extends DataClass implements Insertable<KanbanBoardRow> {
     };
   }
 
-  KanbanBoardRow copyWith({
+  KanbanElementRow copyWith({
     String? id,
     String? boardId,
     String? name,
@@ -6390,7 +6218,7 @@ class KanbanBoardRow extends DataClass implements Insertable<KanbanBoardRow> {
     double? height,
     DateTime? createdAt,
     DateTime? updatedAt,
-  }) => KanbanBoardRow(
+  }) => KanbanElementRow(
     id: id ?? this.id,
     boardId: boardId ?? this.boardId,
     name: name ?? this.name,
@@ -6401,8 +6229,8 @@ class KanbanBoardRow extends DataClass implements Insertable<KanbanBoardRow> {
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
   );
-  KanbanBoardRow copyWithCompanion(KanbanBoardsCompanion data) {
-    return KanbanBoardRow(
+  KanbanElementRow copyWithCompanion(KanbanElementsCompanion data) {
+    return KanbanElementRow(
       id: data.id.present ? data.id.value : this.id,
       boardId: data.boardId.present ? data.boardId.value : this.boardId,
       name: data.name.present ? data.name.value : this.name,
@@ -6417,7 +6245,7 @@ class KanbanBoardRow extends DataClass implements Insertable<KanbanBoardRow> {
 
   @override
   String toString() {
-    return (StringBuffer('KanbanBoardRow(')
+    return (StringBuffer('KanbanElementRow(')
           ..write('id: $id, ')
           ..write('boardId: $boardId, ')
           ..write('name: $name, ')
@@ -6437,7 +6265,7 @@ class KanbanBoardRow extends DataClass implements Insertable<KanbanBoardRow> {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      (other is KanbanBoardRow &&
+      (other is KanbanElementRow &&
           other.id == this.id &&
           other.boardId == this.boardId &&
           other.name == this.name &&
@@ -6449,7 +6277,7 @@ class KanbanBoardRow extends DataClass implements Insertable<KanbanBoardRow> {
           other.updatedAt == this.updatedAt);
 }
 
-class KanbanBoardsCompanion extends UpdateCompanion<KanbanBoardRow> {
+class KanbanElementsCompanion extends UpdateCompanion<KanbanElementRow> {
   final Value<String> id;
   final Value<String> boardId;
   final Value<String> name;
@@ -6460,7 +6288,7 @@ class KanbanBoardsCompanion extends UpdateCompanion<KanbanBoardRow> {
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
   final Value<int> rowid;
-  const KanbanBoardsCompanion({
+  const KanbanElementsCompanion({
     this.id = const Value.absent(),
     this.boardId = const Value.absent(),
     this.name = const Value.absent(),
@@ -6472,7 +6300,7 @@ class KanbanBoardsCompanion extends UpdateCompanion<KanbanBoardRow> {
     this.updatedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
-  KanbanBoardsCompanion.insert({
+  KanbanElementsCompanion.insert({
     required String id,
     required String boardId,
     this.name = const Value.absent(),
@@ -6485,7 +6313,7 @@ class KanbanBoardsCompanion extends UpdateCompanion<KanbanBoardRow> {
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        boardId = Value(boardId);
-  static Insertable<KanbanBoardRow> custom({
+  static Insertable<KanbanElementRow> custom({
     Expression<String>? id,
     Expression<String>? boardId,
     Expression<String>? name,
@@ -6511,7 +6339,7 @@ class KanbanBoardsCompanion extends UpdateCompanion<KanbanBoardRow> {
     });
   }
 
-  KanbanBoardsCompanion copyWith({
+  KanbanElementsCompanion copyWith({
     Value<String>? id,
     Value<String>? boardId,
     Value<String>? name,
@@ -6523,7 +6351,7 @@ class KanbanBoardsCompanion extends UpdateCompanion<KanbanBoardRow> {
     Value<DateTime>? updatedAt,
     Value<int>? rowid,
   }) {
-    return KanbanBoardsCompanion(
+    return KanbanElementsCompanion(
       id: id ?? this.id,
       boardId: boardId ?? this.boardId,
       name: name ?? this.name,
@@ -6575,7 +6403,7 @@ class KanbanBoardsCompanion extends UpdateCompanion<KanbanBoardRow> {
 
   @override
   String toString() {
-    return (StringBuffer('KanbanBoardsCompanion(')
+    return (StringBuffer('KanbanElementsCompanion(')
           ..write('id: $id, ')
           ..write('boardId: $boardId, ')
           ..write('name: $name, ')
@@ -6591,12 +6419,12 @@ class KanbanBoardsCompanion extends UpdateCompanion<KanbanBoardRow> {
   }
 }
 
-class $SwimlanesTable extends Swimlanes
-    with TableInfo<$SwimlanesTable, SwimlaneRow> {
+class $KanbanColumnsTable extends KanbanColumns
+    with TableInfo<$KanbanColumnsTable, KanbanColumnRow> {
   @override
   final GeneratedDatabase attachedDatabase;
   final String? _alias;
-  $SwimlanesTable(this.attachedDatabase, [this._alias]);
+  $KanbanColumnsTable(this.attachedDatabase, [this._alias]);
   static const VerificationMeta _idMeta = const VerificationMeta('id');
   @override
   late final GeneratedColumn<String> id = GeneratedColumn<String>(
@@ -6606,12 +6434,12 @@ class $SwimlanesTable extends Swimlanes
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
-  static const VerificationMeta _kanbanBoardIdMeta = const VerificationMeta(
-    'kanbanBoardId',
+  static const VerificationMeta _kanbanElementIdMeta = const VerificationMeta(
+    'kanbanElementId',
   );
   @override
-  late final GeneratedColumn<String> kanbanBoardId = GeneratedColumn<String>(
-    'kanban_board_id',
+  late final GeneratedColumn<String> kanbanElementId = GeneratedColumn<String>(
+    'kanban_element_id',
     aliasedName,
     false,
     type: DriftSqlType.string,
@@ -6625,50 +6453,19 @@ class $SwimlanesTable extends Swimlanes
     false,
     type: DriftSqlType.string,
     requiredDuringInsert: false,
-    defaultValue: const Constant('Lane'),
-  );
-  static const VerificationMeta _yMeta = const VerificationMeta('y');
-  @override
-  late final GeneratedColumn<double> y = GeneratedColumn<double>(
-    'y',
-    aliasedName,
-    false,
-    type: DriftSqlType.double,
-    requiredDuringInsert: false,
-    defaultValue: const Constant(0),
-  );
-  static const VerificationMeta _heightMeta = const VerificationMeta('height');
-  @override
-  late final GeneratedColumn<double> height = GeneratedColumn<double>(
-    'height',
-    aliasedName,
-    false,
-    type: DriftSqlType.double,
-    requiredDuringInsert: false,
-    defaultValue: const Constant(200),
+    defaultValue: const Constant('List'),
   );
   static const VerificationMeta _sortOrderMeta = const VerificationMeta(
     'sortOrder',
   );
   @override
-  late final GeneratedColumn<int> sortOrder = GeneratedColumn<int>(
+  late final GeneratedColumn<double> sortOrder = GeneratedColumn<double>(
     'sort_order',
     aliasedName,
     false,
-    type: DriftSqlType.int,
+    type: DriftSqlType.double,
     requiredDuringInsert: false,
     defaultValue: const Constant(0),
-  );
-  static const VerificationMeta _colorHexMeta = const VerificationMeta(
-    'colorHex',
-  );
-  @override
-  late final GeneratedColumn<String> colorHex = GeneratedColumn<String>(
-    'color_hex',
-    aliasedName,
-    true,
-    type: DriftSqlType.string,
-    requiredDuringInsert: false,
   );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
@@ -6697,12 +6494,9 @@ class $SwimlanesTable extends Swimlanes
   @override
   List<GeneratedColumn> get $columns => [
     id,
-    kanbanBoardId,
+    kanbanElementId,
     name,
-    y,
-    height,
     sortOrder,
-    colorHex,
     createdAt,
     updatedAt,
   ];
@@ -6710,10 +6504,10 @@ class $SwimlanesTable extends Swimlanes
   String get aliasedName => _alias ?? actualTableName;
   @override
   String get actualTableName => $name;
-  static const String $name = 'swimlanes';
+  static const String $name = 'kanban_columns';
   @override
   VerificationContext validateIntegrity(
-    Insertable<SwimlaneRow> instance, {
+    Insertable<KanbanColumnRow> instance, {
     bool isInserting = false,
   }) {
     final context = VerificationContext();
@@ -6723,16 +6517,16 @@ class $SwimlanesTable extends Swimlanes
     } else if (isInserting) {
       context.missing(_idMeta);
     }
-    if (data.containsKey('kanban_board_id')) {
+    if (data.containsKey('kanban_element_id')) {
       context.handle(
-        _kanbanBoardIdMeta,
-        kanbanBoardId.isAcceptableOrUnknown(
-          data['kanban_board_id']!,
-          _kanbanBoardIdMeta,
+        _kanbanElementIdMeta,
+        kanbanElementId.isAcceptableOrUnknown(
+          data['kanban_element_id']!,
+          _kanbanElementIdMeta,
         ),
       );
     } else if (isInserting) {
-      context.missing(_kanbanBoardIdMeta);
+      context.missing(_kanbanElementIdMeta);
     }
     if (data.containsKey('name')) {
       context.handle(
@@ -6740,25 +6534,10 @@ class $SwimlanesTable extends Swimlanes
         name.isAcceptableOrUnknown(data['name']!, _nameMeta),
       );
     }
-    if (data.containsKey('y')) {
-      context.handle(_yMeta, y.isAcceptableOrUnknown(data['y']!, _yMeta));
-    }
-    if (data.containsKey('height')) {
-      context.handle(
-        _heightMeta,
-        height.isAcceptableOrUnknown(data['height']!, _heightMeta),
-      );
-    }
     if (data.containsKey('sort_order')) {
       context.handle(
         _sortOrderMeta,
         sortOrder.isAcceptableOrUnknown(data['sort_order']!, _sortOrderMeta),
-      );
-    }
-    if (data.containsKey('color_hex')) {
-      context.handle(
-        _colorHexMeta,
-        colorHex.isAcceptableOrUnknown(data['color_hex']!, _colorHexMeta),
       );
     }
     if (data.containsKey('created_at')) {
@@ -6779,37 +6558,25 @@ class $SwimlanesTable extends Swimlanes
   @override
   Set<GeneratedColumn> get $primaryKey => {id};
   @override
-  SwimlaneRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+  KanbanColumnRow map(Map<String, dynamic> data, {String? tablePrefix}) {
     final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
-    return SwimlaneRow(
+    return KanbanColumnRow(
       id: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}id'],
       )!,
-      kanbanBoardId: attachedDatabase.typeMapping.read(
+      kanbanElementId: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
-        data['${effectivePrefix}kanban_board_id'],
+        data['${effectivePrefix}kanban_element_id'],
       )!,
       name: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}name'],
       )!,
-      y: attachedDatabase.typeMapping.read(
-        DriftSqlType.double,
-        data['${effectivePrefix}y'],
-      )!,
-      height: attachedDatabase.typeMapping.read(
-        DriftSqlType.double,
-        data['${effectivePrefix}height'],
-      )!,
       sortOrder: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
+        DriftSqlType.double,
         data['${effectivePrefix}sort_order'],
       )!,
-      colorHex: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}color_hex'],
-      ),
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
@@ -6822,41 +6589,28 @@ class $SwimlanesTable extends Swimlanes
   }
 
   @override
-  $SwimlanesTable createAlias(String alias) {
-    return $SwimlanesTable(attachedDatabase, alias);
+  $KanbanColumnsTable createAlias(String alias) {
+    return $KanbanColumnsTable(attachedDatabase, alias);
   }
 }
 
-class SwimlaneRow extends DataClass implements Insertable<SwimlaneRow> {
+class KanbanColumnRow extends DataClass implements Insertable<KanbanColumnRow> {
   final String id;
-
-  /// NOT NULL, unlike `Frames.kanbanBoardId` - a swimlane has no
-  /// standalone meaning without a parent board (see
-  /// `KanbanBoardsRepository.deleteKanbanBoard`'s cascade-delete, not
-  /// cascade-unparent, for this row's children-of-a-deletion treatment).
-  final String kanbanBoardId;
+  final String kanbanElementId;
   final String name;
-  final double y;
-  final double height;
 
-  /// Top-to-bottom display order among one board's lanes - same role
-  /// `Frames.sortOrder` plays, kept alongside `y` rather than derived
-  /// from it so a user can reorder lanes without necessarily having them
-  /// stack contiguously (e.g. a gap between two lanes).
-  final int sortOrder;
-
-  /// Same null-means-default convention as `Frames.backgroundColorHex`.
-  final String? colorHex;
+  /// Fractional left-to-right display order among one element's columns -
+  /// see the Kanban-rebuild plan's "ordering: fractional indexing"
+  /// section. Reordering (or inserting a new column anywhere but the end)
+  /// only ever rewrites this one row's value.
+  final double sortOrder;
   final DateTime createdAt;
   final DateTime updatedAt;
-  const SwimlaneRow({
+  const KanbanColumnRow({
     required this.id,
-    required this.kanbanBoardId,
+    required this.kanbanElementId,
     required this.name,
-    required this.y,
-    required this.height,
     required this.sortOrder,
-    this.colorHex,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -6864,48 +6618,35 @@ class SwimlaneRow extends DataClass implements Insertable<SwimlaneRow> {
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     map['id'] = Variable<String>(id);
-    map['kanban_board_id'] = Variable<String>(kanbanBoardId);
+    map['kanban_element_id'] = Variable<String>(kanbanElementId);
     map['name'] = Variable<String>(name);
-    map['y'] = Variable<double>(y);
-    map['height'] = Variable<double>(height);
-    map['sort_order'] = Variable<int>(sortOrder);
-    if (!nullToAbsent || colorHex != null) {
-      map['color_hex'] = Variable<String>(colorHex);
-    }
+    map['sort_order'] = Variable<double>(sortOrder);
     map['created_at'] = Variable<DateTime>(createdAt);
     map['updated_at'] = Variable<DateTime>(updatedAt);
     return map;
   }
 
-  SwimlanesCompanion toCompanion(bool nullToAbsent) {
-    return SwimlanesCompanion(
+  KanbanColumnsCompanion toCompanion(bool nullToAbsent) {
+    return KanbanColumnsCompanion(
       id: Value(id),
-      kanbanBoardId: Value(kanbanBoardId),
+      kanbanElementId: Value(kanbanElementId),
       name: Value(name),
-      y: Value(y),
-      height: Value(height),
       sortOrder: Value(sortOrder),
-      colorHex: colorHex == null && nullToAbsent
-          ? const Value.absent()
-          : Value(colorHex),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
     );
   }
 
-  factory SwimlaneRow.fromJson(
+  factory KanbanColumnRow.fromJson(
     Map<String, dynamic> json, {
     ValueSerializer? serializer,
   }) {
     serializer ??= driftRuntimeOptions.defaultSerializer;
-    return SwimlaneRow(
+    return KanbanColumnRow(
       id: serializer.fromJson<String>(json['id']),
-      kanbanBoardId: serializer.fromJson<String>(json['kanbanBoardId']),
+      kanbanElementId: serializer.fromJson<String>(json['kanbanElementId']),
       name: serializer.fromJson<String>(json['name']),
-      y: serializer.fromJson<double>(json['y']),
-      height: serializer.fromJson<double>(json['height']),
-      sortOrder: serializer.fromJson<int>(json['sortOrder']),
-      colorHex: serializer.fromJson<String?>(json['colorHex']),
+      sortOrder: serializer.fromJson<double>(json['sortOrder']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
     );
@@ -6915,49 +6656,37 @@ class SwimlaneRow extends DataClass implements Insertable<SwimlaneRow> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return <String, dynamic>{
       'id': serializer.toJson<String>(id),
-      'kanbanBoardId': serializer.toJson<String>(kanbanBoardId),
+      'kanbanElementId': serializer.toJson<String>(kanbanElementId),
       'name': serializer.toJson<String>(name),
-      'y': serializer.toJson<double>(y),
-      'height': serializer.toJson<double>(height),
-      'sortOrder': serializer.toJson<int>(sortOrder),
-      'colorHex': serializer.toJson<String?>(colorHex),
+      'sortOrder': serializer.toJson<double>(sortOrder),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
     };
   }
 
-  SwimlaneRow copyWith({
+  KanbanColumnRow copyWith({
     String? id,
-    String? kanbanBoardId,
+    String? kanbanElementId,
     String? name,
-    double? y,
-    double? height,
-    int? sortOrder,
-    Value<String?> colorHex = const Value.absent(),
+    double? sortOrder,
     DateTime? createdAt,
     DateTime? updatedAt,
-  }) => SwimlaneRow(
+  }) => KanbanColumnRow(
     id: id ?? this.id,
-    kanbanBoardId: kanbanBoardId ?? this.kanbanBoardId,
+    kanbanElementId: kanbanElementId ?? this.kanbanElementId,
     name: name ?? this.name,
-    y: y ?? this.y,
-    height: height ?? this.height,
     sortOrder: sortOrder ?? this.sortOrder,
-    colorHex: colorHex.present ? colorHex.value : this.colorHex,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
   );
-  SwimlaneRow copyWithCompanion(SwimlanesCompanion data) {
-    return SwimlaneRow(
+  KanbanColumnRow copyWithCompanion(KanbanColumnsCompanion data) {
+    return KanbanColumnRow(
       id: data.id.present ? data.id.value : this.id,
-      kanbanBoardId: data.kanbanBoardId.present
-          ? data.kanbanBoardId.value
-          : this.kanbanBoardId,
+      kanbanElementId: data.kanbanElementId.present
+          ? data.kanbanElementId.value
+          : this.kanbanElementId,
       name: data.name.present ? data.name.value : this.name,
-      y: data.y.present ? data.y.value : this.y,
-      height: data.height.present ? data.height.value : this.height,
       sortOrder: data.sortOrder.present ? data.sortOrder.value : this.sortOrder,
-      colorHex: data.colorHex.present ? data.colorHex.value : this.colorHex,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
@@ -6965,14 +6694,11 @@ class SwimlaneRow extends DataClass implements Insertable<SwimlaneRow> {
 
   @override
   String toString() {
-    return (StringBuffer('SwimlaneRow(')
+    return (StringBuffer('KanbanColumnRow(')
           ..write('id: $id, ')
-          ..write('kanbanBoardId: $kanbanBoardId, ')
+          ..write('kanbanElementId: $kanbanElementId, ')
           ..write('name: $name, ')
-          ..write('y: $y, ')
-          ..write('height: $height, ')
           ..write('sortOrder: $sortOrder, ')
-          ..write('colorHex: $colorHex, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
@@ -6980,114 +6706,81 @@ class SwimlaneRow extends DataClass implements Insertable<SwimlaneRow> {
   }
 
   @override
-  int get hashCode => Object.hash(
-    id,
-    kanbanBoardId,
-    name,
-    y,
-    height,
-    sortOrder,
-    colorHex,
-    createdAt,
-    updatedAt,
-  );
+  int get hashCode =>
+      Object.hash(id, kanbanElementId, name, sortOrder, createdAt, updatedAt);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      (other is SwimlaneRow &&
+      (other is KanbanColumnRow &&
           other.id == this.id &&
-          other.kanbanBoardId == this.kanbanBoardId &&
+          other.kanbanElementId == this.kanbanElementId &&
           other.name == this.name &&
-          other.y == this.y &&
-          other.height == this.height &&
           other.sortOrder == this.sortOrder &&
-          other.colorHex == this.colorHex &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt);
 }
 
-class SwimlanesCompanion extends UpdateCompanion<SwimlaneRow> {
+class KanbanColumnsCompanion extends UpdateCompanion<KanbanColumnRow> {
   final Value<String> id;
-  final Value<String> kanbanBoardId;
+  final Value<String> kanbanElementId;
   final Value<String> name;
-  final Value<double> y;
-  final Value<double> height;
-  final Value<int> sortOrder;
-  final Value<String?> colorHex;
+  final Value<double> sortOrder;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
   final Value<int> rowid;
-  const SwimlanesCompanion({
+  const KanbanColumnsCompanion({
     this.id = const Value.absent(),
-    this.kanbanBoardId = const Value.absent(),
+    this.kanbanElementId = const Value.absent(),
     this.name = const Value.absent(),
-    this.y = const Value.absent(),
-    this.height = const Value.absent(),
     this.sortOrder = const Value.absent(),
-    this.colorHex = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
-  SwimlanesCompanion.insert({
+  KanbanColumnsCompanion.insert({
     required String id,
-    required String kanbanBoardId,
+    required String kanbanElementId,
     this.name = const Value.absent(),
-    this.y = const Value.absent(),
-    this.height = const Value.absent(),
     this.sortOrder = const Value.absent(),
-    this.colorHex = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
-       kanbanBoardId = Value(kanbanBoardId);
-  static Insertable<SwimlaneRow> custom({
+       kanbanElementId = Value(kanbanElementId);
+  static Insertable<KanbanColumnRow> custom({
     Expression<String>? id,
-    Expression<String>? kanbanBoardId,
+    Expression<String>? kanbanElementId,
     Expression<String>? name,
-    Expression<double>? y,
-    Expression<double>? height,
-    Expression<int>? sortOrder,
-    Expression<String>? colorHex,
+    Expression<double>? sortOrder,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
-      if (kanbanBoardId != null) 'kanban_board_id': kanbanBoardId,
+      if (kanbanElementId != null) 'kanban_element_id': kanbanElementId,
       if (name != null) 'name': name,
-      if (y != null) 'y': y,
-      if (height != null) 'height': height,
       if (sortOrder != null) 'sort_order': sortOrder,
-      if (colorHex != null) 'color_hex': colorHex,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (rowid != null) 'rowid': rowid,
     });
   }
 
-  SwimlanesCompanion copyWith({
+  KanbanColumnsCompanion copyWith({
     Value<String>? id,
-    Value<String>? kanbanBoardId,
+    Value<String>? kanbanElementId,
     Value<String>? name,
-    Value<double>? y,
-    Value<double>? height,
-    Value<int>? sortOrder,
-    Value<String?>? colorHex,
+    Value<double>? sortOrder,
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
     Value<int>? rowid,
   }) {
-    return SwimlanesCompanion(
+    return KanbanColumnsCompanion(
       id: id ?? this.id,
-      kanbanBoardId: kanbanBoardId ?? this.kanbanBoardId,
+      kanbanElementId: kanbanElementId ?? this.kanbanElementId,
       name: name ?? this.name,
-      y: y ?? this.y,
-      height: height ?? this.height,
       sortOrder: sortOrder ?? this.sortOrder,
-      colorHex: colorHex ?? this.colorHex,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       rowid: rowid ?? this.rowid,
@@ -7100,23 +6793,14 @@ class SwimlanesCompanion extends UpdateCompanion<SwimlaneRow> {
     if (id.present) {
       map['id'] = Variable<String>(id.value);
     }
-    if (kanbanBoardId.present) {
-      map['kanban_board_id'] = Variable<String>(kanbanBoardId.value);
+    if (kanbanElementId.present) {
+      map['kanban_element_id'] = Variable<String>(kanbanElementId.value);
     }
     if (name.present) {
       map['name'] = Variable<String>(name.value);
     }
-    if (y.present) {
-      map['y'] = Variable<double>(y.value);
-    }
-    if (height.present) {
-      map['height'] = Variable<double>(height.value);
-    }
     if (sortOrder.present) {
-      map['sort_order'] = Variable<int>(sortOrder.value);
-    }
-    if (colorHex.present) {
-      map['color_hex'] = Variable<String>(colorHex.value);
+      map['sort_order'] = Variable<double>(sortOrder.value);
     }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
@@ -7132,16 +6816,841 @@ class SwimlanesCompanion extends UpdateCompanion<SwimlaneRow> {
 
   @override
   String toString() {
-    return (StringBuffer('SwimlanesCompanion(')
+    return (StringBuffer('KanbanColumnsCompanion(')
           ..write('id: $id, ')
-          ..write('kanbanBoardId: $kanbanBoardId, ')
+          ..write('kanbanElementId: $kanbanElementId, ')
           ..write('name: $name, ')
-          ..write('y: $y, ')
-          ..write('height: $height, ')
           ..write('sortOrder: $sortOrder, ')
-          ..write('colorHex: $colorHex, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $KanbanTasksTable extends KanbanTasks
+    with TableInfo<$KanbanTasksTable, KanbanTaskRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $KanbanTasksTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _columnIdMeta = const VerificationMeta(
+    'columnId',
+  );
+  @override
+  late final GeneratedColumn<String> columnId = GeneratedColumn<String>(
+    'column_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _titleMeta = const VerificationMeta('title');
+  @override
+  late final GeneratedColumn<String> title = GeneratedColumn<String>(
+    'title',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  static const VerificationMeta _checklistJsonMeta = const VerificationMeta(
+    'checklistJson',
+  );
+  @override
+  late final GeneratedColumn<String> checklistJson = GeneratedColumn<String>(
+    'checklist_json',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _sortOrderMeta = const VerificationMeta(
+    'sortOrder',
+  );
+  @override
+  late final GeneratedColumn<double> sortOrder = GeneratedColumn<double>(
+    'sort_order',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    columnId,
+    title,
+    checklistJson,
+    sortOrder,
+    createdAt,
+    updatedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'kanban_tasks';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<KanbanTaskRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('column_id')) {
+      context.handle(
+        _columnIdMeta,
+        columnId.isAcceptableOrUnknown(data['column_id']!, _columnIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_columnIdMeta);
+    }
+    if (data.containsKey('title')) {
+      context.handle(
+        _titleMeta,
+        title.isAcceptableOrUnknown(data['title']!, _titleMeta),
+      );
+    }
+    if (data.containsKey('checklist_json')) {
+      context.handle(
+        _checklistJsonMeta,
+        checklistJson.isAcceptableOrUnknown(
+          data['checklist_json']!,
+          _checklistJsonMeta,
+        ),
+      );
+    }
+    if (data.containsKey('sort_order')) {
+      context.handle(
+        _sortOrderMeta,
+        sortOrder.isAcceptableOrUnknown(data['sort_order']!, _sortOrderMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  KanbanTaskRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return KanbanTaskRow(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      columnId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}column_id'],
+      )!,
+      title: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}title'],
+      )!,
+      checklistJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}checklist_json'],
+      ),
+      sortOrder: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}sort_order'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+    );
+  }
+
+  @override
+  $KanbanTasksTable createAlias(String alias) {
+    return $KanbanTasksTable(attachedDatabase, alias);
+  }
+}
+
+class KanbanTaskRow extends DataClass implements Insertable<KanbanTaskRow> {
+  final String id;
+  final String columnId;
+  final String title;
+
+  /// JSON-encoded checklist items, reusing `Checklist`'s existing
+  /// one-TEXT-column convention verbatim (relocated from the old
+  /// kanban-card clip to here). Null/empty means no checklist yet.
+  final String? checklistJson;
+
+  /// Fractional top-to-bottom display order within [columnId] - same
+  /// convention as `KanbanColumns.sortOrder`, just one level down.
+  final double sortOrder;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  const KanbanTaskRow({
+    required this.id,
+    required this.columnId,
+    required this.title,
+    this.checklistJson,
+    required this.sortOrder,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['column_id'] = Variable<String>(columnId);
+    map['title'] = Variable<String>(title);
+    if (!nullToAbsent || checklistJson != null) {
+      map['checklist_json'] = Variable<String>(checklistJson);
+    }
+    map['sort_order'] = Variable<double>(sortOrder);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    return map;
+  }
+
+  KanbanTasksCompanion toCompanion(bool nullToAbsent) {
+    return KanbanTasksCompanion(
+      id: Value(id),
+      columnId: Value(columnId),
+      title: Value(title),
+      checklistJson: checklistJson == null && nullToAbsent
+          ? const Value.absent()
+          : Value(checklistJson),
+      sortOrder: Value(sortOrder),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory KanbanTaskRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return KanbanTaskRow(
+      id: serializer.fromJson<String>(json['id']),
+      columnId: serializer.fromJson<String>(json['columnId']),
+      title: serializer.fromJson<String>(json['title']),
+      checklistJson: serializer.fromJson<String?>(json['checklistJson']),
+      sortOrder: serializer.fromJson<double>(json['sortOrder']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'columnId': serializer.toJson<String>(columnId),
+      'title': serializer.toJson<String>(title),
+      'checklistJson': serializer.toJson<String?>(checklistJson),
+      'sortOrder': serializer.toJson<double>(sortOrder),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+    };
+  }
+
+  KanbanTaskRow copyWith({
+    String? id,
+    String? columnId,
+    String? title,
+    Value<String?> checklistJson = const Value.absent(),
+    double? sortOrder,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+  }) => KanbanTaskRow(
+    id: id ?? this.id,
+    columnId: columnId ?? this.columnId,
+    title: title ?? this.title,
+    checklistJson: checklistJson.present
+        ? checklistJson.value
+        : this.checklistJson,
+    sortOrder: sortOrder ?? this.sortOrder,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+  KanbanTaskRow copyWithCompanion(KanbanTasksCompanion data) {
+    return KanbanTaskRow(
+      id: data.id.present ? data.id.value : this.id,
+      columnId: data.columnId.present ? data.columnId.value : this.columnId,
+      title: data.title.present ? data.title.value : this.title,
+      checklistJson: data.checklistJson.present
+          ? data.checklistJson.value
+          : this.checklistJson,
+      sortOrder: data.sortOrder.present ? data.sortOrder.value : this.sortOrder,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('KanbanTaskRow(')
+          ..write('id: $id, ')
+          ..write('columnId: $columnId, ')
+          ..write('title: $title, ')
+          ..write('checklistJson: $checklistJson, ')
+          ..write('sortOrder: $sortOrder, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    columnId,
+    title,
+    checklistJson,
+    sortOrder,
+    createdAt,
+    updatedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is KanbanTaskRow &&
+          other.id == this.id &&
+          other.columnId == this.columnId &&
+          other.title == this.title &&
+          other.checklistJson == this.checklistJson &&
+          other.sortOrder == this.sortOrder &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt);
+}
+
+class KanbanTasksCompanion extends UpdateCompanion<KanbanTaskRow> {
+  final Value<String> id;
+  final Value<String> columnId;
+  final Value<String> title;
+  final Value<String?> checklistJson;
+  final Value<double> sortOrder;
+  final Value<DateTime> createdAt;
+  final Value<DateTime> updatedAt;
+  final Value<int> rowid;
+  const KanbanTasksCompanion({
+    this.id = const Value.absent(),
+    this.columnId = const Value.absent(),
+    this.title = const Value.absent(),
+    this.checklistJson = const Value.absent(),
+    this.sortOrder = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  KanbanTasksCompanion.insert({
+    required String id,
+    required String columnId,
+    this.title = const Value.absent(),
+    this.checklistJson = const Value.absent(),
+    this.sortOrder = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       columnId = Value(columnId);
+  static Insertable<KanbanTaskRow> custom({
+    Expression<String>? id,
+    Expression<String>? columnId,
+    Expression<String>? title,
+    Expression<String>? checklistJson,
+    Expression<double>? sortOrder,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? updatedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (columnId != null) 'column_id': columnId,
+      if (title != null) 'title': title,
+      if (checklistJson != null) 'checklist_json': checklistJson,
+      if (sortOrder != null) 'sort_order': sortOrder,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  KanbanTasksCompanion copyWith({
+    Value<String>? id,
+    Value<String>? columnId,
+    Value<String>? title,
+    Value<String?>? checklistJson,
+    Value<double>? sortOrder,
+    Value<DateTime>? createdAt,
+    Value<DateTime>? updatedAt,
+    Value<int>? rowid,
+  }) {
+    return KanbanTasksCompanion(
+      id: id ?? this.id,
+      columnId: columnId ?? this.columnId,
+      title: title ?? this.title,
+      checklistJson: checklistJson ?? this.checklistJson,
+      sortOrder: sortOrder ?? this.sortOrder,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (columnId.present) {
+      map['column_id'] = Variable<String>(columnId.value);
+    }
+    if (title.present) {
+      map['title'] = Variable<String>(title.value);
+    }
+    if (checklistJson.present) {
+      map['checklist_json'] = Variable<String>(checklistJson.value);
+    }
+    if (sortOrder.present) {
+      map['sort_order'] = Variable<double>(sortOrder.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('KanbanTasksCompanion(')
+          ..write('id: $id, ')
+          ..write('columnId: $columnId, ')
+          ..write('title: $title, ')
+          ..write('checklistJson: $checklistJson, ')
+          ..write('sortOrder: $sortOrder, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $KanbanTaskLinksTable extends KanbanTaskLinks
+    with TableInfo<$KanbanTaskLinksTable, KanbanTaskLinkRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $KanbanTaskLinksTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _taskIdMeta = const VerificationMeta('taskId');
+  @override
+  late final GeneratedColumn<String> taskId = GeneratedColumn<String>(
+    'task_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _clipIdMeta = const VerificationMeta('clipId');
+  @override
+  late final GeneratedColumn<String> clipId = GeneratedColumn<String>(
+    'clip_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _frameIdMeta = const VerificationMeta(
+    'frameId',
+  );
+  @override
+  late final GeneratedColumn<String> frameId = GeneratedColumn<String>(
+    'frame_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    taskId,
+    clipId,
+    frameId,
+    createdAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'kanban_task_links';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<KanbanTaskLinkRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('task_id')) {
+      context.handle(
+        _taskIdMeta,
+        taskId.isAcceptableOrUnknown(data['task_id']!, _taskIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_taskIdMeta);
+    }
+    if (data.containsKey('clip_id')) {
+      context.handle(
+        _clipIdMeta,
+        clipId.isAcceptableOrUnknown(data['clip_id']!, _clipIdMeta),
+      );
+    }
+    if (data.containsKey('frame_id')) {
+      context.handle(
+        _frameIdMeta,
+        frameId.isAcceptableOrUnknown(data['frame_id']!, _frameIdMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  KanbanTaskLinkRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return KanbanTaskLinkRow(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      taskId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}task_id'],
+      )!,
+      clipId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}clip_id'],
+      ),
+      frameId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}frame_id'],
+      ),
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+    );
+  }
+
+  @override
+  $KanbanTaskLinksTable createAlias(String alias) {
+    return $KanbanTaskLinksTable(attachedDatabase, alias);
+  }
+}
+
+class KanbanTaskLinkRow extends DataClass
+    implements Insertable<KanbanTaskLinkRow> {
+  final String id;
+  final String taskId;
+  final String? clipId;
+  final String? frameId;
+  final DateTime createdAt;
+  const KanbanTaskLinkRow({
+    required this.id,
+    required this.taskId,
+    this.clipId,
+    this.frameId,
+    required this.createdAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['task_id'] = Variable<String>(taskId);
+    if (!nullToAbsent || clipId != null) {
+      map['clip_id'] = Variable<String>(clipId);
+    }
+    if (!nullToAbsent || frameId != null) {
+      map['frame_id'] = Variable<String>(frameId);
+    }
+    map['created_at'] = Variable<DateTime>(createdAt);
+    return map;
+  }
+
+  KanbanTaskLinksCompanion toCompanion(bool nullToAbsent) {
+    return KanbanTaskLinksCompanion(
+      id: Value(id),
+      taskId: Value(taskId),
+      clipId: clipId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(clipId),
+      frameId: frameId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(frameId),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory KanbanTaskLinkRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return KanbanTaskLinkRow(
+      id: serializer.fromJson<String>(json['id']),
+      taskId: serializer.fromJson<String>(json['taskId']),
+      clipId: serializer.fromJson<String?>(json['clipId']),
+      frameId: serializer.fromJson<String?>(json['frameId']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'taskId': serializer.toJson<String>(taskId),
+      'clipId': serializer.toJson<String?>(clipId),
+      'frameId': serializer.toJson<String?>(frameId),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+    };
+  }
+
+  KanbanTaskLinkRow copyWith({
+    String? id,
+    String? taskId,
+    Value<String?> clipId = const Value.absent(),
+    Value<String?> frameId = const Value.absent(),
+    DateTime? createdAt,
+  }) => KanbanTaskLinkRow(
+    id: id ?? this.id,
+    taskId: taskId ?? this.taskId,
+    clipId: clipId.present ? clipId.value : this.clipId,
+    frameId: frameId.present ? frameId.value : this.frameId,
+    createdAt: createdAt ?? this.createdAt,
+  );
+  KanbanTaskLinkRow copyWithCompanion(KanbanTaskLinksCompanion data) {
+    return KanbanTaskLinkRow(
+      id: data.id.present ? data.id.value : this.id,
+      taskId: data.taskId.present ? data.taskId.value : this.taskId,
+      clipId: data.clipId.present ? data.clipId.value : this.clipId,
+      frameId: data.frameId.present ? data.frameId.value : this.frameId,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('KanbanTaskLinkRow(')
+          ..write('id: $id, ')
+          ..write('taskId: $taskId, ')
+          ..write('clipId: $clipId, ')
+          ..write('frameId: $frameId, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, taskId, clipId, frameId, createdAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is KanbanTaskLinkRow &&
+          other.id == this.id &&
+          other.taskId == this.taskId &&
+          other.clipId == this.clipId &&
+          other.frameId == this.frameId &&
+          other.createdAt == this.createdAt);
+}
+
+class KanbanTaskLinksCompanion extends UpdateCompanion<KanbanTaskLinkRow> {
+  final Value<String> id;
+  final Value<String> taskId;
+  final Value<String?> clipId;
+  final Value<String?> frameId;
+  final Value<DateTime> createdAt;
+  final Value<int> rowid;
+  const KanbanTaskLinksCompanion({
+    this.id = const Value.absent(),
+    this.taskId = const Value.absent(),
+    this.clipId = const Value.absent(),
+    this.frameId = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  KanbanTaskLinksCompanion.insert({
+    required String id,
+    required String taskId,
+    this.clipId = const Value.absent(),
+    this.frameId = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       taskId = Value(taskId);
+  static Insertable<KanbanTaskLinkRow> custom({
+    Expression<String>? id,
+    Expression<String>? taskId,
+    Expression<String>? clipId,
+    Expression<String>? frameId,
+    Expression<DateTime>? createdAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (taskId != null) 'task_id': taskId,
+      if (clipId != null) 'clip_id': clipId,
+      if (frameId != null) 'frame_id': frameId,
+      if (createdAt != null) 'created_at': createdAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  KanbanTaskLinksCompanion copyWith({
+    Value<String>? id,
+    Value<String>? taskId,
+    Value<String?>? clipId,
+    Value<String?>? frameId,
+    Value<DateTime>? createdAt,
+    Value<int>? rowid,
+  }) {
+    return KanbanTaskLinksCompanion(
+      id: id ?? this.id,
+      taskId: taskId ?? this.taskId,
+      clipId: clipId ?? this.clipId,
+      frameId: frameId ?? this.frameId,
+      createdAt: createdAt ?? this.createdAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (taskId.present) {
+      map['task_id'] = Variable<String>(taskId.value);
+    }
+    if (clipId.present) {
+      map['clip_id'] = Variable<String>(clipId.value);
+    }
+    if (frameId.present) {
+      map['frame_id'] = Variable<String>(frameId.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('KanbanTaskLinksCompanion(')
+          ..write('id: $id, ')
+          ..write('taskId: $taskId, ')
+          ..write('clipId: $clipId, ')
+          ..write('frameId: $frameId, ')
+          ..write('createdAt: $createdAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -7159,8 +7668,12 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $ConnectorsTable connectors = $ConnectorsTable(this);
   late final $AppSettingsTable appSettings = $AppSettingsTable(this);
   late final $ThemesTable themes = $ThemesTable(this);
-  late final $KanbanBoardsTable kanbanBoards = $KanbanBoardsTable(this);
-  late final $SwimlanesTable swimlanes = $SwimlanesTable(this);
+  late final $KanbanElementsTable kanbanElements = $KanbanElementsTable(this);
+  late final $KanbanColumnsTable kanbanColumns = $KanbanColumnsTable(this);
+  late final $KanbanTasksTable kanbanTasks = $KanbanTasksTable(this);
+  late final $KanbanTaskLinksTable kanbanTaskLinks = $KanbanTaskLinksTable(
+    this,
+  );
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -7174,8 +7687,10 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     connectors,
     appSettings,
     themes,
-    kanbanBoards,
-    swimlanes,
+    kanbanElements,
+    kanbanColumns,
+    kanbanTasks,
+    kanbanTaskLinks,
   ];
 }
 
@@ -7193,7 +7708,6 @@ typedef $$ClipsTableCreateCompanionBuilder =
       Value<double> opacity,
       Value<String?> groupId,
       Value<String?> frameId,
-      Value<String?> swimlaneId,
       Value<String?> textContent,
       Value<String?> backgroundColorHex,
       Value<String?> localFilePath,
@@ -7211,7 +7725,6 @@ typedef $$ClipsTableCreateCompanionBuilder =
       Value<String?> shapeStrokeColorHex,
       Value<double?> shapeStrokeWidth,
       Value<String?> highlightColorHex,
-      Value<String?> checklistJson,
       Value<bool> isBinned,
       Value<DateTime?> binnedAt,
       Value<DateTime> createdAt,
@@ -7232,7 +7745,6 @@ typedef $$ClipsTableUpdateCompanionBuilder =
       Value<double> opacity,
       Value<String?> groupId,
       Value<String?> frameId,
-      Value<String?> swimlaneId,
       Value<String?> textContent,
       Value<String?> backgroundColorHex,
       Value<String?> localFilePath,
@@ -7250,7 +7762,6 @@ typedef $$ClipsTableUpdateCompanionBuilder =
       Value<String?> shapeStrokeColorHex,
       Value<double?> shapeStrokeWidth,
       Value<String?> highlightColorHex,
-      Value<String?> checklistJson,
       Value<bool> isBinned,
       Value<DateTime?> binnedAt,
       Value<DateTime> createdAt,
@@ -7323,11 +7834,6 @@ class $$ClipsTableFilterComposer extends Composer<_$AppDatabase, $ClipsTable> {
 
   ColumnFilters<String> get frameId => $composableBuilder(
     column: $table.frameId,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<String> get swimlaneId => $composableBuilder(
-    column: $table.swimlaneId,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -7413,11 +7919,6 @@ class $$ClipsTableFilterComposer extends Composer<_$AppDatabase, $ClipsTable> {
 
   ColumnFilters<String> get highlightColorHex => $composableBuilder(
     column: $table.highlightColorHex,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<String> get checklistJson => $composableBuilder(
-    column: $table.checklistJson,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -7511,11 +8012,6 @@ class $$ClipsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
-  ColumnOrderings<String> get swimlaneId => $composableBuilder(
-    column: $table.swimlaneId,
-    builder: (column) => ColumnOrderings(column),
-  );
-
   ColumnOrderings<String> get textContent => $composableBuilder(
     column: $table.textContent,
     builder: (column) => ColumnOrderings(column),
@@ -7601,11 +8097,6 @@ class $$ClipsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
-  ColumnOrderings<String> get checklistJson => $composableBuilder(
-    column: $table.checklistJson,
-    builder: (column) => ColumnOrderings(column),
-  );
-
   ColumnOrderings<bool> get isBinned => $composableBuilder(
     column: $table.isBinned,
     builder: (column) => ColumnOrderings(column),
@@ -7671,11 +8162,6 @@ class $$ClipsTableAnnotationComposer
 
   GeneratedColumn<String> get frameId =>
       $composableBuilder(column: $table.frameId, builder: (column) => column);
-
-  GeneratedColumn<String> get swimlaneId => $composableBuilder(
-    column: $table.swimlaneId,
-    builder: (column) => column,
-  );
 
   GeneratedColumn<String> get textContent => $composableBuilder(
     column: $table.textContent,
@@ -7748,11 +8234,6 @@ class $$ClipsTableAnnotationComposer
     builder: (column) => column,
   );
 
-  GeneratedColumn<String> get checklistJson => $composableBuilder(
-    column: $table.checklistJson,
-    builder: (column) => column,
-  );
-
   GeneratedColumn<bool> get isBinned =>
       $composableBuilder(column: $table.isBinned, builder: (column) => column);
 
@@ -7806,7 +8287,6 @@ class $$ClipsTableTableManager
                 Value<double> opacity = const Value.absent(),
                 Value<String?> groupId = const Value.absent(),
                 Value<String?> frameId = const Value.absent(),
-                Value<String?> swimlaneId = const Value.absent(),
                 Value<String?> textContent = const Value.absent(),
                 Value<String?> backgroundColorHex = const Value.absent(),
                 Value<String?> localFilePath = const Value.absent(),
@@ -7824,7 +8304,6 @@ class $$ClipsTableTableManager
                 Value<String?> shapeStrokeColorHex = const Value.absent(),
                 Value<double?> shapeStrokeWidth = const Value.absent(),
                 Value<String?> highlightColorHex = const Value.absent(),
-                Value<String?> checklistJson = const Value.absent(),
                 Value<bool> isBinned = const Value.absent(),
                 Value<DateTime?> binnedAt = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
@@ -7843,7 +8322,6 @@ class $$ClipsTableTableManager
                 opacity: opacity,
                 groupId: groupId,
                 frameId: frameId,
-                swimlaneId: swimlaneId,
                 textContent: textContent,
                 backgroundColorHex: backgroundColorHex,
                 localFilePath: localFilePath,
@@ -7861,7 +8339,6 @@ class $$ClipsTableTableManager
                 shapeStrokeColorHex: shapeStrokeColorHex,
                 shapeStrokeWidth: shapeStrokeWidth,
                 highlightColorHex: highlightColorHex,
-                checklistJson: checklistJson,
                 isBinned: isBinned,
                 binnedAt: binnedAt,
                 createdAt: createdAt,
@@ -7882,7 +8359,6 @@ class $$ClipsTableTableManager
                 Value<double> opacity = const Value.absent(),
                 Value<String?> groupId = const Value.absent(),
                 Value<String?> frameId = const Value.absent(),
-                Value<String?> swimlaneId = const Value.absent(),
                 Value<String?> textContent = const Value.absent(),
                 Value<String?> backgroundColorHex = const Value.absent(),
                 Value<String?> localFilePath = const Value.absent(),
@@ -7900,7 +8376,6 @@ class $$ClipsTableTableManager
                 Value<String?> shapeStrokeColorHex = const Value.absent(),
                 Value<double?> shapeStrokeWidth = const Value.absent(),
                 Value<String?> highlightColorHex = const Value.absent(),
-                Value<String?> checklistJson = const Value.absent(),
                 Value<bool> isBinned = const Value.absent(),
                 Value<DateTime?> binnedAt = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
@@ -7919,7 +8394,6 @@ class $$ClipsTableTableManager
                 opacity: opacity,
                 groupId: groupId,
                 frameId: frameId,
-                swimlaneId: swimlaneId,
                 textContent: textContent,
                 backgroundColorHex: backgroundColorHex,
                 localFilePath: localFilePath,
@@ -7937,7 +8411,6 @@ class $$ClipsTableTableManager
                 shapeStrokeColorHex: shapeStrokeColorHex,
                 shapeStrokeWidth: shapeStrokeWidth,
                 highlightColorHex: highlightColorHex,
-                checklistJson: checklistJson,
                 isBinned: isBinned,
                 binnedAt: binnedAt,
                 createdAt: createdAt,
@@ -8697,7 +9170,6 @@ typedef $$FramesTableCreateCompanionBuilder =
       Value<double> height,
       Value<int> sortOrder,
       Value<String?> backgroundColorHex,
-      Value<String?> kanbanBoardId,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
       Value<int> rowid,
@@ -8713,7 +9185,6 @@ typedef $$FramesTableUpdateCompanionBuilder =
       Value<double> height,
       Value<int> sortOrder,
       Value<String?> backgroundColorHex,
-      Value<String?> kanbanBoardId,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
       Value<int> rowid,
@@ -8770,11 +9241,6 @@ class $$FramesTableFilterComposer
 
   ColumnFilters<String> get backgroundColorHex => $composableBuilder(
     column: $table.backgroundColorHex,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<String> get kanbanBoardId => $composableBuilder(
-    column: $table.kanbanBoardId,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -8843,11 +9309,6 @@ class $$FramesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
-  ColumnOrderings<String> get kanbanBoardId => $composableBuilder(
-    column: $table.kanbanBoardId,
-    builder: (column) => ColumnOrderings(column),
-  );
-
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
@@ -8897,11 +9358,6 @@ class $$FramesTableAnnotationComposer
     builder: (column) => column,
   );
 
-  GeneratedColumn<String> get kanbanBoardId => $composableBuilder(
-    column: $table.kanbanBoardId,
-    builder: (column) => column,
-  );
-
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
 
@@ -8946,7 +9402,6 @@ class $$FramesTableTableManager
                 Value<double> height = const Value.absent(),
                 Value<int> sortOrder = const Value.absent(),
                 Value<String?> backgroundColorHex = const Value.absent(),
-                Value<String?> kanbanBoardId = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
@@ -8960,7 +9415,6 @@ class $$FramesTableTableManager
                 height: height,
                 sortOrder: sortOrder,
                 backgroundColorHex: backgroundColorHex,
-                kanbanBoardId: kanbanBoardId,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 rowid: rowid,
@@ -8976,7 +9430,6 @@ class $$FramesTableTableManager
                 Value<double> height = const Value.absent(),
                 Value<int> sortOrder = const Value.absent(),
                 Value<String?> backgroundColorHex = const Value.absent(),
-                Value<String?> kanbanBoardId = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
@@ -8990,7 +9443,6 @@ class $$FramesTableTableManager
                 height: height,
                 sortOrder: sortOrder,
                 backgroundColorHex: backgroundColorHex,
-                kanbanBoardId: kanbanBoardId,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 rowid: rowid,
@@ -9941,8 +10393,8 @@ typedef $$ThemesTableProcessedTableManager =
       ThemeRow,
       PrefetchHooks Function()
     >;
-typedef $$KanbanBoardsTableCreateCompanionBuilder =
-    KanbanBoardsCompanion Function({
+typedef $$KanbanElementsTableCreateCompanionBuilder =
+    KanbanElementsCompanion Function({
       required String id,
       required String boardId,
       Value<String> name,
@@ -9954,8 +10406,8 @@ typedef $$KanbanBoardsTableCreateCompanionBuilder =
       Value<DateTime> updatedAt,
       Value<int> rowid,
     });
-typedef $$KanbanBoardsTableUpdateCompanionBuilder =
-    KanbanBoardsCompanion Function({
+typedef $$KanbanElementsTableUpdateCompanionBuilder =
+    KanbanElementsCompanion Function({
       Value<String> id,
       Value<String> boardId,
       Value<String> name,
@@ -9968,9 +10420,9 @@ typedef $$KanbanBoardsTableUpdateCompanionBuilder =
       Value<int> rowid,
     });
 
-class $$KanbanBoardsTableFilterComposer
-    extends Composer<_$AppDatabase, $KanbanBoardsTable> {
-  $$KanbanBoardsTableFilterComposer({
+class $$KanbanElementsTableFilterComposer
+    extends Composer<_$AppDatabase, $KanbanElementsTable> {
+  $$KanbanElementsTableFilterComposer({
     required super.$db,
     required super.$table,
     super.joinBuilder,
@@ -10023,9 +10475,9 @@ class $$KanbanBoardsTableFilterComposer
   );
 }
 
-class $$KanbanBoardsTableOrderingComposer
-    extends Composer<_$AppDatabase, $KanbanBoardsTable> {
-  $$KanbanBoardsTableOrderingComposer({
+class $$KanbanElementsTableOrderingComposer
+    extends Composer<_$AppDatabase, $KanbanElementsTable> {
+  $$KanbanElementsTableOrderingComposer({
     required super.$db,
     required super.$table,
     super.joinBuilder,
@@ -10078,9 +10530,9 @@ class $$KanbanBoardsTableOrderingComposer
   );
 }
 
-class $$KanbanBoardsTableAnnotationComposer
-    extends Composer<_$AppDatabase, $KanbanBoardsTable> {
-  $$KanbanBoardsTableAnnotationComposer({
+class $$KanbanElementsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $KanbanElementsTable> {
+  $$KanbanElementsTableAnnotationComposer({
     required super.$db,
     required super.$table,
     super.joinBuilder,
@@ -10115,35 +10567,41 @@ class $$KanbanBoardsTableAnnotationComposer
       $composableBuilder(column: $table.updatedAt, builder: (column) => column);
 }
 
-class $$KanbanBoardsTableTableManager
+class $$KanbanElementsTableTableManager
     extends
         RootTableManager<
           _$AppDatabase,
-          $KanbanBoardsTable,
-          KanbanBoardRow,
-          $$KanbanBoardsTableFilterComposer,
-          $$KanbanBoardsTableOrderingComposer,
-          $$KanbanBoardsTableAnnotationComposer,
-          $$KanbanBoardsTableCreateCompanionBuilder,
-          $$KanbanBoardsTableUpdateCompanionBuilder,
+          $KanbanElementsTable,
+          KanbanElementRow,
+          $$KanbanElementsTableFilterComposer,
+          $$KanbanElementsTableOrderingComposer,
+          $$KanbanElementsTableAnnotationComposer,
+          $$KanbanElementsTableCreateCompanionBuilder,
+          $$KanbanElementsTableUpdateCompanionBuilder,
           (
-            KanbanBoardRow,
-            BaseReferences<_$AppDatabase, $KanbanBoardsTable, KanbanBoardRow>,
+            KanbanElementRow,
+            BaseReferences<
+              _$AppDatabase,
+              $KanbanElementsTable,
+              KanbanElementRow
+            >,
           ),
-          KanbanBoardRow,
+          KanbanElementRow,
           PrefetchHooks Function()
         > {
-  $$KanbanBoardsTableTableManager(_$AppDatabase db, $KanbanBoardsTable table)
-    : super(
+  $$KanbanElementsTableTableManager(
+    _$AppDatabase db,
+    $KanbanElementsTable table,
+  ) : super(
         TableManagerState(
           db: db,
           table: table,
           createFilteringComposer: () =>
-              $$KanbanBoardsTableFilterComposer($db: db, $table: table),
+              $$KanbanElementsTableFilterComposer($db: db, $table: table),
           createOrderingComposer: () =>
-              $$KanbanBoardsTableOrderingComposer($db: db, $table: table),
+              $$KanbanElementsTableOrderingComposer($db: db, $table: table),
           createComputedFieldComposer: () =>
-              $$KanbanBoardsTableAnnotationComposer($db: db, $table: table),
+              $$KanbanElementsTableAnnotationComposer($db: db, $table: table),
           updateCompanionCallback:
               ({
                 Value<String> id = const Value.absent(),
@@ -10156,7 +10614,7 @@ class $$KanbanBoardsTableTableManager
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
-              }) => KanbanBoardsCompanion(
+              }) => KanbanElementsCompanion(
                 id: id,
                 boardId: boardId,
                 name: name,
@@ -10180,7 +10638,7 @@ class $$KanbanBoardsTableTableManager
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
-              }) => KanbanBoardsCompanion.insert(
+              }) => KanbanElementsCompanion.insert(
                 id: id,
                 boardId: boardId,
                 name: name,
@@ -10200,53 +10658,47 @@ class $$KanbanBoardsTableTableManager
       );
 }
 
-typedef $$KanbanBoardsTableProcessedTableManager =
+typedef $$KanbanElementsTableProcessedTableManager =
     ProcessedTableManager<
       _$AppDatabase,
-      $KanbanBoardsTable,
-      KanbanBoardRow,
-      $$KanbanBoardsTableFilterComposer,
-      $$KanbanBoardsTableOrderingComposer,
-      $$KanbanBoardsTableAnnotationComposer,
-      $$KanbanBoardsTableCreateCompanionBuilder,
-      $$KanbanBoardsTableUpdateCompanionBuilder,
+      $KanbanElementsTable,
+      KanbanElementRow,
+      $$KanbanElementsTableFilterComposer,
+      $$KanbanElementsTableOrderingComposer,
+      $$KanbanElementsTableAnnotationComposer,
+      $$KanbanElementsTableCreateCompanionBuilder,
+      $$KanbanElementsTableUpdateCompanionBuilder,
       (
-        KanbanBoardRow,
-        BaseReferences<_$AppDatabase, $KanbanBoardsTable, KanbanBoardRow>,
+        KanbanElementRow,
+        BaseReferences<_$AppDatabase, $KanbanElementsTable, KanbanElementRow>,
       ),
-      KanbanBoardRow,
+      KanbanElementRow,
       PrefetchHooks Function()
     >;
-typedef $$SwimlanesTableCreateCompanionBuilder =
-    SwimlanesCompanion Function({
+typedef $$KanbanColumnsTableCreateCompanionBuilder =
+    KanbanColumnsCompanion Function({
       required String id,
-      required String kanbanBoardId,
+      required String kanbanElementId,
       Value<String> name,
-      Value<double> y,
-      Value<double> height,
-      Value<int> sortOrder,
-      Value<String?> colorHex,
+      Value<double> sortOrder,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
       Value<int> rowid,
     });
-typedef $$SwimlanesTableUpdateCompanionBuilder =
-    SwimlanesCompanion Function({
+typedef $$KanbanColumnsTableUpdateCompanionBuilder =
+    KanbanColumnsCompanion Function({
       Value<String> id,
-      Value<String> kanbanBoardId,
+      Value<String> kanbanElementId,
       Value<String> name,
-      Value<double> y,
-      Value<double> height,
-      Value<int> sortOrder,
-      Value<String?> colorHex,
+      Value<double> sortOrder,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
       Value<int> rowid,
     });
 
-class $$SwimlanesTableFilterComposer
-    extends Composer<_$AppDatabase, $SwimlanesTable> {
-  $$SwimlanesTableFilterComposer({
+class $$KanbanColumnsTableFilterComposer
+    extends Composer<_$AppDatabase, $KanbanColumnsTable> {
+  $$KanbanColumnsTableFilterComposer({
     required super.$db,
     required super.$table,
     super.joinBuilder,
@@ -10258,8 +10710,8 @@ class $$SwimlanesTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
-  ColumnFilters<String> get kanbanBoardId => $composableBuilder(
-    column: $table.kanbanBoardId,
+  ColumnFilters<String> get kanbanElementId => $composableBuilder(
+    column: $table.kanbanElementId,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -10268,23 +10720,8 @@ class $$SwimlanesTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
-  ColumnFilters<double> get y => $composableBuilder(
-    column: $table.y,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<double> get height => $composableBuilder(
-    column: $table.height,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<int> get sortOrder => $composableBuilder(
+  ColumnFilters<double> get sortOrder => $composableBuilder(
     column: $table.sortOrder,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<String> get colorHex => $composableBuilder(
-    column: $table.colorHex,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -10299,9 +10736,9 @@ class $$SwimlanesTableFilterComposer
   );
 }
 
-class $$SwimlanesTableOrderingComposer
-    extends Composer<_$AppDatabase, $SwimlanesTable> {
-  $$SwimlanesTableOrderingComposer({
+class $$KanbanColumnsTableOrderingComposer
+    extends Composer<_$AppDatabase, $KanbanColumnsTable> {
+  $$KanbanColumnsTableOrderingComposer({
     required super.$db,
     required super.$table,
     super.joinBuilder,
@@ -10313,8 +10750,8 @@ class $$SwimlanesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
-  ColumnOrderings<String> get kanbanBoardId => $composableBuilder(
-    column: $table.kanbanBoardId,
+  ColumnOrderings<String> get kanbanElementId => $composableBuilder(
+    column: $table.kanbanElementId,
     builder: (column) => ColumnOrderings(column),
   );
 
@@ -10323,23 +10760,8 @@ class $$SwimlanesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
-  ColumnOrderings<double> get y => $composableBuilder(
-    column: $table.y,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<double> get height => $composableBuilder(
-    column: $table.height,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<int> get sortOrder => $composableBuilder(
+  ColumnOrderings<double> get sortOrder => $composableBuilder(
     column: $table.sortOrder,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<String> get colorHex => $composableBuilder(
-    column: $table.colorHex,
     builder: (column) => ColumnOrderings(column),
   );
 
@@ -10354,9 +10776,9 @@ class $$SwimlanesTableOrderingComposer
   );
 }
 
-class $$SwimlanesTableAnnotationComposer
-    extends Composer<_$AppDatabase, $SwimlanesTable> {
-  $$SwimlanesTableAnnotationComposer({
+class $$KanbanColumnsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $KanbanColumnsTable> {
+  $$KanbanColumnsTableAnnotationComposer({
     required super.$db,
     required super.$table,
     super.joinBuilder,
@@ -10366,25 +10788,16 @@ class $$SwimlanesTableAnnotationComposer
   GeneratedColumn<String> get id =>
       $composableBuilder(column: $table.id, builder: (column) => column);
 
-  GeneratedColumn<String> get kanbanBoardId => $composableBuilder(
-    column: $table.kanbanBoardId,
+  GeneratedColumn<String> get kanbanElementId => $composableBuilder(
+    column: $table.kanbanElementId,
     builder: (column) => column,
   );
 
   GeneratedColumn<String> get name =>
       $composableBuilder(column: $table.name, builder: (column) => column);
 
-  GeneratedColumn<double> get y =>
-      $composableBuilder(column: $table.y, builder: (column) => column);
-
-  GeneratedColumn<double> get height =>
-      $composableBuilder(column: $table.height, builder: (column) => column);
-
-  GeneratedColumn<int> get sortOrder =>
+  GeneratedColumn<double> get sortOrder =>
       $composableBuilder(column: $table.sortOrder, builder: (column) => column);
-
-  GeneratedColumn<String> get colorHex =>
-      $composableBuilder(column: $table.colorHex, builder: (column) => column);
 
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
@@ -10393,55 +10806,49 @@ class $$SwimlanesTableAnnotationComposer
       $composableBuilder(column: $table.updatedAt, builder: (column) => column);
 }
 
-class $$SwimlanesTableTableManager
+class $$KanbanColumnsTableTableManager
     extends
         RootTableManager<
           _$AppDatabase,
-          $SwimlanesTable,
-          SwimlaneRow,
-          $$SwimlanesTableFilterComposer,
-          $$SwimlanesTableOrderingComposer,
-          $$SwimlanesTableAnnotationComposer,
-          $$SwimlanesTableCreateCompanionBuilder,
-          $$SwimlanesTableUpdateCompanionBuilder,
+          $KanbanColumnsTable,
+          KanbanColumnRow,
+          $$KanbanColumnsTableFilterComposer,
+          $$KanbanColumnsTableOrderingComposer,
+          $$KanbanColumnsTableAnnotationComposer,
+          $$KanbanColumnsTableCreateCompanionBuilder,
+          $$KanbanColumnsTableUpdateCompanionBuilder,
           (
-            SwimlaneRow,
-            BaseReferences<_$AppDatabase, $SwimlanesTable, SwimlaneRow>,
+            KanbanColumnRow,
+            BaseReferences<_$AppDatabase, $KanbanColumnsTable, KanbanColumnRow>,
           ),
-          SwimlaneRow,
+          KanbanColumnRow,
           PrefetchHooks Function()
         > {
-  $$SwimlanesTableTableManager(_$AppDatabase db, $SwimlanesTable table)
+  $$KanbanColumnsTableTableManager(_$AppDatabase db, $KanbanColumnsTable table)
     : super(
         TableManagerState(
           db: db,
           table: table,
           createFilteringComposer: () =>
-              $$SwimlanesTableFilterComposer($db: db, $table: table),
+              $$KanbanColumnsTableFilterComposer($db: db, $table: table),
           createOrderingComposer: () =>
-              $$SwimlanesTableOrderingComposer($db: db, $table: table),
+              $$KanbanColumnsTableOrderingComposer($db: db, $table: table),
           createComputedFieldComposer: () =>
-              $$SwimlanesTableAnnotationComposer($db: db, $table: table),
+              $$KanbanColumnsTableAnnotationComposer($db: db, $table: table),
           updateCompanionCallback:
               ({
                 Value<String> id = const Value.absent(),
-                Value<String> kanbanBoardId = const Value.absent(),
+                Value<String> kanbanElementId = const Value.absent(),
                 Value<String> name = const Value.absent(),
-                Value<double> y = const Value.absent(),
-                Value<double> height = const Value.absent(),
-                Value<int> sortOrder = const Value.absent(),
-                Value<String?> colorHex = const Value.absent(),
+                Value<double> sortOrder = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
-              }) => SwimlanesCompanion(
+              }) => KanbanColumnsCompanion(
                 id: id,
-                kanbanBoardId: kanbanBoardId,
+                kanbanElementId: kanbanElementId,
                 name: name,
-                y: y,
-                height: height,
                 sortOrder: sortOrder,
-                colorHex: colorHex,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 rowid: rowid,
@@ -10449,23 +10856,17 @@ class $$SwimlanesTableTableManager
           createCompanionCallback:
               ({
                 required String id,
-                required String kanbanBoardId,
+                required String kanbanElementId,
                 Value<String> name = const Value.absent(),
-                Value<double> y = const Value.absent(),
-                Value<double> height = const Value.absent(),
-                Value<int> sortOrder = const Value.absent(),
-                Value<String?> colorHex = const Value.absent(),
+                Value<double> sortOrder = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
-              }) => SwimlanesCompanion.insert(
+              }) => KanbanColumnsCompanion.insert(
                 id: id,
-                kanbanBoardId: kanbanBoardId,
+                kanbanElementId: kanbanElementId,
                 name: name,
-                y: y,
-                height: height,
                 sortOrder: sortOrder,
-                colorHex: colorHex,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 rowid: rowid,
@@ -10478,21 +10879,467 @@ class $$SwimlanesTableTableManager
       );
 }
 
-typedef $$SwimlanesTableProcessedTableManager =
+typedef $$KanbanColumnsTableProcessedTableManager =
     ProcessedTableManager<
       _$AppDatabase,
-      $SwimlanesTable,
-      SwimlaneRow,
-      $$SwimlanesTableFilterComposer,
-      $$SwimlanesTableOrderingComposer,
-      $$SwimlanesTableAnnotationComposer,
-      $$SwimlanesTableCreateCompanionBuilder,
-      $$SwimlanesTableUpdateCompanionBuilder,
+      $KanbanColumnsTable,
+      KanbanColumnRow,
+      $$KanbanColumnsTableFilterComposer,
+      $$KanbanColumnsTableOrderingComposer,
+      $$KanbanColumnsTableAnnotationComposer,
+      $$KanbanColumnsTableCreateCompanionBuilder,
+      $$KanbanColumnsTableUpdateCompanionBuilder,
       (
-        SwimlaneRow,
-        BaseReferences<_$AppDatabase, $SwimlanesTable, SwimlaneRow>,
+        KanbanColumnRow,
+        BaseReferences<_$AppDatabase, $KanbanColumnsTable, KanbanColumnRow>,
       ),
-      SwimlaneRow,
+      KanbanColumnRow,
+      PrefetchHooks Function()
+    >;
+typedef $$KanbanTasksTableCreateCompanionBuilder =
+    KanbanTasksCompanion Function({
+      required String id,
+      required String columnId,
+      Value<String> title,
+      Value<String?> checklistJson,
+      Value<double> sortOrder,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+      Value<int> rowid,
+    });
+typedef $$KanbanTasksTableUpdateCompanionBuilder =
+    KanbanTasksCompanion Function({
+      Value<String> id,
+      Value<String> columnId,
+      Value<String> title,
+      Value<String?> checklistJson,
+      Value<double> sortOrder,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+      Value<int> rowid,
+    });
+
+class $$KanbanTasksTableFilterComposer
+    extends Composer<_$AppDatabase, $KanbanTasksTable> {
+  $$KanbanTasksTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get columnId => $composableBuilder(
+    column: $table.columnId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get checklistJson => $composableBuilder(
+    column: $table.checklistJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get sortOrder => $composableBuilder(
+    column: $table.sortOrder,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$KanbanTasksTableOrderingComposer
+    extends Composer<_$AppDatabase, $KanbanTasksTable> {
+  $$KanbanTasksTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get columnId => $composableBuilder(
+    column: $table.columnId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get checklistJson => $composableBuilder(
+    column: $table.checklistJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get sortOrder => $composableBuilder(
+    column: $table.sortOrder,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$KanbanTasksTableAnnotationComposer
+    extends Composer<_$AppDatabase, $KanbanTasksTable> {
+  $$KanbanTasksTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get columnId =>
+      $composableBuilder(column: $table.columnId, builder: (column) => column);
+
+  GeneratedColumn<String> get title =>
+      $composableBuilder(column: $table.title, builder: (column) => column);
+
+  GeneratedColumn<String> get checklistJson => $composableBuilder(
+    column: $table.checklistJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<double> get sortOrder =>
+      $composableBuilder(column: $table.sortOrder, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+}
+
+class $$KanbanTasksTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $KanbanTasksTable,
+          KanbanTaskRow,
+          $$KanbanTasksTableFilterComposer,
+          $$KanbanTasksTableOrderingComposer,
+          $$KanbanTasksTableAnnotationComposer,
+          $$KanbanTasksTableCreateCompanionBuilder,
+          $$KanbanTasksTableUpdateCompanionBuilder,
+          (
+            KanbanTaskRow,
+            BaseReferences<_$AppDatabase, $KanbanTasksTable, KanbanTaskRow>,
+          ),
+          KanbanTaskRow,
+          PrefetchHooks Function()
+        > {
+  $$KanbanTasksTableTableManager(_$AppDatabase db, $KanbanTasksTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$KanbanTasksTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$KanbanTasksTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$KanbanTasksTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> columnId = const Value.absent(),
+                Value<String> title = const Value.absent(),
+                Value<String?> checklistJson = const Value.absent(),
+                Value<double> sortOrder = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => KanbanTasksCompanion(
+                id: id,
+                columnId: columnId,
+                title: title,
+                checklistJson: checklistJson,
+                sortOrder: sortOrder,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String columnId,
+                Value<String> title = const Value.absent(),
+                Value<String?> checklistJson = const Value.absent(),
+                Value<double> sortOrder = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => KanbanTasksCompanion.insert(
+                id: id,
+                columnId: columnId,
+                title: title,
+                checklistJson: checklistJson,
+                sortOrder: sortOrder,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$KanbanTasksTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $KanbanTasksTable,
+      KanbanTaskRow,
+      $$KanbanTasksTableFilterComposer,
+      $$KanbanTasksTableOrderingComposer,
+      $$KanbanTasksTableAnnotationComposer,
+      $$KanbanTasksTableCreateCompanionBuilder,
+      $$KanbanTasksTableUpdateCompanionBuilder,
+      (
+        KanbanTaskRow,
+        BaseReferences<_$AppDatabase, $KanbanTasksTable, KanbanTaskRow>,
+      ),
+      KanbanTaskRow,
+      PrefetchHooks Function()
+    >;
+typedef $$KanbanTaskLinksTableCreateCompanionBuilder =
+    KanbanTaskLinksCompanion Function({
+      required String id,
+      required String taskId,
+      Value<String?> clipId,
+      Value<String?> frameId,
+      Value<DateTime> createdAt,
+      Value<int> rowid,
+    });
+typedef $$KanbanTaskLinksTableUpdateCompanionBuilder =
+    KanbanTaskLinksCompanion Function({
+      Value<String> id,
+      Value<String> taskId,
+      Value<String?> clipId,
+      Value<String?> frameId,
+      Value<DateTime> createdAt,
+      Value<int> rowid,
+    });
+
+class $$KanbanTaskLinksTableFilterComposer
+    extends Composer<_$AppDatabase, $KanbanTaskLinksTable> {
+  $$KanbanTaskLinksTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get taskId => $composableBuilder(
+    column: $table.taskId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get clipId => $composableBuilder(
+    column: $table.clipId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get frameId => $composableBuilder(
+    column: $table.frameId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$KanbanTaskLinksTableOrderingComposer
+    extends Composer<_$AppDatabase, $KanbanTaskLinksTable> {
+  $$KanbanTaskLinksTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get taskId => $composableBuilder(
+    column: $table.taskId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get clipId => $composableBuilder(
+    column: $table.clipId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get frameId => $composableBuilder(
+    column: $table.frameId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$KanbanTaskLinksTableAnnotationComposer
+    extends Composer<_$AppDatabase, $KanbanTaskLinksTable> {
+  $$KanbanTaskLinksTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get taskId =>
+      $composableBuilder(column: $table.taskId, builder: (column) => column);
+
+  GeneratedColumn<String> get clipId =>
+      $composableBuilder(column: $table.clipId, builder: (column) => column);
+
+  GeneratedColumn<String> get frameId =>
+      $composableBuilder(column: $table.frameId, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+}
+
+class $$KanbanTaskLinksTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $KanbanTaskLinksTable,
+          KanbanTaskLinkRow,
+          $$KanbanTaskLinksTableFilterComposer,
+          $$KanbanTaskLinksTableOrderingComposer,
+          $$KanbanTaskLinksTableAnnotationComposer,
+          $$KanbanTaskLinksTableCreateCompanionBuilder,
+          $$KanbanTaskLinksTableUpdateCompanionBuilder,
+          (
+            KanbanTaskLinkRow,
+            BaseReferences<
+              _$AppDatabase,
+              $KanbanTaskLinksTable,
+              KanbanTaskLinkRow
+            >,
+          ),
+          KanbanTaskLinkRow,
+          PrefetchHooks Function()
+        > {
+  $$KanbanTaskLinksTableTableManager(
+    _$AppDatabase db,
+    $KanbanTaskLinksTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$KanbanTaskLinksTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$KanbanTaskLinksTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$KanbanTaskLinksTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> taskId = const Value.absent(),
+                Value<String?> clipId = const Value.absent(),
+                Value<String?> frameId = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => KanbanTaskLinksCompanion(
+                id: id,
+                taskId: taskId,
+                clipId: clipId,
+                frameId: frameId,
+                createdAt: createdAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String taskId,
+                Value<String?> clipId = const Value.absent(),
+                Value<String?> frameId = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => KanbanTaskLinksCompanion.insert(
+                id: id,
+                taskId: taskId,
+                clipId: clipId,
+                frameId: frameId,
+                createdAt: createdAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$KanbanTaskLinksTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $KanbanTaskLinksTable,
+      KanbanTaskLinkRow,
+      $$KanbanTaskLinksTableFilterComposer,
+      $$KanbanTaskLinksTableOrderingComposer,
+      $$KanbanTaskLinksTableAnnotationComposer,
+      $$KanbanTaskLinksTableCreateCompanionBuilder,
+      $$KanbanTaskLinksTableUpdateCompanionBuilder,
+      (
+        KanbanTaskLinkRow,
+        BaseReferences<_$AppDatabase, $KanbanTaskLinksTable, KanbanTaskLinkRow>,
+      ),
+      KanbanTaskLinkRow,
       PrefetchHooks Function()
     >;
 
@@ -10515,8 +11362,12 @@ class $AppDatabaseManager {
       $$AppSettingsTableTableManager(_db, _db.appSettings);
   $$ThemesTableTableManager get themes =>
       $$ThemesTableTableManager(_db, _db.themes);
-  $$KanbanBoardsTableTableManager get kanbanBoards =>
-      $$KanbanBoardsTableTableManager(_db, _db.kanbanBoards);
-  $$SwimlanesTableTableManager get swimlanes =>
-      $$SwimlanesTableTableManager(_db, _db.swimlanes);
+  $$KanbanElementsTableTableManager get kanbanElements =>
+      $$KanbanElementsTableTableManager(_db, _db.kanbanElements);
+  $$KanbanColumnsTableTableManager get kanbanColumns =>
+      $$KanbanColumnsTableTableManager(_db, _db.kanbanColumns);
+  $$KanbanTasksTableTableManager get kanbanTasks =>
+      $$KanbanTasksTableTableManager(_db, _db.kanbanTasks);
+  $$KanbanTaskLinksTableTableManager get kanbanTaskLinks =>
+      $$KanbanTaskLinksTableTableManager(_db, _db.kanbanTaskLinks);
 }
