@@ -24,6 +24,24 @@ class KanbanElements extends Table {
   /// element's vertical extent is a drag gesture.
   RealColumn get height => real().withDefault(const Constant(480))();
 
+  /// When true, the element renders (and hit-tests) at the fixed
+  /// on-screen rect `(pinnedScreenX, pinnedScreenY, width, height)` -
+  /// literal logical pixels, unaffected by pan or zoom - the same way
+  /// the minimap/toolbars already behave in this app, instead of a board
+  /// object whose screen position is always `boardToScreen(x, y)`.
+  /// [x]/[y] are left untouched (stale) while pinned and become
+  /// authoritative again the moment the element is unpinned (the toggle
+  /// converts the current pinned screen position back into board
+  /// coordinates under the then-current view, so it un-pins exactly
+  /// where it visually was) - keeping two separate coordinate pairs
+  /// rather than reinterpreting x/y means [width]/[height] never need
+  /// adjusting for pinning either, so the column-count<->width invariant
+  /// in [KanbanElementGeometry.widthForColumnCount] holds unconditionally.
+  BoolColumn get screenPinned =>
+      boolean().withDefault(const Constant(false))();
+  RealColumn get pinnedScreenX => real().nullable()();
+  RealColumn get pinnedScreenY => real().nullable()();
+
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
 

@@ -47,6 +47,18 @@ class KanbanTaskFieldEditOverlay extends ConsumerStatefulWidget {
     final located = _locate(ref, taskId);
     if (located == null) return null;
     final (element: element, columnIndex: columnIndex, task: task) = located;
+    // A pinned element's own x/y are already literal screen pixels (see
+    // the table's own doc comment) and renders at a frozen scale of
+    // 1.0 - same "skip the board->screen transform entirely" rule
+    // `board_canvas.dart`'s `_kanbanEffectiveElement`/
+    // `_positionedKanbanElement` follow.
+    final effectiveElement = element.screenPinned
+        ? element.copyWith(
+            x: element.pinnedScreenX ?? element.x,
+            y: element.pinnedScreenY ?? element.y,
+          )
+        : element;
+    final effectiveScale = element.screenPinned ? 1.0 : view.scale;
     final scrollOffsets = ref.read(kanbanColumnScrollOffsetProvider);
     final column = _columnRowFor(ref, task.columnId);
     final scrollOffset = column == null
@@ -54,7 +66,7 @@ class KanbanTaskFieldEditOverlay extends ConsumerStatefulWidget {
         : (scrollOffsets[column.id] ?? 0.0);
     final rowIndex = _rowIndexFor(ref, task);
     final anchor = KanbanTaskGeometry.taskRowRect(
-      element,
+      effectiveElement,
       columnIndex,
       rowIndex,
       scrollOffset,
@@ -62,18 +74,20 @@ class KanbanTaskFieldEditOverlay extends ConsumerStatefulWidget {
     final itemCount = task.checklist.items.length;
     final panelHeight =
         _kTitleRowHeight + (itemCount + 1) * _kItemRowHeight + 16;
-    final boardRect = Rect.fromLTWH(
+    final localRect = Rect.fromLTWH(
       anchor.left,
       anchor.top,
       _kPanelWidth,
       panelHeight,
     );
-    final topLeft = boardRect.topLeft * view.scale + view.panOffset;
+    final topLeft = element.screenPinned
+        ? localRect.topLeft
+        : localRect.topLeft * view.scale + view.panOffset;
     return Rect.fromLTWH(
       topLeft.dx,
       topLeft.dy,
-      boardRect.width * view.scale,
-      boardRect.height * view.scale,
+      localRect.width * effectiveScale,
+      localRect.height * effectiveScale,
     );
   }
 

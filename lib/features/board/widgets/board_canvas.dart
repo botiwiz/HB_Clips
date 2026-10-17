@@ -359,6 +359,36 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     return boardPoint * view.scale + view.panOffset;
   }
 
+  /// Every kanban geometry helper (`KanbanElementGeometry`/
+  /// `KanbanColumnGeometry`/`KanbanTaskGeometry`) is a pure function of
+  /// whatever x/y/width/height values a `KanbanElementRow` happens to
+  /// hold - it never looks at [KanbanElementRow.screenPinned] itself.
+  /// This is what lets a single set of hit-test/layout functions serve
+  /// both a normal board element and a screen-pinned one: feed them this
+  /// "effective" row (x/y swapped for the pinned screen anchor, literal
+  /// logical pixels, while width/height keep their normal board-unit
+  /// meaning throughout - see the table's own doc comment) together with
+  /// the matching point from [_kanbanHitPoint], and every existing
+  /// function just works, unaware pinning exists at all.
+  KanbanElementRow _kanbanEffectiveElement(KanbanElementRow element) {
+    if (!element.screenPinned) return element;
+    return element.copyWith(
+      x: element.pinnedScreenX ?? element.x,
+      y: element.pinnedScreenY ?? element.y,
+    );
+  }
+
+  /// The point to test a kanban element's geometry against, matching
+  /// [_kanbanEffectiveElement]'s coordinate space for that same element:
+  /// the raw screen point for a pinned element (whose effective x/y are
+  /// already literal screen pixels), the usual board-space point
+  /// otherwise.
+  Offset _kanbanHitPoint(
+    KanbanElementRow element,
+    Offset boardPoint,
+    Offset screenPoint,
+  ) => element.screenPinned ? screenPoint : boardPoint;
+
   BoardClip? _hitTestClip(List<BoardClip> clips, Offset boardPoint) {
     final sorted = [...clips]..sort((a, b) => b.zIndex.compareTo(a.zIndex));
     for (final clip in sorted) {
@@ -441,9 +471,14 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
   KanbanElementRow? _hitTestKanbanElement(
     List<KanbanElementRow> elements,
     Offset boardPoint,
+    Offset screenPoint,
   ) {
     for (final element in elements.reversed) {
-      if (KanbanElementGeometry.pointInElement(boardPoint, element)) {
+      final point = _kanbanHitPoint(element, boardPoint, screenPoint);
+      if (KanbanElementGeometry.pointInElement(
+        point,
+        _kanbanEffectiveElement(element),
+      )) {
         return element;
       }
     }
@@ -470,10 +505,19 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
   /// Dispatches a pointer-down against the kanban element at [boardPos]
   /// (or the currently-selected element's resize handle, checked first
   /// since it can sit slightly outside that element's own outer rect) -
-  /// resize handle, whole-element move, a task row (arms a possible
-  /// drag; pointer-up decides click-vs-drag), the `[+]` add-task button,
-  /// or the add-column affordance. Returns true if the event was
-  /// consumed (caller must not fall through to frame/clip handling).
+  /// the pin toggle, resize handle, whole-element move, a task row (arms
+  /// a possible drag; pointer-up decides click-vs-drag), the `[+]`
+  /// add-task button, or the add-column affordance. Returns true if the
+  /// event was consumed (caller must not fall through to frame/clip
+  /// handling).
+  ///
+  /// Every sub-hit-test below runs against [_kanbanEffectiveElement] and
+  /// [_kanbanHitPoint] rather than the raw stored element/[boardPos]
+  /// directly - transparently screen-space for a pinned element,
+  /// board-space otherwise (see those two helpers' doc comments) - which
+  /// is also why the drag/resize start state captured here is in
+  /// whichever coordinate space matches: the pointer-move/pointer-up
+  /// handlers that consume it never need to know pinning exists either.
   bool _handleKanbanElementPointerDown(
     PointerDownEvent event,
     Offset boardPos,
@@ -489,13 +533,14 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       );
       if (selectedElement != null &&
           KanbanElementGeometry.hitTestResizeHandle(
-            selectedElement,
+            _kanbanEffectiveElement(selectedElement),
             view,
             event.localPosition,
+            alreadyScreenSpace: selectedElement.screenPinned,
           )) {
         _kanbanElementResizeId = selectedElement.id;
         _kanbanElementResizeStartRect = KanbanElementGeometry.outerRect(
-          selectedElement,
+          _kanbanEffectiveElement(selectedElement),
         );
         ref.read(kanbanElementResizeRectProvider.notifier).state =
             _kanbanElementResizeStartRect;
@@ -503,7 +548,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       }
     }
 
-    final hit = _hitTestKanbanElement(elements, boardPos);
+    final hit = _hitTestKanbanElement(elements, boardPos, event.localPosition);
     if (hit == null) {
       if (selectedElementId != null) {
         ref.read(selectedKanbanElementIdProvider.notifier).state = null;
@@ -511,10 +556,20 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       return false;
     }
 
+    final effectiveHit = _kanbanEffectiveElement(hit);
+    final hitPoint = _kanbanHitPoint(hit, boardPos, event.localPosition);
+
     ref.read(selectedKanbanElementIdProvider.notifier).state = hit.id;
     ref.read(selectedClipIdsProvider.notifier).state = {};
     ref.read(selectedFrameIdsProvider.notifier).state = {};
     ref.read(selectedConnectorIdProvider.notifier).state = null;
+
+    if (KanbanElementGeometry.pinToggleRect(
+      effectiveHit,
+    ).contains(hitPoint)) {
+      _toggleKanbanElementPin(hit);
+      return true;
+    }
 
     final columns =
         (ref.read(boardKanbanColumnsProvider).valueOrNull ?? [])
@@ -524,9 +579,9 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     final elementTasks = ref.read(boardKanbanTasksProvider).valueOrNull ?? [];
 
     if (KanbanColumnGeometry.addColumnButtonRect(
-      hit,
+      effectiveHit,
       columns.length,
-    ).contains(boardPos)) {
+    ).contains(hitPoint)) {
       _addKanbanColumn(hit, columns.length);
       return true;
     }
@@ -534,9 +589,9 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     for (var i = 0; i < columns.length; i++) {
       final column = columns[i];
       if (KanbanColumnGeometry.addTaskButtonRect(
-        hit,
+        effectiveHit,
         i,
-      ).contains(boardPos)) {
+      ).contains(hitPoint)) {
         _addKanbanTask(column);
         return true;
       }
@@ -547,12 +602,12 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
           ref.read(kanbanColumnScrollOffsetProvider)[column.id] ?? 0.0;
       for (var rowIndex = 0; rowIndex < columnTasks.length; rowIndex++) {
         final rowRect = KanbanTaskGeometry.taskRowRect(
-          hit,
+          effectiveHit,
           i,
           rowIndex,
           scrollOffset,
         );
-        if (rowRect.contains(boardPos)) {
+        if (rowRect.contains(hitPoint)) {
           _kanbanTaskDragId = columnTasks[rowIndex].id;
           _kanbanTaskDragStartColumnId = column.id;
           _kanbanTaskDragStartSortOrder = columnTasks[rowIndex].sortOrder;
@@ -562,14 +617,52 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       }
     }
 
-    // Header/background click (not a resize handle, button, or task row)
-    // - starts a whole-element drag.
+    // Header/background click (not the pin toggle, a resize handle,
+    // button, or task row) - starts a whole-element drag.
     _kanbanElementDragId = hit.id;
-    _kanbanElementDragStartPointer = boardPos;
-    _kanbanElementDragStartRect = KanbanElementGeometry.outerRect(hit);
+    _kanbanElementDragStartPointer = hitPoint;
+    _kanbanElementDragStartRect = KanbanElementGeometry.outerRect(
+      effectiveHit,
+    );
     ref.read(kanbanElementDragRectProvider.notifier).state =
         _kanbanElementDragStartRect;
     return true;
+  }
+
+  /// Toggles [element]'s "pin to screenspace" state, converting its
+  /// position into the *new* state's coordinate system under the
+  /// current view so it never visibly jumps at the instant of toggling -
+  /// `boardToScreen` when pinning on, `screenToBoard` when pinning off
+  /// (see `KanbanElementsRepository.setScreenPinned`'s doc comment and
+  /// the table's own doc comment for the full rationale). Not undoable -
+  /// consistent with this app's other pure view-state toggles (snap to
+  /// grid, frames panel) rather than its content-editing undo stack.
+  void _toggleKanbanElementPin(KanbanElementRow element) {
+    final view = ref.read(boardViewProvider);
+    final repo = ref.read(kanbanElementsRepositoryProvider);
+    if (element.screenPinned) {
+      final board = _screenToBoard(
+        Offset(
+          element.pinnedScreenX ?? element.x,
+          element.pinnedScreenY ?? element.y,
+        ),
+        view,
+      );
+      repo.setScreenPinned(
+        element.id,
+        pinned: false,
+        x: board.dx,
+        y: board.dy,
+      );
+    } else {
+      final screen = _boardToScreen(Offset(element.x, element.y), view);
+      repo.setScreenPinned(
+        element.id,
+        pinned: true,
+        pinnedScreenX: screen.dx,
+        pinnedScreenY: screen.dy,
+      );
+    }
   }
 
   Future<void> _addKanbanColumn(
@@ -679,9 +772,15 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       column.kanbanElementId,
     );
     if (element == null) return;
-    ref
-        .read(boardViewProvider.notifier)
-        .fitRect(KanbanElementGeometry.outerRect(element), _canvasSize);
+    // A pinned element is always on screen regardless of pan/zoom, so
+    // there's nothing to fit the camera to - panning would actually be
+    // wrong (its board x/y are stale while pinned, see the table's own
+    // doc comment).
+    if (!element.screenPinned) {
+      ref
+          .read(boardViewProvider.notifier)
+          .fitRect(KanbanElementGeometry.outerRect(element), _canvasSize);
+    }
     ref.read(selectedKanbanElementIdProvider.notifier).state = element.id;
     ref.read(editingKanbanTaskFieldProvider.notifier).state = taskId;
   }
@@ -798,9 +897,13 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     Set<String> clipIds,
     Set<String> frameIds,
   ) {
-    ref
-        .read(boardViewProvider.notifier)
-        .fitRect(KanbanElementGeometry.outerRect(element), _canvasSize);
+    // Same "a pinned element is always visible, nothing to pan to" logic
+    // as `_jumpToTaskById`.
+    if (!element.screenPinned) {
+      ref
+          .read(boardViewProvider.notifier)
+          .fitRect(KanbanElementGeometry.outerRect(element), _canvasSize);
+    }
     ref.read(linkToTaskSourceProvider.notifier).state = (
       clipIds: clipIds,
       frameIds: frameIds,
@@ -823,8 +926,14 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     final view = ref.read(boardViewProvider);
     final boardPos = _screenToBoard(event.localPosition, view);
     final elements = ref.read(boardKanbanElementsProvider).valueOrNull ?? [];
-    final hitElement = _hitTestKanbanElement(elements, boardPos);
+    final hitElement = _hitTestKanbanElement(
+      elements,
+      boardPos,
+      event.localPosition,
+    );
     if (hitElement == null) return;
+    final effectiveHitElement = _kanbanEffectiveElement(hitElement);
+    final hitPoint = _kanbanHitPoint(hitElement, boardPos, event.localPosition);
 
     final columns =
         (ref.read(boardKanbanColumnsProvider).valueOrNull ?? [])
@@ -842,12 +951,12 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
           ref.read(kanbanColumnScrollOffsetProvider)[columns[i].id] ?? 0.0;
       for (var rowIndex = 0; rowIndex < columnTasks.length; rowIndex++) {
         final rowRect = KanbanTaskGeometry.taskRowRect(
-          hitElement,
+          effectiveHitElement,
           i,
           rowIndex,
           scrollOffset,
         );
-        if (rowRect.contains(boardPos)) {
+        if (rowRect.contains(hitPoint)) {
           hitTask = columnTasks[rowIndex];
           break;
         }
@@ -2163,8 +2272,15 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
 
     if (_kanbanElementResizeId != null &&
         _kanbanElementResizeStartRect != null) {
+      final resizingElement = _findKanbanElementById(
+        ref.read(boardKanbanElementsProvider).valueOrNull ?? [],
+        _kanbanElementResizeId!,
+      );
+      final pointY = resizingElement != null && resizingElement.screenPinned
+          ? event.localPosition.dy
+          : boardPos.dy;
       final start = _kanbanElementResizeStartRect!;
-      final newHeight = (boardPos.dy - start.top).clamp(
+      final newHeight = (pointY - start.top).clamp(
         kKanbanColumnHeaderHeight + kKanbanTaskRowMinHeight * 2,
         double.infinity,
       );
@@ -2180,7 +2296,14 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     if (_kanbanElementDragId != null &&
         _kanbanElementDragStartPointer != null &&
         _kanbanElementDragStartRect != null) {
-      final delta = boardPos - _kanbanElementDragStartPointer!;
+      final draggingElement = _findKanbanElementById(
+        ref.read(boardKanbanElementsProvider).valueOrNull ?? [],
+        _kanbanElementDragId!,
+      );
+      final point = draggingElement == null
+          ? boardPos
+          : _kanbanHitPoint(draggingElement, boardPos, event.localPosition);
+      final delta = point - _kanbanElementDragStartPointer!;
       if (delta.distance > 2) _kanbanElementDragMoved = true;
       final start = _kanbanElementDragStartRect!;
       ref.read(kanbanElementDragRectProvider.notifier).state = Rect.fromLTWH(
@@ -2201,16 +2324,15 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
           : _findKanbanElementById(elements, column.kanbanElementId);
       if (element != null) {
         _kanbanTaskDragMoved = true;
-        final content = KanbanElementGeometry.contentRect(element);
-        final clamped = KanbanTaskGeometry.clampGhostCenter(
-          content,
-          boardPos,
-        );
+        final effectiveElement = _kanbanEffectiveElement(element);
+        final point = _kanbanHitPoint(element, boardPos, event.localPosition);
+        final content = KanbanElementGeometry.contentRect(effectiveElement);
+        final clamped = KanbanTaskGeometry.clampGhostCenter(content, point);
         final siblingColumns =
             columns.where((c) => c.kanbanElementId == element.id).toList()
               ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
         final columnIndex = KanbanColumnGeometry.columnIndexForPoint(
-          element,
+          effectiveElement,
           siblingColumns.length,
           clamped,
         );
@@ -2229,7 +2351,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
             ref.read(kanbanColumnScrollOffsetProvider)[targetColumn.id] ??
             0.0;
         final insertionIndex = KanbanTaskGeometry.insertionIndexForPoint(
-          element,
+          effectiveElement,
           columnIndex,
           siblingTasks.length,
           scrollOffset,
@@ -2816,26 +2938,30 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       final finalRect = ref.read(kanbanElementDragRectProvider) ?? startRect;
       if (_kanbanElementDragMoved) {
         final elementsRepo = ref.read(kanbanElementsRepositoryProvider);
-        await elementsRepo.updateTransform(
+        final draggedElement = _findKanbanElementById(
+          ref.read(boardKanbanElementsProvider).valueOrNull ?? [],
           id,
-          x: finalRect.left,
-          y: finalRect.top,
         );
+        // A pinned element's drag commits to its screen anchor
+        // (pinnedScreenX/Y), never x/y (which stay stale board
+        // coordinates while pinned - see the table's own doc comment);
+        // an unpinned element commits the normal way.
+        final pinned = draggedElement?.screenPinned ?? false;
+        Future<void> write(Rect rect) => pinned
+            ? elementsRepo.updatePinnedScreenPosition(
+                id,
+                x: rect.left,
+                y: rect.top,
+              )
+            : elementsRepo.updateTransform(id, x: rect.left, y: rect.top);
+        await write(finalRect);
         if (!mounted) return;
         ref
             .read(undoManagerProvider.notifier)
             .push(
               UndoableAction(
-                undo: () => elementsRepo.updateTransform(
-                  id,
-                  x: startRect.left,
-                  y: startRect.top,
-                ),
-                redo: () => elementsRepo.updateTransform(
-                  id,
-                  x: finalRect.left,
-                  y: finalRect.top,
-                ),
+                undo: () => write(startRect),
+                redo: () => write(finalRect),
               ),
             );
       }
@@ -4246,6 +4372,16 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
   /// resize-handle position), so that case passes the widget a transient
   /// [KanbanElementRow.copyWith] carrying the live preview height, never
   /// persisted until pointer-up commits it.
+  ///
+  /// A screen-pinned element takes a parallel path throughout: its
+  /// "board rect" is really already a screen rect (`pinnedScreenX/Y` +
+  /// width/height, literal logical pixels - see the table's own doc
+  /// comment), so it skips `_boardToScreen`/`*view.scale` entirely and
+  /// renders at a frozen `viewScale` of `1.0` - unaffected by the live
+  /// pan/zoom, the same way the minimap/toolbars already render in this
+  /// app - while any live drag/resize rect (already captured in that
+  /// same literal-pixel space by [_handleKanbanElementPointerDown]'s
+  /// pin-aware start state) is used exactly as-is.
   Widget _positionedKanbanElement(
     KanbanElementRow element,
     List<KanbanColumnRow> columns,
@@ -4256,18 +4392,23 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     DraggingTask? draggingTask,
     BoardViewState view,
   ) {
+    final pinned = element.screenPinned;
+    final effectiveElement = _kanbanEffectiveElement(element);
     final rect =
-        dragRect ?? resizeRect ?? KanbanElementGeometry.outerRect(element);
+        dragRect ??
+        resizeRect ??
+        KanbanElementGeometry.outerRect(effectiveElement);
     final liveElement = resizeRect != null
-        ? element.copyWith(height: resizeRect.height)
-        : element;
-    final topLeft = _boardToScreen(rect.topLeft, view);
+        ? effectiveElement.copyWith(height: resizeRect.height)
+        : effectiveElement;
+    final screenTopLeft = pinned ? rect.topLeft : _boardToScreen(rect.topLeft, view);
+    final effectiveScale = pinned ? 1.0 : view.scale;
     return Positioned(
       key: ValueKey('kanban-element-${element.id}'),
-      left: topLeft.dx,
-      top: topLeft.dy,
-      width: rect.width * view.scale,
-      height: rect.height * view.scale,
+      left: screenTopLeft.dx,
+      top: screenTopLeft.dy,
+      width: rect.width * effectiveScale,
+      height: rect.height * effectiveScale,
       child: KanbanElementWidget(
         element: liveElement,
         columns: columns,
@@ -4275,7 +4416,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
         selected: selected,
         columnScrollOffsets: ref.watch(kanbanColumnScrollOffsetProvider),
         draggingTask: draggingTask,
-        viewScale: view.scale,
+        viewScale: effectiveScale,
       ),
     );
   }

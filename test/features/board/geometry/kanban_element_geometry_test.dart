@@ -1,6 +1,7 @@
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hb_clips/data/local/database.dart';
+import 'package:hb_clips/features/board/controllers/board_controller.dart';
 import 'package:hb_clips/features/board/geometry/kanban_element_geometry.dart';
 
 KanbanElementRow _element({
@@ -18,6 +19,7 @@ KanbanElementRow _element({
     y: y,
     width: width,
     height: height,
+    screenPinned: false,
     createdAt: now,
     updatedAt: now,
   );
@@ -78,6 +80,34 @@ void main() {
       final handle = KanbanElementGeometry.resizeHandleRect(element);
       expect(handle.center.dx, 150);
       expect(handle.center.dy, 480);
+    });
+
+    test('pinToggleRect sits in the header band\'s top-right corner', () {
+      final element = _element(x: 10, y: 20, width: 300, height: 480);
+      final header = KanbanElementGeometry.headerRect(element);
+      final pinRect = KanbanElementGeometry.pinToggleRect(element);
+      expect(header.contains(pinRect.center), isTrue);
+      expect(pinRect.right, lessThanOrEqualTo(header.right));
+      expect(pinRect.center.dx, greaterThan(header.center.dx));
+    });
+
+    test('resizeHandleScreenPosition transforms board->screen unless '
+        'alreadyScreenSpace is set', () {
+      final element = _element(x: 0, y: 0, width: 300, height: 480);
+      const view = BoardViewState(panOffset: Offset(50, 20), scale: 2);
+
+      final transformed = KanbanElementGeometry.resizeHandleScreenPosition(
+        element,
+        view,
+      );
+      expect(transformed, const Offset(150 * 2 + 50, 480 * 2 + 20));
+
+      final raw = KanbanElementGeometry.resizeHandleScreenPosition(
+        element,
+        view,
+        alreadyScreenSpace: true,
+      );
+      expect(raw, const Offset(150, 480));
     });
   });
 }

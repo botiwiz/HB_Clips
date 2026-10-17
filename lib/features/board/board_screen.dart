@@ -435,7 +435,7 @@ class BoardScreen extends ConsumerWidget {
         .push(
           UndoableAction(
             undo: () async {
-              await elementsRepo.createKanbanElement(
+              await elementsRepo.recreateKanbanElement(
                 id: capturedElement.id,
                 boardId: capturedElement.boardId,
                 name: capturedElement.name,
@@ -443,6 +443,9 @@ class BoardScreen extends ConsumerWidget {
                 y: capturedElement.y,
                 width: capturedElement.width,
                 height: capturedElement.height,
+                screenPinned: capturedElement.screenPinned,
+                pinnedScreenX: capturedElement.pinnedScreenX,
+                pinnedScreenY: capturedElement.pinnedScreenY,
               );
               for (final column in columns) {
                 await columnsRepo.createColumn(

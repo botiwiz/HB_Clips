@@ -65,7 +65,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 28;
+  int get schemaVersion => 29;
 
   Future<void> _seedDefaultBoard(Migrator m) {
     return into(boards).insert(
@@ -247,6 +247,23 @@ class AppDatabase extends _$AppDatabase {
         await m.createTable(kanbanColumns);
         await m.createTable(kanbanTasks);
         await m.createTable(kanbanTaskLinks);
+      }
+      if (from < 29) {
+        await _addColumnIfMissing(
+          m,
+          kanbanElements,
+          kanbanElements.screenPinned,
+        );
+        await _addColumnIfMissing(
+          m,
+          kanbanElements,
+          kanbanElements.pinnedScreenX,
+        );
+        await _addColumnIfMissing(
+          m,
+          kanbanElements,
+          kanbanElements.pinnedScreenY,
+        );
       }
     },
   );

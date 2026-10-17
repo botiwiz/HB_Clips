@@ -97,7 +97,10 @@ class KanbanElementWidget extends StatelessWidget {
             child: Align(
               alignment: Alignment.centerLeft,
               child: Padding(
-                padding: EdgeInsets.symmetric(horizontal: 8 * viewScale),
+                padding: EdgeInsets.only(
+                  left: 8 * viewScale,
+                  right: 32 * viewScale,
+                ),
                 child: Text(
                   element.name,
                   style: TextStyle(
@@ -107,6 +110,23 @@ class KanbanElementWidget extends StatelessWidget {
                   ),
                   overflow: TextOverflow.ellipsis,
                 ),
+              ),
+            ),
+          ),
+          Positioned.fromRect(
+            rect: local(KanbanElementGeometry.pinToggleRect(element)),
+            child: Tooltip(
+              message: element.screenPinned
+                  ? 'Unpin from screen'
+                  : 'Pin to screen',
+              child: Icon(
+                element.screenPinned
+                    ? Icons.push_pin
+                    : Icons.push_pin_outlined,
+                size: 16 * viewScale,
+                color: element.screenPinned
+                    ? AppTheme.accent
+                    : AppTheme.textSecondary,
               ),
             ),
           ),

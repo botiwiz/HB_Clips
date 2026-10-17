@@ -19,20 +19,35 @@ class KanbanElementGeometry {
   static Offset _boardToScreen(Offset boardPoint, BoardViewState view) =>
       boardPoint * view.scale + view.panOffset;
 
+  /// [alreadyScreenSpace] (true for a screen-pinned element passed as its
+  /// "effective" row, x/y already literal screen pixels) skips the
+  /// board->screen transform, since there's nothing left to transform -
+  /// see `board_canvas.dart`'s `_kanbanEffectiveElement` doc comment for
+  /// why every kanban geometry function stays coordinate-agnostic like
+  /// this instead of branching on pin state itself.
   static Offset resizeHandleScreenPosition(
     KanbanElementRow element,
-    BoardViewState view,
-  ) {
+    BoardViewState view, {
+    bool alreadyScreenSpace = false,
+  }) {
     final outer = outerRect(element);
-    return _boardToScreen(Offset(outer.center.dx, outer.bottom), view);
+    final point = Offset(outer.center.dx, outer.bottom);
+    return alreadyScreenSpace ? point : _boardToScreen(point, view);
   }
 
   static bool hitTestResizeHandle(
     KanbanElementRow element,
     BoardViewState view,
-    Offset screenPoint,
-  ) {
-    return (resizeHandleScreenPosition(element, view) - screenPoint).distance <=
+    Offset screenPoint, {
+    bool alreadyScreenSpace = false,
+  }) {
+    return (resizeHandleScreenPosition(
+              element,
+              view,
+              alreadyScreenSpace: alreadyScreenSpace,
+            ) -
+            screenPoint)
+        .distance <=
         handleHitRadius;
   }
 
@@ -82,6 +97,21 @@ class KanbanElementGeometry {
 
   static bool pointInElement(Offset boardPoint, KanbanElementRow element) =>
       outerRect(element).contains(boardPoint);
+
+  /// Board-space rect of the "pin to screenspace" toggle icon, in the
+  /// header band's top-right corner (mirrors `addColumnButtonRect`'s
+  /// "+" sitting in the content band - this is the header's own
+  /// equivalent affordance, not column-indexed since there's only one).
+  static Rect pinToggleRect(KanbanElementRow element) {
+    final header = headerRect(element);
+    const size = 20.0;
+    return Rect.fromLTWH(
+      header.right - size - 6,
+      header.top + (header.height - size) / 2,
+      size,
+      size,
+    );
+  }
 
   /// The element's authoritative width, derived from [columnCount] -
   /// recomputed and persisted (`KanbanElementsRepository.updateTransform`)
