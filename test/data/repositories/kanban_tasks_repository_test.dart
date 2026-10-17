@@ -91,6 +91,54 @@ void main() {
     expect(row.sortOrder, 5.0);
   });
 
+  test('recreateTask persists a non-null colorHex', () async {
+    await tasksRepo.recreateTask(
+      id: 'task-1',
+      columnId: columnA.id,
+      title: 'Recreated',
+      checklist: Checklist.empty,
+      sortOrder: 1.0,
+      colorHex: '#FF8800',
+    );
+
+    final row = await (db.select(
+      db.kanbanTasks,
+    )..where((t) => t.id.equals('task-1'))).getSingle();
+    expect(row.colorHex, '#FF8800');
+  });
+
+  test('recreateTask persists a null colorHex', () async {
+    await tasksRepo.recreateTask(
+      id: 'task-1',
+      columnId: columnA.id,
+      title: 'Recreated',
+      checklist: Checklist.empty,
+      sortOrder: 1.0,
+      colorHex: null,
+    );
+
+    final row = await (db.select(
+      db.kanbanTasks,
+    )..where((t) => t.id.equals('task-1'))).getSingle();
+    expect(row.colorHex, isNull);
+  });
+
+  test('updateColor sets then clears a task\'s color', () async {
+    await tasksRepo.addTask(id: 'task-1', columnId: columnA.id, title: 'A');
+
+    await tasksRepo.updateColor('task-1', '#00FF00');
+    var row = await (db.select(
+      db.kanbanTasks,
+    )..where((t) => t.id.equals('task-1'))).getSingle();
+    expect(row.colorHex, '#00FF00');
+
+    await tasksRepo.updateColor('task-1', null);
+    row = await (db.select(
+      db.kanbanTasks,
+    )..where((t) => t.id.equals('task-1'))).getSingle();
+    expect(row.colorHex, isNull);
+  });
+
   test('deleteTask cascades to its links', () async {
     await tasksRepo.addTask(id: 'task-1', columnId: columnA.id, title: 'A');
     await linksRepo.addLink(id: 'link-1', taskId: 'task-1', clipId: 'clip-1');

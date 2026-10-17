@@ -36,6 +36,21 @@ class KanbanColumnGeometry {
     );
   }
 
+  /// Board-space rect of column [index]'s color-swatch button, in its own
+  /// header band's top-right corner - same "fixed small icon tucked into
+  /// a header" idiom `KanbanElementGeometry.pinToggleRect` uses for the
+  /// element's own header.
+  static Rect colorSwatchRect(KanbanElementRow element, int index) {
+    final header = headerRect(element, index);
+    const size = 16.0;
+    return Rect.fromLTWH(
+      header.right - size - 6,
+      header.top + (header.height - size) / 2,
+      size,
+      size,
+    );
+  }
+
   /// Board-space rect of the scrollable task-list viewport, between the
   /// header and the add-task button.
   static Rect taskListViewportRect(KanbanElementRow element, int index) {

@@ -19,6 +19,11 @@ class KanbanColumns extends Table {
   /// only ever rewrites this one row's value.
   RealColumn get sortOrder => real().withDefault(const Constant(0))();
 
+  /// Optional user-assigned accent color (e.g. `#FF8800`) - null means no
+  /// custom color (renders as a plain, uncolored column), same
+  /// null-means-default convention as `Frames.backgroundColorHex`.
+  TextColumn get colorHex => text().nullable()();
+
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
 

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../data/local/database.dart';
 import '../../../data/models/kanban.dart';
+import '../../annotation/stroke_painter.dart' show hexToColor;
 import '../controllers/kanban_controller.dart';
 import '../geometry/kanban_column_geometry.dart';
 import '../geometry/kanban_element_geometry.dart';
@@ -33,6 +34,13 @@ class KanbanElementWidget extends StatelessWidget {
   final DraggingTask? draggingTask;
   final double viewScale;
 
+  /// Id of the column whose color-picker popover is currently open, if
+  /// any - purely cosmetic (shows an accent ring on that column's
+  /// swatch); the popover itself is a separate widget `board_canvas.dart`
+  /// renders, this is just read-and-pass-down like every other field
+  /// here.
+  final String? openColorPickerColumnId;
+
   const KanbanElementWidget({
     super.key,
     required this.element,
@@ -42,6 +50,7 @@ class KanbanElementWidget extends StatelessWidget {
     required this.columnScrollOffsets,
     required this.viewScale,
     this.draggingTask,
+    this.openColorPickerColumnId,
   });
 
   @override
@@ -185,13 +194,31 @@ class KanbanElementWidget extends StatelessWidget {
     KanbanTask? excludeDragging,
   ) {
     final scrollOffset = columnScrollOffsets[column.id] ?? 0.0;
+    final columnColor = column.colorHex != null
+        ? hexToColor(column.colorHex!)
+        : null;
     final rows = <Widget>[
+      if (columnColor != null)
+        Positioned.fromRect(
+          rect: local(KanbanColumnGeometry.columnRect(element, index)),
+          child: IgnorePointer(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: columnColor.withValues(alpha: 0.08),
+                border: Border.all(color: columnColor, width: 1.5),
+              ),
+            ),
+          ),
+        ),
       Positioned.fromRect(
         rect: local(KanbanColumnGeometry.headerRect(element, index)),
         child: Align(
           alignment: Alignment.centerLeft,
           child: Padding(
-            padding: EdgeInsets.symmetric(horizontal: 6 * viewScale),
+            padding: EdgeInsets.only(
+              left: 6 * viewScale,
+              right: 24 * viewScale,
+            ),
             child: Text(
               column.name,
               style: TextStyle(
@@ -200,6 +227,24 @@ class KanbanElementWidget extends StatelessWidget {
                 fontSize: 11 * viewScale,
               ),
               overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ),
+      ),
+      Positioned.fromRect(
+        rect: local(KanbanColumnGeometry.colorSwatchRect(element, index)),
+        child: Tooltip(
+          message: 'Set column color',
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: columnColor ?? Colors.transparent,
+              border: Border.all(
+                color: column.id == openColorPickerColumnId
+                    ? AppTheme.accent
+                    : (columnColor ?? AppTheme.textSecondary),
+                width: column.id == openColorPickerColumnId ? 2 : 1,
+              ),
             ),
           ),
         ),
@@ -219,7 +264,11 @@ class KanbanElementWidget extends StatelessWidget {
               scrollOffset,
             ),
           ),
-          child: _TaskRowChrome(title: task.title, viewScale: viewScale),
+          child: _TaskRowChrome(
+            title: task.title,
+            colorHex: task.colorHex,
+            viewScale: viewScale,
+          ),
         ),
       );
     }
@@ -281,12 +330,18 @@ class KanbanElementWidget extends StatelessWidget {
 
 class _TaskRowChrome extends StatelessWidget {
   final String title;
+  final String? colorHex;
   final double viewScale;
 
-  const _TaskRowChrome({required this.title, required this.viewScale});
+  const _TaskRowChrome({
+    required this.title,
+    this.colorHex,
+    required this.viewScale,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final customColor = colorHex != null ? hexToColor(colorHex!) : null;
     return Padding(
       padding: EdgeInsets.symmetric(
         horizontal: 4 * viewScale,
@@ -294,8 +349,13 @@ class _TaskRowChrome extends StatelessWidget {
       ),
       child: Container(
         decoration: BoxDecoration(
-          color: AppTheme.surfaceElevated,
-          border: Border.all(color: AppTheme.border, width: 1),
+          color: customColor != null
+              ? Color.alphaBlend(
+                  customColor.withValues(alpha: 0.18),
+                  AppTheme.surfaceElevated,
+                )
+              : AppTheme.surfaceElevated,
+          border: Border.all(color: customColor ?? AppTheme.border, width: 1),
         ),
         padding: EdgeInsets.symmetric(horizontal: 6 * viewScale),
         alignment: Alignment.centerLeft,

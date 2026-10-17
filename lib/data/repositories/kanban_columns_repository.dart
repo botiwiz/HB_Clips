@@ -51,6 +51,7 @@ class KanbanColumnsRepository {
     required String kanbanElementId,
     required String name,
     double? sortOrder,
+    String? colorHex,
   }) async {
     final order = sortOrder ?? await _nextSortOrder(kanbanElementId);
     await _db
@@ -61,6 +62,7 @@ class KanbanColumnsRepository {
             kanbanElementId: kanbanElementId,
             name: Value(name),
             sortOrder: Value(order),
+            colorHex: Value(colorHex),
           ),
         );
     return (_db.select(
@@ -74,6 +76,19 @@ class KanbanColumnsRepository {
     )..where((c) => c.id.equals(id))).write(
       KanbanColumnsCompanion(
         name: Value(name),
+        updatedAt: Value(DateTime.now()),
+      ),
+    );
+  }
+
+  /// Sets (or clears, with `null`) a column's accent color - same plain
+  /// setter shape as `FramesRepository.updateColor`.
+  Future<void> updateColor(String id, String? colorHex) {
+    return (_db.update(
+      _db.kanbanColumns,
+    )..where((c) => c.id.equals(id))).write(
+      KanbanColumnsCompanion(
+        colorHex: Value(colorHex),
         updatedAt: Value(DateTime.now()),
       ),
     );

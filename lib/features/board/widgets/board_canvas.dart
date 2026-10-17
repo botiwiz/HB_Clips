@@ -53,6 +53,7 @@ import 'frame_group_scale_handles.dart';
 import 'frame_widget.dart';
 import 'frames_panel.dart';
 import 'group_scale_handles.dart';
+import 'kanban_column_color_popover.dart';
 import 'kanban_element_widget.dart';
 import 'kanban_task_field_edit_overlay.dart';
 import 'link_to_task_banner.dart';
@@ -588,6 +589,15 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
 
     for (var i = 0; i < columns.length; i++) {
       final column = columns[i];
+      if (KanbanColumnGeometry.colorSwatchRect(
+        effectiveHit,
+        i,
+      ).contains(hitPoint)) {
+        final current = ref.read(kanbanColumnColorPickerOpenForProvider);
+        ref.read(kanbanColumnColorPickerOpenForProvider.notifier).state =
+            current == column.id ? null : column.id;
+        return true;
+      }
       if (KanbanColumnGeometry.addTaskButtonRect(
         effectiveHit,
         i,
@@ -1444,6 +1454,57 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
         return;
       }
       ref.read(editingKanbanTaskFieldProvider.notifier).state = null;
+    }
+
+    // Same click-through guard, for an open kanban column color-picker
+    // popover - a click on it must not fall through to column/element
+    // selection underneath. Unlike the shape style popover's pill (always
+    // visible once a shape is selected), this popover only exists at all
+    // while a column's picker is open, so there's nothing to guard - and
+    // nothing to dismiss here either - once closed; closing itself happens
+    // via the swatch click toggle or the picker's own "Done" button.
+    final openColumnColorPickerId = ref.read(
+      kanbanColumnColorPickerOpenForProvider,
+    );
+    if (openColumnColorPickerId != null) {
+      final columnsForPicker =
+          ref.read(boardKanbanColumnsProvider).valueOrNull ?? [];
+      KanbanColumnRow? pickerColumn;
+      for (final c in columnsForPicker) {
+        if (c.id == openColumnColorPickerId) {
+          pickerColumn = c;
+          break;
+        }
+      }
+      if (pickerColumn != null) {
+        final elementsForPicker =
+            ref.read(boardKanbanElementsProvider).valueOrNull ?? [];
+        KanbanElementRow? pickerElement;
+        for (final e in elementsForPicker) {
+          if (e.id == pickerColumn.kanbanElementId) {
+            pickerElement = e;
+            break;
+          }
+        }
+        if (pickerElement != null) {
+          final siblingColumns =
+              columnsForPicker
+                  .where((c) => c.kanbanElementId == pickerElement!.id)
+                  .toList()
+                ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+          final columnIndex = siblingColumns.indexWhere(
+            (c) => c.id == pickerColumn!.id,
+          );
+          if (columnIndex >= 0 &&
+              KanbanColumnColorPopover.screenRectFor(
+                pickerElement,
+                columnIndex,
+                ref.read(boardViewProvider),
+              ).contains(event.localPosition)) {
+            return;
+          }
+        }
+      }
     }
 
     // Same click-through guard, for an open right-click context menu -
@@ -4328,6 +4389,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
                       const FrameRenameOverlay(),
                       const FrameOptionsMenu(),
                       const KanbanTaskFieldEditOverlay(),
+                      const KanbanColumnColorPopover(),
                       const ContextMenuOverlay(),
                       const LinkToTaskBanner(),
                       if (panZoomClipId == null &&
@@ -4417,6 +4479,9 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
         columnScrollOffsets: ref.watch(kanbanColumnScrollOffsetProvider),
         draggingTask: draggingTask,
         viewScale: effectiveScale,
+        openColorPickerColumnId: ref.watch(
+          kanbanColumnColorPickerOpenForProvider,
+        ),
       ),
     );
   }

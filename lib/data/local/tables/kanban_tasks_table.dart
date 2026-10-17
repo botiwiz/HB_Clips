@@ -21,6 +21,11 @@ class KanbanTasks extends Table {
   /// convention as `KanbanColumns.sortOrder`, just one level down.
   RealColumn get sortOrder => real().withDefault(const Constant(0))();
 
+  /// Optional user-assigned accent color (e.g. `#FF8800`) - null means no
+  /// custom color, same null-means-default convention as
+  /// `Frames.backgroundColorHex`/`KanbanColumns.colorHex`.
+  TextColumn get colorHex => text().nullable()();
+
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
 

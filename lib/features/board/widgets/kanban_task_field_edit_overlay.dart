@@ -4,9 +4,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../core/constants.dart';
+import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/hsv_color_picker.dart';
 import '../../../data/local/database.dart';
 import '../../../data/models/kanban.dart';
 import '../../../data/providers.dart';
+import '../../annotation/stroke_painter.dart' show colorToHex, hexToColor;
 import '../controllers/board_controller.dart';
 import '../controllers/kanban_controller.dart';
 import '../controllers/undo_controller.dart';
@@ -14,6 +17,7 @@ import '../geometry/kanban_task_geometry.dart';
 
 const double _kTitleRowHeight = 32;
 const double _kItemRowHeight = 28;
+const double _kColorPickerHeight = 44;
 const double _kPanelWidth = kKanbanColumnWidth;
 const _uuid = Uuid();
 
@@ -72,8 +76,12 @@ class KanbanTaskFieldEditOverlay extends ConsumerStatefulWidget {
       scrollOffset,
     );
     final itemCount = task.checklist.items.length;
+    final colorPickerOpen = ref.read(kanbanTaskColorPickerOpenProvider);
     final panelHeight =
-        _kTitleRowHeight + (itemCount + 1) * _kItemRowHeight + 16;
+        _kTitleRowHeight +
+        (colorPickerOpen ? _kColorPickerHeight : 0) +
+        (itemCount + 1) * _kItemRowHeight +
+        16;
     final localRect = Rect.fromLTWH(
       anchor.left,
       anchor.top,
@@ -155,6 +163,7 @@ class _KanbanTaskFieldEditOverlayState
   TextEditingController? _titleController;
   FocusNode? _titleFocusNode;
   String _titleBefore = '';
+  String? _colorBeforePicker;
 
   void _bind(KanbanTask task) {
     _boundTaskId = task.id;
@@ -202,6 +211,45 @@ class _KanbanTaskFieldEditOverlayState
     _titleBefore = trimmed;
   }
 
+  /// Closes the inline color picker (if open), pushing one undo step if
+  /// the color actually changed while it was open - mirrors
+  /// `ShapeStylePopover._closePickers`'s single-picker case. Safe to call
+  /// with a since-deleted/switched-away-from task id (the repository
+  /// write below just no-ops against zero rows).
+  void _commitColor(String taskId) {
+    if (!ref.read(kanbanTaskColorPickerOpenProvider)) return;
+    final before = _colorBeforePicker;
+    _colorBeforePicker = null;
+    ref.read(kanbanTaskColorPickerOpenProvider.notifier).state = false;
+    final tasks = ref.read(boardKanbanTasksProvider).valueOrNull ?? [];
+    String? after;
+    for (final t in tasks) {
+      if (t.id == taskId) {
+        after = t.colorHex;
+        break;
+      }
+    }
+    if (before == after) return;
+    final repo = ref.read(kanbanTasksRepositoryProvider);
+    ref
+        .read(undoManagerProvider.notifier)
+        .push(
+          UndoableAction(
+            undo: () => repo.updateColor(taskId, before),
+            redo: () => repo.updateColor(taskId, after),
+          ),
+        );
+  }
+
+  void _toggleColorPicker(KanbanTask task) {
+    if (ref.read(kanbanTaskColorPickerOpenProvider)) {
+      _commitColor(task.id);
+      return;
+    }
+    _colorBeforePicker = task.colorHex;
+    ref.read(kanbanTaskColorPickerOpenProvider.notifier).state = true;
+  }
+
   void _writeChecklist(String taskId, Checklist before, Checklist after) {
     final repo = ref.read(kanbanTasksRepositoryProvider);
     repo.updateChecklist(taskId, after);
@@ -247,6 +295,7 @@ class _KanbanTaskFieldEditOverlayState
 
   void _close() {
     _commitTitle();
+    if (_boundTaskId != null) _commitColor(_boundTaskId!);
     ref.read(editingKanbanTaskFieldProvider.notifier).state = null;
   }
 
@@ -260,7 +309,10 @@ class _KanbanTaskFieldEditOverlayState
   Widget build(BuildContext context) {
     final taskId = ref.watch(editingKanbanTaskFieldProvider);
     if (taskId == null) {
-      if (_boundTaskId != null) _disposeBinding();
+      if (_boundTaskId != null) {
+        _commitColor(_boundTaskId!);
+        _disposeBinding();
+      }
       return const SizedBox.shrink();
     }
 
@@ -276,6 +328,7 @@ class _KanbanTaskFieldEditOverlayState
     final task = located.task;
 
     if (_boundTaskId != task.id) {
+      if (_boundTaskId != null) _commitColor(_boundTaskId!);
       _disposeBinding();
       _bind(task);
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -284,8 +337,10 @@ class _KanbanTaskFieldEditOverlayState
     }
 
     final view = ref.watch(boardViewProvider);
+    final colorPickerOpen = ref.watch(kanbanTaskColorPickerOpenProvider);
     final rect = KanbanTaskFieldEditOverlay.screenRectFor(ref, taskId, view);
     if (rect == null) return const SizedBox.shrink();
+    final taskColor = task.colorHex != null ? hexToColor(task.colorHex!) : null;
 
     return Positioned(
       left: rect.left,
@@ -304,25 +359,51 @@ class _KanbanTaskFieldEditOverlayState
               children: [
                 SizedBox(
                   height: _kTitleRowHeight,
-                  child: TextField(
-                    controller: _titleController,
-                    focusNode: _titleFocusNode,
-                    autofocus: true,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                    ),
-                    decoration: const InputDecoration(
-                      isDense: true,
-                      border: OutlineInputBorder(),
-                      contentPadding: EdgeInsets.symmetric(
-                        horizontal: 6,
-                        vertical: 4,
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _titleController,
+                          focusNode: _titleFocusNode,
+                          autofocus: true,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          decoration: const InputDecoration(
+                            isDense: true,
+                            border: OutlineInputBorder(),
+                            contentPadding: EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 4,
+                            ),
+                          ),
+                          onSubmitted: (_) => _commitTitle(),
+                        ),
                       ),
-                    ),
-                    onSubmitted: (_) => _commitTitle(),
+                      const SizedBox(width: 6),
+                      InlineColorPickerSwatch(
+                        color: taskColor ?? AppTheme.surfaceElevated,
+                        open: colorPickerOpen,
+                        onTap: () => _toggleColorPicker(task),
+                        size: 24,
+                      ),
+                    ],
                   ),
                 ),
+                if (colorPickerOpen)
+                  SizedBox(
+                    height: _kColorPickerHeight,
+                    child: InlineHsvPickerBar(
+                      initialColor: taskColor ?? AppTheme.surfaceCard,
+                      onChanged: (color) {
+                        ref
+                            .read(kanbanTasksRepositoryProvider)
+                            .updateColor(task.id, colorToHex(color));
+                      },
+                      onDone: () => _toggleColorPicker(task),
+                    ),
+                  ),
                 for (var i = 0; i < task.checklist.items.length; i++)
                   _ChecklistItemRow(
                     key: ValueKey(task.checklist.items[i].id),

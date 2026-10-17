@@ -74,6 +74,22 @@ final draggingTaskProvider = StateProvider<DraggingTask?>((ref) => null);
 /// account for a variable-height expanded checklist inline in the list.
 final editingKanbanTaskFieldProvider = StateProvider<String?>((ref) => null);
 
+/// Id of the column whose `KanbanColumnColorPopover` is currently open -
+/// null when none. Doubles as "which swatch shows the open-accent ring"
+/// and "which column the popover is anchored to" - a column has only one
+/// swatch (unlike a shape's fill/stroke pair), so there's no separate
+/// boolean needed alongside the id.
+final kanbanColumnColorPickerOpenForProvider = StateProvider<String?>(
+  (ref) => null,
+);
+
+/// Whether the currently-open `KanbanTaskFieldEditOverlay`'s inline
+/// color-picker bar is expanded - same role `shapeFillPickerOpenProvider`
+/// plays for `ShapeStylePopover`, just a single swatch instead of a
+/// fill/stroke pair. Only meaningful while `editingKanbanTaskFieldProvider`
+/// is non-null.
+final kanbanTaskColorPickerOpenProvider = StateProvider<bool>((ref) => false);
+
 /// One selectable row in an open `ContextMenuOverlay` - [onSelected] is a
 /// plain closure the caller builds with whatever context it needs already
 /// captured, so the overlay itself stays generic (it has no kanban-

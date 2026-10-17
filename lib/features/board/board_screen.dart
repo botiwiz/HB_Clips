@@ -453,6 +453,7 @@ class BoardScreen extends ConsumerWidget {
                   kanbanElementId: column.kanbanElementId,
                   name: column.name,
                   sortOrder: column.sortOrder,
+                  colorHex: column.colorHex,
                 );
               }
               for (final task in tasks) {
@@ -462,6 +463,7 @@ class BoardScreen extends ConsumerWidget {
                   title: task.title,
                   checklist: task.checklist,
                   sortOrder: task.sortOrder,
+                  colorHex: task.colorHex,
                 );
               }
               if (links.isNotEmpty) {

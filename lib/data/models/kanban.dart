@@ -66,6 +66,11 @@ class KanbanTask {
   final String title;
   final Checklist checklist;
   final double sortOrder;
+
+  /// Optional user-assigned accent color (e.g. `#FF8800`) - null means no
+  /// custom color, same null-means-default convention as
+  /// `BoardClip.shapeFillColorHex`.
+  final String? colorHex;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -75,6 +80,7 @@ class KanbanTask {
     required this.title,
     this.checklist = Checklist.empty,
     required this.sortOrder,
+    this.colorHex,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -85,6 +91,7 @@ class KanbanTask {
     title: row.title,
     checklist: Checklist.fromJson(row.checklistJson),
     sortOrder: row.sortOrder,
+    colorHex: row.colorHex,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   );
@@ -94,12 +101,14 @@ class KanbanTask {
     String? title,
     Checklist? checklist,
     double? sortOrder,
+    String? colorHex,
   }) => KanbanTask(
     id: id,
     columnId: columnId ?? this.columnId,
     title: title ?? this.title,
     checklist: checklist ?? this.checklist,
     sortOrder: sortOrder ?? this.sortOrder,
+    colorHex: colorHex ?? this.colorHex,
     createdAt: createdAt,
     updatedAt: updatedAt,
   );

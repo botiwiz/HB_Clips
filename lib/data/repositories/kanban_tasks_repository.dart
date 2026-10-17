@@ -83,6 +83,7 @@ class KanbanTasksRepository {
     required String title,
     required Checklist checklist,
     required double sortOrder,
+    required String? colorHex,
   }) {
     return _db
         .into(_db.kanbanTasks)
@@ -93,8 +94,20 @@ class KanbanTasksRepository {
             title: Value(title),
             checklistJson: Value(checklist.toJson()),
             sortOrder: Value(sortOrder),
+            colorHex: Value(colorHex),
           ),
         );
+  }
+
+  /// Sets (or clears, with `null`) a task's accent color - same plain
+  /// setter shape as `KanbanColumnsRepository.updateColor`.
+  Future<void> updateColor(String id, String? colorHex) {
+    return (_db.update(_db.kanbanTasks)..where((t) => t.id.equals(id))).write(
+      KanbanTasksCompanion(
+        colorHex: Value(colorHex),
+        updatedAt: Value(DateTime.now()),
+      ),
+    );
   }
 
   Future<void> updateTitle(String id, String title) {

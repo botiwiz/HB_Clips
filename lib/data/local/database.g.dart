@@ -6656,6 +6656,17 @@ class $KanbanColumnsTable extends KanbanColumns
     requiredDuringInsert: false,
     defaultValue: const Constant(0),
   );
+  static const VerificationMeta _colorHexMeta = const VerificationMeta(
+    'colorHex',
+  );
+  @override
+  late final GeneratedColumn<String> colorHex = GeneratedColumn<String>(
+    'color_hex',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -6686,6 +6697,7 @@ class $KanbanColumnsTable extends KanbanColumns
     kanbanElementId,
     name,
     sortOrder,
+    colorHex,
     createdAt,
     updatedAt,
   ];
@@ -6729,6 +6741,12 @@ class $KanbanColumnsTable extends KanbanColumns
         sortOrder.isAcceptableOrUnknown(data['sort_order']!, _sortOrderMeta),
       );
     }
+    if (data.containsKey('color_hex')) {
+      context.handle(
+        _colorHexMeta,
+        colorHex.isAcceptableOrUnknown(data['color_hex']!, _colorHexMeta),
+      );
+    }
     if (data.containsKey('created_at')) {
       context.handle(
         _createdAtMeta,
@@ -6766,6 +6784,10 @@ class $KanbanColumnsTable extends KanbanColumns
         DriftSqlType.double,
         data['${effectivePrefix}sort_order'],
       )!,
+      colorHex: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}color_hex'],
+      ),
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
@@ -6793,6 +6815,11 @@ class KanbanColumnRow extends DataClass implements Insertable<KanbanColumnRow> {
   /// section. Reordering (or inserting a new column anywhere but the end)
   /// only ever rewrites this one row's value.
   final double sortOrder;
+
+  /// Optional user-assigned accent color (e.g. `#FF8800`) - null means no
+  /// custom color (renders as a plain, uncolored column), same
+  /// null-means-default convention as `Frames.backgroundColorHex`.
+  final String? colorHex;
   final DateTime createdAt;
   final DateTime updatedAt;
   const KanbanColumnRow({
@@ -6800,6 +6827,7 @@ class KanbanColumnRow extends DataClass implements Insertable<KanbanColumnRow> {
     required this.kanbanElementId,
     required this.name,
     required this.sortOrder,
+    this.colorHex,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -6810,6 +6838,9 @@ class KanbanColumnRow extends DataClass implements Insertable<KanbanColumnRow> {
     map['kanban_element_id'] = Variable<String>(kanbanElementId);
     map['name'] = Variable<String>(name);
     map['sort_order'] = Variable<double>(sortOrder);
+    if (!nullToAbsent || colorHex != null) {
+      map['color_hex'] = Variable<String>(colorHex);
+    }
     map['created_at'] = Variable<DateTime>(createdAt);
     map['updated_at'] = Variable<DateTime>(updatedAt);
     return map;
@@ -6821,6 +6852,9 @@ class KanbanColumnRow extends DataClass implements Insertable<KanbanColumnRow> {
       kanbanElementId: Value(kanbanElementId),
       name: Value(name),
       sortOrder: Value(sortOrder),
+      colorHex: colorHex == null && nullToAbsent
+          ? const Value.absent()
+          : Value(colorHex),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
     );
@@ -6836,6 +6870,7 @@ class KanbanColumnRow extends DataClass implements Insertable<KanbanColumnRow> {
       kanbanElementId: serializer.fromJson<String>(json['kanbanElementId']),
       name: serializer.fromJson<String>(json['name']),
       sortOrder: serializer.fromJson<double>(json['sortOrder']),
+      colorHex: serializer.fromJson<String?>(json['colorHex']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
     );
@@ -6848,6 +6883,7 @@ class KanbanColumnRow extends DataClass implements Insertable<KanbanColumnRow> {
       'kanbanElementId': serializer.toJson<String>(kanbanElementId),
       'name': serializer.toJson<String>(name),
       'sortOrder': serializer.toJson<double>(sortOrder),
+      'colorHex': serializer.toJson<String?>(colorHex),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
     };
@@ -6858,6 +6894,7 @@ class KanbanColumnRow extends DataClass implements Insertable<KanbanColumnRow> {
     String? kanbanElementId,
     String? name,
     double? sortOrder,
+    Value<String?> colorHex = const Value.absent(),
     DateTime? createdAt,
     DateTime? updatedAt,
   }) => KanbanColumnRow(
@@ -6865,6 +6902,7 @@ class KanbanColumnRow extends DataClass implements Insertable<KanbanColumnRow> {
     kanbanElementId: kanbanElementId ?? this.kanbanElementId,
     name: name ?? this.name,
     sortOrder: sortOrder ?? this.sortOrder,
+    colorHex: colorHex.present ? colorHex.value : this.colorHex,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
   );
@@ -6876,6 +6914,7 @@ class KanbanColumnRow extends DataClass implements Insertable<KanbanColumnRow> {
           : this.kanbanElementId,
       name: data.name.present ? data.name.value : this.name,
       sortOrder: data.sortOrder.present ? data.sortOrder.value : this.sortOrder,
+      colorHex: data.colorHex.present ? data.colorHex.value : this.colorHex,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
@@ -6888,6 +6927,7 @@ class KanbanColumnRow extends DataClass implements Insertable<KanbanColumnRow> {
           ..write('kanbanElementId: $kanbanElementId, ')
           ..write('name: $name, ')
           ..write('sortOrder: $sortOrder, ')
+          ..write('colorHex: $colorHex, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
@@ -6895,8 +6935,15 @@ class KanbanColumnRow extends DataClass implements Insertable<KanbanColumnRow> {
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, kanbanElementId, name, sortOrder, createdAt, updatedAt);
+  int get hashCode => Object.hash(
+    id,
+    kanbanElementId,
+    name,
+    sortOrder,
+    colorHex,
+    createdAt,
+    updatedAt,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -6905,6 +6952,7 @@ class KanbanColumnRow extends DataClass implements Insertable<KanbanColumnRow> {
           other.kanbanElementId == this.kanbanElementId &&
           other.name == this.name &&
           other.sortOrder == this.sortOrder &&
+          other.colorHex == this.colorHex &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt);
 }
@@ -6914,6 +6962,7 @@ class KanbanColumnsCompanion extends UpdateCompanion<KanbanColumnRow> {
   final Value<String> kanbanElementId;
   final Value<String> name;
   final Value<double> sortOrder;
+  final Value<String?> colorHex;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
   final Value<int> rowid;
@@ -6922,6 +6971,7 @@ class KanbanColumnsCompanion extends UpdateCompanion<KanbanColumnRow> {
     this.kanbanElementId = const Value.absent(),
     this.name = const Value.absent(),
     this.sortOrder = const Value.absent(),
+    this.colorHex = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -6931,6 +6981,7 @@ class KanbanColumnsCompanion extends UpdateCompanion<KanbanColumnRow> {
     required String kanbanElementId,
     this.name = const Value.absent(),
     this.sortOrder = const Value.absent(),
+    this.colorHex = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -6941,6 +6992,7 @@ class KanbanColumnsCompanion extends UpdateCompanion<KanbanColumnRow> {
     Expression<String>? kanbanElementId,
     Expression<String>? name,
     Expression<double>? sortOrder,
+    Expression<String>? colorHex,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
     Expression<int>? rowid,
@@ -6950,6 +7002,7 @@ class KanbanColumnsCompanion extends UpdateCompanion<KanbanColumnRow> {
       if (kanbanElementId != null) 'kanban_element_id': kanbanElementId,
       if (name != null) 'name': name,
       if (sortOrder != null) 'sort_order': sortOrder,
+      if (colorHex != null) 'color_hex': colorHex,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (rowid != null) 'rowid': rowid,
@@ -6961,6 +7014,7 @@ class KanbanColumnsCompanion extends UpdateCompanion<KanbanColumnRow> {
     Value<String>? kanbanElementId,
     Value<String>? name,
     Value<double>? sortOrder,
+    Value<String?>? colorHex,
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
     Value<int>? rowid,
@@ -6970,6 +7024,7 @@ class KanbanColumnsCompanion extends UpdateCompanion<KanbanColumnRow> {
       kanbanElementId: kanbanElementId ?? this.kanbanElementId,
       name: name ?? this.name,
       sortOrder: sortOrder ?? this.sortOrder,
+      colorHex: colorHex ?? this.colorHex,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       rowid: rowid ?? this.rowid,
@@ -6991,6 +7046,9 @@ class KanbanColumnsCompanion extends UpdateCompanion<KanbanColumnRow> {
     if (sortOrder.present) {
       map['sort_order'] = Variable<double>(sortOrder.value);
     }
+    if (colorHex.present) {
+      map['color_hex'] = Variable<String>(colorHex.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
@@ -7010,6 +7068,7 @@ class KanbanColumnsCompanion extends UpdateCompanion<KanbanColumnRow> {
           ..write('kanbanElementId: $kanbanElementId, ')
           ..write('name: $name, ')
           ..write('sortOrder: $sortOrder, ')
+          ..write('colorHex: $colorHex, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('rowid: $rowid')
@@ -7077,6 +7136,17 @@ class $KanbanTasksTable extends KanbanTasks
     requiredDuringInsert: false,
     defaultValue: const Constant(0),
   );
+  static const VerificationMeta _colorHexMeta = const VerificationMeta(
+    'colorHex',
+  );
+  @override
+  late final GeneratedColumn<String> colorHex = GeneratedColumn<String>(
+    'color_hex',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -7108,6 +7178,7 @@ class $KanbanTasksTable extends KanbanTasks
     title,
     checklistJson,
     sortOrder,
+    colorHex,
     createdAt,
     updatedAt,
   ];
@@ -7157,6 +7228,12 @@ class $KanbanTasksTable extends KanbanTasks
         sortOrder.isAcceptableOrUnknown(data['sort_order']!, _sortOrderMeta),
       );
     }
+    if (data.containsKey('color_hex')) {
+      context.handle(
+        _colorHexMeta,
+        colorHex.isAcceptableOrUnknown(data['color_hex']!, _colorHexMeta),
+      );
+    }
     if (data.containsKey('created_at')) {
       context.handle(
         _createdAtMeta,
@@ -7198,6 +7275,10 @@ class $KanbanTasksTable extends KanbanTasks
         DriftSqlType.double,
         data['${effectivePrefix}sort_order'],
       )!,
+      colorHex: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}color_hex'],
+      ),
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
@@ -7228,6 +7309,11 @@ class KanbanTaskRow extends DataClass implements Insertable<KanbanTaskRow> {
   /// Fractional top-to-bottom display order within [columnId] - same
   /// convention as `KanbanColumns.sortOrder`, just one level down.
   final double sortOrder;
+
+  /// Optional user-assigned accent color (e.g. `#FF8800`) - null means no
+  /// custom color, same null-means-default convention as
+  /// `Frames.backgroundColorHex`/`KanbanColumns.colorHex`.
+  final String? colorHex;
   final DateTime createdAt;
   final DateTime updatedAt;
   const KanbanTaskRow({
@@ -7236,6 +7322,7 @@ class KanbanTaskRow extends DataClass implements Insertable<KanbanTaskRow> {
     required this.title,
     this.checklistJson,
     required this.sortOrder,
+    this.colorHex,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -7249,6 +7336,9 @@ class KanbanTaskRow extends DataClass implements Insertable<KanbanTaskRow> {
       map['checklist_json'] = Variable<String>(checklistJson);
     }
     map['sort_order'] = Variable<double>(sortOrder);
+    if (!nullToAbsent || colorHex != null) {
+      map['color_hex'] = Variable<String>(colorHex);
+    }
     map['created_at'] = Variable<DateTime>(createdAt);
     map['updated_at'] = Variable<DateTime>(updatedAt);
     return map;
@@ -7263,6 +7353,9 @@ class KanbanTaskRow extends DataClass implements Insertable<KanbanTaskRow> {
           ? const Value.absent()
           : Value(checklistJson),
       sortOrder: Value(sortOrder),
+      colorHex: colorHex == null && nullToAbsent
+          ? const Value.absent()
+          : Value(colorHex),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
     );
@@ -7279,6 +7372,7 @@ class KanbanTaskRow extends DataClass implements Insertable<KanbanTaskRow> {
       title: serializer.fromJson<String>(json['title']),
       checklistJson: serializer.fromJson<String?>(json['checklistJson']),
       sortOrder: serializer.fromJson<double>(json['sortOrder']),
+      colorHex: serializer.fromJson<String?>(json['colorHex']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
     );
@@ -7292,6 +7386,7 @@ class KanbanTaskRow extends DataClass implements Insertable<KanbanTaskRow> {
       'title': serializer.toJson<String>(title),
       'checklistJson': serializer.toJson<String?>(checklistJson),
       'sortOrder': serializer.toJson<double>(sortOrder),
+      'colorHex': serializer.toJson<String?>(colorHex),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
     };
@@ -7303,6 +7398,7 @@ class KanbanTaskRow extends DataClass implements Insertable<KanbanTaskRow> {
     String? title,
     Value<String?> checklistJson = const Value.absent(),
     double? sortOrder,
+    Value<String?> colorHex = const Value.absent(),
     DateTime? createdAt,
     DateTime? updatedAt,
   }) => KanbanTaskRow(
@@ -7313,6 +7409,7 @@ class KanbanTaskRow extends DataClass implements Insertable<KanbanTaskRow> {
         ? checklistJson.value
         : this.checklistJson,
     sortOrder: sortOrder ?? this.sortOrder,
+    colorHex: colorHex.present ? colorHex.value : this.colorHex,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
   );
@@ -7325,6 +7422,7 @@ class KanbanTaskRow extends DataClass implements Insertable<KanbanTaskRow> {
           ? data.checklistJson.value
           : this.checklistJson,
       sortOrder: data.sortOrder.present ? data.sortOrder.value : this.sortOrder,
+      colorHex: data.colorHex.present ? data.colorHex.value : this.colorHex,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
@@ -7338,6 +7436,7 @@ class KanbanTaskRow extends DataClass implements Insertable<KanbanTaskRow> {
           ..write('title: $title, ')
           ..write('checklistJson: $checklistJson, ')
           ..write('sortOrder: $sortOrder, ')
+          ..write('colorHex: $colorHex, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
@@ -7351,6 +7450,7 @@ class KanbanTaskRow extends DataClass implements Insertable<KanbanTaskRow> {
     title,
     checklistJson,
     sortOrder,
+    colorHex,
     createdAt,
     updatedAt,
   );
@@ -7363,6 +7463,7 @@ class KanbanTaskRow extends DataClass implements Insertable<KanbanTaskRow> {
           other.title == this.title &&
           other.checklistJson == this.checklistJson &&
           other.sortOrder == this.sortOrder &&
+          other.colorHex == this.colorHex &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt);
 }
@@ -7373,6 +7474,7 @@ class KanbanTasksCompanion extends UpdateCompanion<KanbanTaskRow> {
   final Value<String> title;
   final Value<String?> checklistJson;
   final Value<double> sortOrder;
+  final Value<String?> colorHex;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
   final Value<int> rowid;
@@ -7382,6 +7484,7 @@ class KanbanTasksCompanion extends UpdateCompanion<KanbanTaskRow> {
     this.title = const Value.absent(),
     this.checklistJson = const Value.absent(),
     this.sortOrder = const Value.absent(),
+    this.colorHex = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -7392,6 +7495,7 @@ class KanbanTasksCompanion extends UpdateCompanion<KanbanTaskRow> {
     this.title = const Value.absent(),
     this.checklistJson = const Value.absent(),
     this.sortOrder = const Value.absent(),
+    this.colorHex = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -7403,6 +7507,7 @@ class KanbanTasksCompanion extends UpdateCompanion<KanbanTaskRow> {
     Expression<String>? title,
     Expression<String>? checklistJson,
     Expression<double>? sortOrder,
+    Expression<String>? colorHex,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
     Expression<int>? rowid,
@@ -7413,6 +7518,7 @@ class KanbanTasksCompanion extends UpdateCompanion<KanbanTaskRow> {
       if (title != null) 'title': title,
       if (checklistJson != null) 'checklist_json': checklistJson,
       if (sortOrder != null) 'sort_order': sortOrder,
+      if (colorHex != null) 'color_hex': colorHex,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (rowid != null) 'rowid': rowid,
@@ -7425,6 +7531,7 @@ class KanbanTasksCompanion extends UpdateCompanion<KanbanTaskRow> {
     Value<String>? title,
     Value<String?>? checklistJson,
     Value<double>? sortOrder,
+    Value<String?>? colorHex,
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
     Value<int>? rowid,
@@ -7435,6 +7542,7 @@ class KanbanTasksCompanion extends UpdateCompanion<KanbanTaskRow> {
       title: title ?? this.title,
       checklistJson: checklistJson ?? this.checklistJson,
       sortOrder: sortOrder ?? this.sortOrder,
+      colorHex: colorHex ?? this.colorHex,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       rowid: rowid ?? this.rowid,
@@ -7459,6 +7567,9 @@ class KanbanTasksCompanion extends UpdateCompanion<KanbanTaskRow> {
     if (sortOrder.present) {
       map['sort_order'] = Variable<double>(sortOrder.value);
     }
+    if (colorHex.present) {
+      map['color_hex'] = Variable<String>(colorHex.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
@@ -7479,6 +7590,7 @@ class KanbanTasksCompanion extends UpdateCompanion<KanbanTaskRow> {
           ..write('title: $title, ')
           ..write('checklistJson: $checklistJson, ')
           ..write('sortOrder: $sortOrder, ')
+          ..write('colorHex: $colorHex, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('rowid: $rowid')
@@ -10933,6 +11045,7 @@ typedef $$KanbanColumnsTableCreateCompanionBuilder =
       required String kanbanElementId,
       Value<String> name,
       Value<double> sortOrder,
+      Value<String?> colorHex,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
       Value<int> rowid,
@@ -10943,6 +11056,7 @@ typedef $$KanbanColumnsTableUpdateCompanionBuilder =
       Value<String> kanbanElementId,
       Value<String> name,
       Value<double> sortOrder,
+      Value<String?> colorHex,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
       Value<int> rowid,
@@ -10974,6 +11088,11 @@ class $$KanbanColumnsTableFilterComposer
 
   ColumnFilters<double> get sortOrder => $composableBuilder(
     column: $table.sortOrder,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get colorHex => $composableBuilder(
+    column: $table.colorHex,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -11017,6 +11136,11 @@ class $$KanbanColumnsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get colorHex => $composableBuilder(
+    column: $table.colorHex,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
@@ -11050,6 +11174,9 @@ class $$KanbanColumnsTableAnnotationComposer
 
   GeneratedColumn<double> get sortOrder =>
       $composableBuilder(column: $table.sortOrder, builder: (column) => column);
+
+  GeneratedColumn<String> get colorHex =>
+      $composableBuilder(column: $table.colorHex, builder: (column) => column);
 
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
@@ -11093,6 +11220,7 @@ class $$KanbanColumnsTableTableManager
                 Value<String> kanbanElementId = const Value.absent(),
                 Value<String> name = const Value.absent(),
                 Value<double> sortOrder = const Value.absent(),
+                Value<String?> colorHex = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
@@ -11101,6 +11229,7 @@ class $$KanbanColumnsTableTableManager
                 kanbanElementId: kanbanElementId,
                 name: name,
                 sortOrder: sortOrder,
+                colorHex: colorHex,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 rowid: rowid,
@@ -11111,6 +11240,7 @@ class $$KanbanColumnsTableTableManager
                 required String kanbanElementId,
                 Value<String> name = const Value.absent(),
                 Value<double> sortOrder = const Value.absent(),
+                Value<String?> colorHex = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
@@ -11119,6 +11249,7 @@ class $$KanbanColumnsTableTableManager
                 kanbanElementId: kanbanElementId,
                 name: name,
                 sortOrder: sortOrder,
+                colorHex: colorHex,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 rowid: rowid,
@@ -11155,6 +11286,7 @@ typedef $$KanbanTasksTableCreateCompanionBuilder =
       Value<String> title,
       Value<String?> checklistJson,
       Value<double> sortOrder,
+      Value<String?> colorHex,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
       Value<int> rowid,
@@ -11166,6 +11298,7 @@ typedef $$KanbanTasksTableUpdateCompanionBuilder =
       Value<String> title,
       Value<String?> checklistJson,
       Value<double> sortOrder,
+      Value<String?> colorHex,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
       Value<int> rowid,
@@ -11202,6 +11335,11 @@ class $$KanbanTasksTableFilterComposer
 
   ColumnFilters<double> get sortOrder => $composableBuilder(
     column: $table.sortOrder,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get colorHex => $composableBuilder(
+    column: $table.colorHex,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -11250,6 +11388,11 @@ class $$KanbanTasksTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get colorHex => $composableBuilder(
+    column: $table.colorHex,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
@@ -11286,6 +11429,9 @@ class $$KanbanTasksTableAnnotationComposer
 
   GeneratedColumn<double> get sortOrder =>
       $composableBuilder(column: $table.sortOrder, builder: (column) => column);
+
+  GeneratedColumn<String> get colorHex =>
+      $composableBuilder(column: $table.colorHex, builder: (column) => column);
 
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
@@ -11330,6 +11476,7 @@ class $$KanbanTasksTableTableManager
                 Value<String> title = const Value.absent(),
                 Value<String?> checklistJson = const Value.absent(),
                 Value<double> sortOrder = const Value.absent(),
+                Value<String?> colorHex = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
@@ -11339,6 +11486,7 @@ class $$KanbanTasksTableTableManager
                 title: title,
                 checklistJson: checklistJson,
                 sortOrder: sortOrder,
+                colorHex: colorHex,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 rowid: rowid,
@@ -11350,6 +11498,7 @@ class $$KanbanTasksTableTableManager
                 Value<String> title = const Value.absent(),
                 Value<String?> checklistJson = const Value.absent(),
                 Value<double> sortOrder = const Value.absent(),
+                Value<String?> colorHex = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
@@ -11359,6 +11508,7 @@ class $$KanbanTasksTableTableManager
                 title: title,
                 checklistJson: checklistJson,
                 sortOrder: sortOrder,
+                colorHex: colorHex,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 rowid: rowid,

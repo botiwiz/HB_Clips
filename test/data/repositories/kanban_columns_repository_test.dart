@@ -79,6 +79,37 @@ void main() {
     expect(await (db.select(db.kanbanColumns)).get(), isEmpty);
   });
 
+  test('createColumn persists an explicit colorHex', () async {
+    final column = await columnsRepo.createColumn(
+      id: 'col-a',
+      kanbanElementId: 'el-1',
+      name: 'To Do',
+      colorHex: '#FF8800',
+    );
+    expect(column.colorHex, '#FF8800');
+  });
+
+  test('updateColor sets then clears a column\'s color', () async {
+    final column = await columnsRepo.createColumn(
+      id: 'col-a',
+      kanbanElementId: 'el-1',
+      name: 'To Do',
+    );
+    expect(column.colorHex, isNull);
+
+    await columnsRepo.updateColor(column.id, '#00FF00');
+    var row = await (db.select(
+      db.kanbanColumns,
+    )..where((c) => c.id.equals(column.id))).getSingle();
+    expect(row.colorHex, '#00FF00');
+
+    await columnsRepo.updateColor(column.id, null);
+    row = await (db.select(
+      db.kanbanColumns,
+    )..where((c) => c.id.equals(column.id))).getSingle();
+    expect(row.colorHex, isNull);
+  });
+
   test('watchColumnsForBoard only returns columns for that board', () async {
     await elementsRepo.createKanbanElement(
       id: 'el-other-board',

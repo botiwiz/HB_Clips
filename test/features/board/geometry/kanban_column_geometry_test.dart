@@ -111,6 +111,20 @@ void main() {
       );
     });
 
+    test('colorSwatchRect sits inside the header, right of center, for '
+        'every column index', () {
+      final element = _element(
+        width: KanbanElementGeometry.widthForColumnCount(3),
+      );
+      for (final index in [0, 1, 2]) {
+        final header = KanbanColumnGeometry.headerRect(element, index);
+        final swatch = KanbanColumnGeometry.colorSwatchRect(element, index);
+        expect(header.contains(swatch.center), isTrue);
+        expect(swatch.right, lessThanOrEqualTo(header.right));
+        expect(swatch.center.dx, greaterThan(header.center.dx));
+      }
+    });
+
     test('columnIndexForPoint with zero columns returns 0', () {
       final element = _element();
       expect(
