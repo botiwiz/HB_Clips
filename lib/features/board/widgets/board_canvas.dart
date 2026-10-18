@@ -54,6 +54,7 @@ import 'frame_widget.dart';
 import 'frames_panel.dart';
 import 'group_scale_handles.dart';
 import 'kanban_column_color_popover.dart';
+import 'kanban_column_rename_overlay.dart';
 import 'kanban_element_widget.dart';
 import 'kanban_task_field_edit_overlay.dart';
 import 'link_to_task_banner.dart';
@@ -596,6 +597,11 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
         final current = ref.read(kanbanColumnColorPickerOpenForProvider);
         ref.read(kanbanColumnColorPickerOpenForProvider.notifier).state =
             current == column.id ? null : column.id;
+        return true;
+      }
+      if (KanbanColumnGeometry.headerRect(effectiveHit, i).contains(hitPoint) &&
+          _isDoubleClickOn(column.id, event.localPosition)) {
+        ref.read(renamingKanbanColumnIdProvider.notifier).state = column.id;
         return true;
       }
       if (KanbanColumnGeometry.addTaskButtonRect(
@@ -1279,6 +1285,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     // renamed is also still selected.
     if (ref.read(editingTextClipIdProvider) != null ||
         ref.read(renamingFrameIdProvider) != null ||
+        ref.read(renamingKanbanColumnIdProvider) != null ||
         ref.read(editingKanbanTaskFieldProvider) != null) {
       return KeyEventResult.ignored;
     }
@@ -1433,6 +1440,20 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
             renamingFrame,
             ref.read(boardViewProvider),
           ).contains(event.localPosition)) {
+        return;
+      }
+    }
+
+    // Same click-through guard, for a kanban column's inline-rename
+    // TextField.
+    final renamingKanbanColumnId = ref.read(renamingKanbanColumnIdProvider);
+    if (renamingKanbanColumnId != null) {
+      final rect = KanbanColumnRenameOverlay.screenRectFor(
+        ref,
+        renamingKanbanColumnId,
+        ref.read(boardViewProvider),
+      );
+      if (rect != null && rect.contains(event.localPosition)) {
         return;
       }
     }
@@ -4390,6 +4411,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
                       const FrameOptionsMenu(),
                       const KanbanTaskFieldEditOverlay(),
                       const KanbanColumnColorPopover(),
+                      const KanbanColumnRenameOverlay(),
                       const ContextMenuOverlay(),
                       const LinkToTaskBanner(),
                       if (panZoomClipId == null &&

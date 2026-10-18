@@ -90,6 +90,13 @@ final kanbanColumnColorPickerOpenForProvider = StateProvider<String?>(
 /// is non-null.
 final kanbanTaskColorPickerOpenProvider = StateProvider<bool>((ref) => false);
 
+/// Id of the kanban column currently being inline-renamed via
+/// `KanbanColumnRenameOverlay` - null when none. Started by double-
+/// clicking a column's header title in `board_canvas.dart`'s kanban
+/// element hit-test, same role `renamingFrameIdProvider` plays for a
+/// frame's title.
+final renamingKanbanColumnIdProvider = StateProvider<String?>((ref) => null);
+
 /// One selectable row in an open `ContextMenuOverlay` - [onSelected] is a
 /// plain closure the caller builds with whatever context it needs already
 /// captured, so the overlay itself stays generic (it has no kanban-

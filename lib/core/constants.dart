@@ -23,6 +23,14 @@ const double kKanbanColumnWidth = 280;
 /// Horizontal gap between adjacent kanban columns.
 const double kKanbanColumnGap = 16;
 
+/// Width of the slim "+ Add list" affordance one slot past the last
+/// column - narrower than a real column ([kKanbanColumnWidth]) since it
+/// holds just an icon, not content. Included in
+/// `KanbanElementGeometry.widthForColumnCount` so this slot always sits
+/// inside the element's own rigid, clipped bounds instead of past its
+/// trailing edge.
+const double kKanbanAddColumnWidth = 40;
+
 /// Board-space height reserved for one column's header band (name +
 /// add/delete chrome), above its task list.
 const double kKanbanColumnHeaderHeight = 32;

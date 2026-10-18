@@ -945,6 +945,7 @@ class BoardScreen extends ConsumerWidget {
     }
     if (ref.read(editingTextClipIdProvider) != null ||
         ref.read(renamingFrameIdProvider) != null ||
+        ref.read(renamingKanbanColumnIdProvider) != null ||
         ref.read(editingKanbanTaskFieldProvider) != null) {
       return KeyEventResult.ignored;
     }

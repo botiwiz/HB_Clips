@@ -103,9 +103,17 @@ class KanbanColumnGeometry {
   }
 
   /// Board-space rect of the "+ Add list" affordance one slot past the
-  /// last existing column.
-  static Rect addColumnButtonRect(KanbanElementRow element, int columnCount) =>
-      columnRect(element, columnCount);
+  /// last existing column - a slim [kKanbanAddColumnWidth]-wide strip,
+  /// not a full column width, sized to fit inside the element's own
+  /// outer bounds (see `KanbanElementGeometry.widthForColumnCount`,
+  /// which reserves exactly this much room after the last column).
+  static Rect addColumnButtonRect(KanbanElementRow element, int columnCount) {
+    final content = KanbanElementGeometry.contentRect(element);
+    final left = columnCount <= 0
+        ? content.left + kKanbanElementPadding
+        : columnRect(element, columnCount - 1).right + kKanbanColumnGap;
+    return Rect.fromLTWH(left, content.top, kKanbanAddColumnWidth, content.height);
+  }
 
   /// Clamps the task-list scroll offset to `[0, maxScroll]`, where
   /// `maxScroll` is however far [contentHeight] (every row stacked,

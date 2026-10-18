@@ -117,11 +117,18 @@ class KanbanElementGeometry {
   /// recomputed and persisted (`KanbanElementsRepository.updateTransform`)
   /// whenever a column is added/removed. Trello's own "lists are a fixed
   /// width, the board scrolls vertically per list" behavior, rather than
-  /// a column-reflow-on-resize interaction.
+  /// a column-reflow-on-resize interaction. Always includes room for the
+  /// trailing "+ Add list" slot ([kKanbanAddColumnWidth], plus one more
+  /// [kKanbanColumnGap] before it) so that affordance stays inside the
+  /// element's own rigid bounds instead of past its clipped edge - see
+  /// `KanbanColumnGeometry.addColumnButtonRect`.
   static double widthForColumnCount(int columnCount) {
-    if (columnCount <= 0) return 2 * kKanbanElementPadding;
+    if (columnCount <= 0) {
+      return 2 * kKanbanElementPadding + kKanbanAddColumnWidth;
+    }
     return 2 * kKanbanElementPadding +
         columnCount * kKanbanColumnWidth +
-        (columnCount - 1) * kKanbanColumnGap;
+        columnCount * kKanbanColumnGap +
+        kKanbanAddColumnWidth;
   }
 }

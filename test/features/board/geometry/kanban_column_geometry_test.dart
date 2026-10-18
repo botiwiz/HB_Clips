@@ -44,6 +44,23 @@ void main() {
       expect(addButton.left, lastColumn.right + kKanbanColumnGap);
     });
 
+    test('addColumnButtonRect stays fully inside the element\'s own '
+        'outer/content bounds, so it is neither clipped out of view nor '
+        'unreachable by the kanban element\'s own hit-test', () {
+      for (final columnCount in [0, 1, 3]) {
+        final element = _element(
+          width: KanbanElementGeometry.widthForColumnCount(columnCount),
+        );
+        final content = KanbanElementGeometry.contentRect(element);
+        final addButton = KanbanColumnGeometry.addColumnButtonRect(
+          element,
+          columnCount,
+        );
+        expect(addButton.left, greaterThanOrEqualTo(content.left));
+        expect(addButton.right, lessThanOrEqualTo(content.right));
+      }
+    });
+
     test('dividerRect is null after the last column, and inset within '
         'every other column\'s own vertical extent at the midpoint of its '
         'gap with the next one', () {
