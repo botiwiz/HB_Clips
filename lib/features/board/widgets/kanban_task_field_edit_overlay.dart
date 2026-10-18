@@ -671,10 +671,13 @@ class _ChecklistItemRowState extends State<_ChecklistItemRow> {
               onVerticalDragUpdate: (details) =>
                   widget.onDragUpdate(details.delta.dy),
               onVerticalDragEnd: (_) => widget.onDragEnd(),
-              child: const Icon(
-                Icons.drag_handle,
-                size: 14,
-                color: Colors.white38,
+              child: const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                child: Icon(
+                  Icons.drag_handle,
+                  size: 18,
+                  color: Colors.white38,
+                ),
               ),
             ),
             const SizedBox(width: 4),
@@ -685,7 +688,7 @@ class _ChecklistItemRowState extends State<_ChecklistItemRow> {
                     ? Icons.check_box
                     : Icons.check_box_outline_blank,
                 size: 16,
-                color: Colors.white70,
+                color: widget.item.done ? Colors.white38 : Colors.white70,
               ),
             ),
             const SizedBox(width: 6),
@@ -708,7 +711,9 @@ class _ChecklistItemRowState extends State<_ChecklistItemRow> {
                         widget.item.label.isEmpty ? ' ' : widget.item.label,
                         style: TextStyle(
                           fontSize: 12,
-                          color: Colors.white,
+                          color: widget.item.done
+                              ? Colors.white38
+                              : Colors.white,
                           decoration: widget.item.done
                               ? TextDecoration.lineThrough
                               : null,

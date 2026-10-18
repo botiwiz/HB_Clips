@@ -686,6 +686,14 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
           scrollOffset,
         );
         if (rowRect.contains(hitPoint)) {
+          if (_isDoubleClickOn(
+            columnTasks[rowIndex].id,
+            event.localPosition,
+          )) {
+            ref.read(editingKanbanTaskFieldProvider.notifier).state =
+                columnTasks[rowIndex].id;
+            return true;
+          }
           _kanbanTaskDragId = columnTasks[rowIndex].id;
           _kanbanTaskDragStartColumnId = column.id;
           _kanbanTaskDragStartSortOrder = columnTasks[rowIndex].sortOrder;
@@ -3230,10 +3238,9 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       final startColumnId = _kanbanTaskDragStartColumnId!;
       final startSortOrder = _kanbanTaskDragStartSortOrder!;
       if (!_kanbanTaskDragMoved) {
-        // A plain click (no drag) opens the task's expanded detail/edit
-        // overlay instead of committing a move, and frames any images
-        // linked to it.
-        ref.read(editingKanbanTaskFieldProvider.notifier).state = taskId;
+        // A plain click (no drag) frames any images linked to the task -
+        // opening the edit overlay now requires a double-click (see the
+        // pointer-down task-row hit-test above).
         _focusLinkedImages(taskId);
         _resetGestureState();
         return;
