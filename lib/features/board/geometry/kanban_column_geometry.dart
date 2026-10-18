@@ -112,7 +112,12 @@ class KanbanColumnGeometry {
     final left = columnCount <= 0
         ? content.left + kKanbanElementPadding
         : columnRect(element, columnCount - 1).right + kKanbanColumnGap;
-    return Rect.fromLTWH(left, content.top, kKanbanAddColumnWidth, content.height);
+    return Rect.fromLTWH(
+      left,
+      content.top,
+      kKanbanAddColumnWidth,
+      content.height,
+    );
   }
 
   /// Clamps the task-list scroll offset to `[0, maxScroll]`, where

@@ -74,14 +74,25 @@ class KanbanColumnRenameOverlay extends ConsumerStatefulWidget {
             y: element.pinnedScreenY ?? element.y,
           )
         : element;
-    final effectiveScale = element.screenPinned ? 1.0 : view.scale;
+    final effectiveScale =
+        (element.screenPinned ? 1.0 : view.scale) * element.scale;
     final localRect = KanbanColumnGeometry.headerRect(
       effectiveElement,
       columnIndex,
     );
-    final topLeft = element.screenPinned
-        ? localRect.topLeft
-        : localRect.topLeft * view.scale + view.panOffset;
+    // The element's own content renders scaled by `effectiveScale` around
+    // its own origin (`effectiveElement.x/y`), the same `local()` math
+    // `KanbanElementWidget` uses internally - so a local rect's screen
+    // position is the element's own screen-space top-left plus its offset
+    // from that origin, scaled, not a flat board->screen transform of the
+    // rect's own coordinates (those only coincide when `element.scale`
+    // is 1).
+    final elementOrigin = Offset(effectiveElement.x, effectiveElement.y);
+    final boxTopLeft = element.screenPinned
+        ? elementOrigin
+        : elementOrigin * view.scale + view.panOffset;
+    final topLeft =
+        boxTopLeft + (localRect.topLeft - elementOrigin) * effectiveScale;
     return Rect.fromLTWH(
       topLeft.dx,
       topLeft.dy,
@@ -179,7 +190,9 @@ class _KanbanColumnRenameOverlayState
       // The column disappeared from under the rename (deleted, undo
       // race) - nothing left to rename.
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) ref.read(renamingKanbanColumnIdProvider.notifier).state = null;
+        if (mounted) {
+          ref.read(renamingKanbanColumnIdProvider.notifier).state = null;
+        }
       });
       return const SizedBox.shrink();
     }

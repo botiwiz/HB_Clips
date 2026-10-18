@@ -30,6 +30,13 @@ final kanbanElementDragRectProvider = StateProvider<Rect?>((ref) => null);
 /// corner handle.
 final kanbanElementResizeRectProvider = StateProvider<Rect?>((ref) => null);
 
+/// Live preview of an in-progress free-scale drag on the selected kanban
+/// element's corner handle - null when none is active. Same "render this
+/// instead of the DB value, commit on release" role
+/// [kanbanElementResizeRectProvider] plays for the bottom-edge height
+/// handle, just holding a scalar instead of a rect.
+final kanbanElementScalePreviewProvider = StateProvider<double?>((ref) => null);
+
 /// Per-column vertical scroll offset (board-space pixels, >= 0) for
 /// columns whose task list overflows the element's height - keyed by
 /// column id. Deliberately ephemeral/unpersisted (unlike every other
@@ -97,6 +104,13 @@ final kanbanTaskColorPickerOpenProvider = StateProvider<bool>((ref) => false);
 /// frame's title.
 final renamingKanbanColumnIdProvider = StateProvider<String?>((ref) => null);
 
+/// Id of the kanban element currently being inline-renamed via
+/// `KanbanElementRenameOverlay` - null when none. Started by double-
+/// clicking the element's own header title in `board_canvas.dart`'s
+/// kanban element hit-test, same role `renamingKanbanColumnIdProvider`
+/// plays one level down for a column's title.
+final renamingKanbanElementIdProvider = StateProvider<String?>((ref) => null);
+
 /// One selectable row in an open `ContextMenuOverlay` - [onSelected] is a
 /// plain closure the caller builds with whatever context it needs already
 /// captured, so the overlay itself stays generic (it has no kanban-
@@ -117,10 +131,7 @@ class ContextMenuRequest {
   final Offset screenPosition;
   final List<ContextMenuItem> items;
 
-  const ContextMenuRequest({
-    required this.screenPosition,
-    required this.items,
-  });
+  const ContextMenuRequest({required this.screenPosition, required this.items});
 }
 
 final contextMenuProvider = StateProvider<ContextMenuRequest?>((ref) => null);

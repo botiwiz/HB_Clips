@@ -129,9 +129,7 @@ class KanbanElementWidget extends StatelessWidget {
                   ? 'Unpin from screen'
                   : 'Pin to screen',
               child: Icon(
-                element.screenPinned
-                    ? Icons.push_pin
-                    : Icons.push_pin_outlined,
+                element.screenPinned ? Icons.push_pin : Icons.push_pin_outlined,
                 size: 16 * viewScale,
                 color: element.screenPinned
                     ? AppTheme.accent
@@ -159,9 +157,7 @@ class KanbanElementWidget extends StatelessWidget {
                 top: local(dividerRect).top,
                 width: 1,
                 height: local(dividerRect).height,
-                child: IgnorePointer(
-                  child: ColoredBox(color: AppTheme.border),
-                ),
+                child: IgnorePointer(child: ColoredBox(color: AppTheme.border)),
               ),
           Positioned.fromRect(
             rect: local(
@@ -192,6 +188,20 @@ class KanbanElementWidget extends StatelessWidget {
                     color: AppTheme.canvasBackground,
                     width: 1,
                   ),
+                ),
+              ),
+            ),
+          if (selected)
+            Positioned.fromRect(
+              rect: local(KanbanElementGeometry.scaleHandleRect(element)),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: AppTheme.accent,
+                  border: Border.all(
+                    color: AppTheme.canvasBackground,
+                    width: 1,
+                  ),
+                  borderRadius: BorderRadius.circular(2),
                 ),
               ),
             ),
@@ -377,7 +387,10 @@ class _TaskRowChrome extends StatelessWidget {
         alignment: Alignment.centerLeft,
         child: Text(
           title.isEmpty ? 'Untitled' : title,
-          style: TextStyle(color: AppTheme.textPrimary, fontSize: 12 * viewScale),
+          style: TextStyle(
+            color: AppTheme.textPrimary,
+            fontSize: 12 * viewScale,
+          ),
           overflow: TextOverflow.ellipsis,
           maxLines: 1,
         ),

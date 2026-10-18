@@ -37,10 +37,18 @@ class KanbanElements extends Table {
   /// rather than reinterpreting x/y means [width]/[height] never need
   /// adjusting for pinning either, so the column-count<->width invariant
   /// in [KanbanElementGeometry.widthForColumnCount] holds unconditionally.
-  BoolColumn get screenPinned =>
-      boolean().withDefault(const Constant(false))();
+  BoolColumn get screenPinned => boolean().withDefault(const Constant(false))();
   RealColumn get pinnedScreenX => real().nullable()();
   RealColumn get pinnedScreenY => real().nullable()();
+
+  /// Per-element zoom multiplier layered on top of whatever the element's
+  /// own pin state already contributes to its on-screen size - unpinned,
+  /// `effectiveScale = view.scale * scale` (board zoom times this); pinned,
+  /// `effectiveScale = scale` alone (position is already frozen screen
+  /// pixels). Folded/unfolded by the pin toggle itself so the element's
+  /// apparent on-screen size never jumps at the pin/unpin instant - see
+  /// `_toggleKanbanElementPin` in `board_canvas.dart`.
+  RealColumn get scale => real().withDefault(const Constant(1.0))();
 
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();

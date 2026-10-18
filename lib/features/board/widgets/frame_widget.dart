@@ -109,11 +109,7 @@ class FrameWidget extends StatelessWidget {
                     width: 1,
                   ),
                 ),
-                child: const Icon(
-                  Icons.link,
-                  size: 11,
-                  color: Colors.white,
-                ),
+                child: const Icon(Icons.link, size: 11, color: Colors.white),
               ),
             ),
         ],

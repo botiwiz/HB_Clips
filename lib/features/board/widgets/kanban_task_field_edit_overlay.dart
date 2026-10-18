@@ -62,7 +62,8 @@ class KanbanTaskFieldEditOverlay extends ConsumerStatefulWidget {
             y: element.pinnedScreenY ?? element.y,
           )
         : element;
-    final effectiveScale = element.screenPinned ? 1.0 : view.scale;
+    final effectiveScale =
+        (element.screenPinned ? 1.0 : view.scale) * element.scale;
     final scrollOffsets = ref.read(kanbanColumnScrollOffsetProvider);
     final column = _columnRowFor(ref, task.columnId);
     final scrollOffset = column == null
@@ -88,9 +89,16 @@ class KanbanTaskFieldEditOverlay extends ConsumerStatefulWidget {
       _kPanelWidth,
       panelHeight,
     );
-    final topLeft = element.screenPinned
-        ? localRect.topLeft
-        : localRect.topLeft * view.scale + view.panOffset;
+    // See `KanbanColumnRenameOverlay.screenRectFor`'s own comment: the
+    // rect's screen position is the element's own screen-space origin
+    // plus its local offset from that origin, scaled - not a flat
+    // board->screen transform of the rect's own coordinates.
+    final elementOrigin = Offset(effectiveElement.x, effectiveElement.y);
+    final boxTopLeft = element.screenPinned
+        ? elementOrigin
+        : elementOrigin * view.scale + view.panOffset;
+    final topLeft =
+        boxTopLeft + (localRect.topLeft - elementOrigin) * effectiveScale;
     return Rect.fromLTWH(
       topLeft.dx,
       topLeft.dy,
@@ -109,16 +117,14 @@ class KanbanTaskFieldEditOverlay extends ConsumerStatefulWidget {
 
   static int _rowIndexFor(WidgetRef ref, KanbanTask task) {
     final tasks = ref.read(boardKanbanTasksProvider).valueOrNull ?? [];
-    final siblings =
-        tasks.where((t) => t.columnId == task.columnId).toList()
-          ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+    final siblings = tasks.where((t) => t.columnId == task.columnId).toList()
+      ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
     final index = siblings.indexWhere((t) => t.id == task.id);
     return index < 0 ? 0 : index;
   }
 
-  static
-      ({KanbanElementRow element, int columnIndex, KanbanTask task})?
-      _locate(WidgetRef ref, String taskId) {
+  static ({KanbanElementRow element, int columnIndex, KanbanTask task})?
+  _locate(WidgetRef ref, String taskId) {
     final tasks = ref.read(boardKanbanTasksProvider).valueOrNull ?? [];
     KanbanTask? task;
     for (final t in tasks) {
@@ -263,26 +269,42 @@ class _KanbanTaskFieldEditOverlayState
         );
   }
 
-  void _toggleItem(KanbanTask task, int index) {
+  /// Toggling moves the item instead of leaving it in place: becoming
+  /// done sends it to the very bottom of the list (below every other
+  /// item, done or not); becoming undone returns it to the bottom of the
+  /// *active* run - i.e. "back into the stack" - rather than its old
+  /// position, which there's nothing left to remember once the list has
+  /// been reordered. This keeps the list always shaped as
+  /// `[...active, ...done]`, the invariant `_reorderWithinGroup` (drag
+  /// reorder) relies on to find each item's own group boundaries.
+  void _toggleItem(KanbanTask task, String itemId) {
     final before = task.checklist;
     final items = [...before.items];
-    items[index] = items[index].copyWith(done: !items[index].done);
+    final index = items.indexWhere((i) => i.id == itemId);
+    if (index < 0) return;
+    final item = items.removeAt(index);
+    final toggled = item.copyWith(done: !item.done);
+    if (toggled.done) {
+      items.add(toggled);
+    } else {
+      final activeCount = items.where((i) => !i.done).length;
+      items.insert(activeCount, toggled);
+    }
     _writeChecklist(task.id, before, Checklist(items: items));
   }
 
-  void _renameItem(KanbanTask task, int index, String label) {
+  void _renameItem(KanbanTask task, String itemId, String label) {
     final before = task.checklist;
-    if (index >= before.items.length || before.items[index].label == label) {
-      return;
-    }
+    final index = before.items.indexWhere((i) => i.id == itemId);
+    if (index < 0 || before.items[index].label == label) return;
     final items = [...before.items];
     items[index] = items[index].copyWith(label: label);
     _writeChecklist(task.id, before, Checklist(items: items));
   }
 
-  void _removeItem(KanbanTask task, int index) {
+  void _removeItem(KanbanTask task, String itemId) {
     final before = task.checklist;
-    final items = [...before.items]..removeAt(index);
+    final items = [...before.items]..removeWhere((i) => i.id == itemId);
     _writeChecklist(task.id, before, Checklist(items: items));
   }
 
@@ -291,6 +313,106 @@ class _KanbanTaskFieldEditOverlayState
     final newItem = ChecklistItem(id: _uuid.v4(), label: '');
     final after = Checklist(items: [...before.items, newItem]);
     _writeChecklist(task.id, before, after);
+  }
+
+  // --- Drag-to-reorder -------------------------------------------------
+  // Local (non-Riverpod) drag state - purely this overlay's own concern,
+  // same "plain State field, not a provider" convention `_titleController`
+  // etc. already follow. Reordering is constrained within the dragged
+  // item's own done/undone group (never crosses the active/done boundary
+  // `_toggleItem` maintains) so manual dragging can never fight the
+  // automatic check/uncheck-moves-it grouping.
+  int? _draggingItemIndex;
+  double _dragAccumDy = 0;
+  List<ChecklistItem>? _dragPreviewItems;
+
+  void _dragStart(KanbanTask task, int index) {
+    setState(() {
+      _draggingItemIndex = index;
+      _dragAccumDy = 0;
+      _dragPreviewItems = [...task.checklist.items];
+    });
+  }
+
+  void _dragUpdate(double dy) {
+    final items = _dragPreviewItems;
+    final from = _draggingItemIndex;
+    if (items == null || from == null) return;
+    _dragAccumDy += dy;
+    final shift = (_dragAccumDy / _kItemRowHeight).round();
+    if (shift == 0) return;
+    final item = items[from];
+    final firstDoneIndex = items.indexWhere((i) => i.done);
+    final groupStart = item.done
+        ? (firstDoneIndex < 0 ? 0 : firstDoneIndex)
+        : 0;
+    final groupEnd = item.done
+        ? items.length
+        : (firstDoneIndex < 0 ? items.length : firstDoneIndex);
+    final to = (from + shift).clamp(groupStart, groupEnd - 1);
+    if (to == from) return;
+    setState(() {
+      items.removeAt(from);
+      items.insert(to, item);
+      _draggingItemIndex = to;
+      _dragAccumDy -= (to - from) * _kItemRowHeight;
+    });
+  }
+
+  void _dragEnd(KanbanTask task) {
+    final items = _dragPreviewItems;
+    setState(() {
+      _draggingItemIndex = null;
+      _dragAccumDy = 0;
+      _dragPreviewItems = null;
+    });
+    if (items == null) return;
+    final before = task.checklist;
+    _writeChecklist(task.id, before, Checklist(items: items));
+  }
+
+  /// Deletes the whole task - no confirmation dialog, same "undo is the
+  /// safety net" convention every other kanban delete in this app follows.
+  /// Any `kanban_task_links` rows this task held are gone too
+  /// (`KanbanTasksRepository.deleteTask` cascades them), so undo recreates
+  /// both the task and those links in one combined action.
+  void _deleteTask(KanbanTask task) {
+    final tasksRepo = ref.read(kanbanTasksRepositoryProvider);
+    final linksRepo = ref.read(kanbanTaskLinksRepositoryProvider);
+    final taskLinks = (ref.read(boardKanbanTaskLinksProvider).valueOrNull ?? [])
+        .where((l) => l.taskId == task.id)
+        .toList();
+    final checklist = task.checklist;
+    tasksRepo.deleteTask(task.id);
+    ref.read(editingKanbanTaskFieldProvider.notifier).state = null;
+    ref
+        .read(undoManagerProvider.notifier)
+        .push(
+          UndoableAction(
+            undo: () async {
+              await tasksRepo.recreateTask(
+                id: task.id,
+                columnId: task.columnId,
+                title: task.title,
+                checklist: checklist,
+                sortOrder: task.sortOrder,
+                colorHex: task.colorHex,
+              );
+              if (taskLinks.isNotEmpty) {
+                await linksRepo.addLinks([
+                  for (final l in taskLinks)
+                    (
+                      id: l.id,
+                      taskId: l.taskId,
+                      clipId: l.clipId,
+                      frameId: l.frameId,
+                    ),
+                ]);
+              }
+            },
+            redo: () => tasksRepo.deleteTask(task.id),
+          ),
+        );
   }
 
   void _close() {
@@ -315,6 +437,18 @@ class _KanbanTaskFieldEditOverlayState
       }
       return const SizedBox.shrink();
     }
+
+    // Subscribed here (not just inside the static, read-only `_locate`
+    // helper, which is also called from outside this widget's build
+    // context by `screenRectFor`) so that a checklist/title/column/element
+    // change elsewhere actually triggers a rebuild of this overlay - a
+    // previous version of this file omitted these watches entirely, so
+    // edits written via `_writeChecklist` (add/toggle/rename/remove item)
+    // landed in the DB but never appeared here until the overlay was
+    // closed and reopened.
+    ref.watch(boardKanbanTasksProvider);
+    ref.watch(boardKanbanColumnsProvider);
+    ref.watch(boardKanbanElementsProvider);
 
     final located = KanbanTaskFieldEditOverlay._locate(ref, taskId);
     if (located == null) {
@@ -378,6 +512,16 @@ class _KanbanTaskFieldEditOverlayState
                               vertical: 4,
                             ),
                           ),
+                          // Supplying our own (no-op) onEditingComplete
+                          // suppresses TextField's default Enter behavior
+                          // of unfocusing before calling onSubmitted - that
+                          // default unfocus was firing _onTitleFocusChange
+                          // (a first, real _commitTitle()) immediately
+                          // followed by onSubmitted's own call (a second,
+                          // harmless no-op one), and the resulting focus
+                          // loss was the trigger for this overlay closing
+                          // on Enter instead of just committing the title.
+                          onEditingComplete: () {},
                           onSubmitted: (_) => _commitTitle(),
                         ),
                       ),
@@ -387,6 +531,18 @@ class _KanbanTaskFieldEditOverlayState
                         open: colorPickerOpen,
                         onTap: () => _toggleColorPicker(task),
                         size: 24,
+                      ),
+                      const SizedBox(width: 4),
+                      Tooltip(
+                        message: 'Delete task',
+                        child: InkWell(
+                          onTap: () => _deleteTask(task),
+                          child: const Icon(
+                            Icons.delete_outline,
+                            size: 18,
+                            color: Colors.white70,
+                          ),
+                        ),
                       ),
                     ],
                   ),
@@ -404,14 +560,34 @@ class _KanbanTaskFieldEditOverlayState
                       onDone: () => _toggleColorPicker(task),
                     ),
                   ),
-                for (var i = 0; i < task.checklist.items.length; i++)
+                for (
+                  var i = 0;
+                  i < (_dragPreviewItems ?? task.checklist.items).length;
+                  i++
+                )
                   _ChecklistItemRow(
-                    key: ValueKey(task.checklist.items[i].id),
+                    key: ValueKey(
+                      (_dragPreviewItems ?? task.checklist.items)[i].id,
+                    ),
                     height: _kItemRowHeight,
-                    item: task.checklist.items[i],
-                    onToggle: () => _toggleItem(task, i),
-                    onRename: (label) => _renameItem(task, i, label),
-                    onRemove: () => _removeItem(task, i),
+                    item: (_dragPreviewItems ?? task.checklist.items)[i],
+                    dragging: _draggingItemIndex == i,
+                    onToggle: () => _toggleItem(
+                      task,
+                      (_dragPreviewItems ?? task.checklist.items)[i].id,
+                    ),
+                    onRename: (label) => _renameItem(
+                      task,
+                      (_dragPreviewItems ?? task.checklist.items)[i].id,
+                      label,
+                    ),
+                    onRemove: () => _removeItem(
+                      task,
+                      (_dragPreviewItems ?? task.checklist.items)[i].id,
+                    ),
+                    onDragStart: () => _dragStart(task, i),
+                    onDragUpdate: _dragUpdate,
+                    onDragEnd: () => _dragEnd(task),
                   ),
                 SizedBox(
                   height: _kItemRowHeight,
@@ -435,17 +611,25 @@ class _KanbanTaskFieldEditOverlayState
 class _ChecklistItemRow extends StatefulWidget {
   final double height;
   final ChecklistItem item;
+  final bool dragging;
   final VoidCallback onToggle;
   final ValueChanged<String> onRename;
   final VoidCallback onRemove;
+  final VoidCallback onDragStart;
+  final ValueChanged<double> onDragUpdate;
+  final VoidCallback onDragEnd;
 
   const _ChecklistItemRow({
     super.key,
     required this.height,
     required this.item,
+    required this.dragging,
     required this.onToggle,
     required this.onRename,
     required this.onRemove,
+    required this.onDragStart,
+    required this.onDragUpdate,
+    required this.onDragEnd,
   });
 
   @override
@@ -475,55 +659,69 @@ class _ChecklistItemRowState extends State<_ChecklistItemRow> {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: widget.height,
-      child: Row(
-        children: [
-          InkWell(
-            onTap: widget.onToggle,
-            child: Icon(
-              widget.item.done
-                  ? Icons.check_box
-                  : Icons.check_box_outline_blank,
-              size: 16,
-              color: Colors.white70,
+    return Opacity(
+      opacity: widget.dragging ? 0.6 : 1.0,
+      child: SizedBox(
+        height: widget.height,
+        child: Row(
+          children: [
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onVerticalDragStart: (_) => widget.onDragStart(),
+              onVerticalDragUpdate: (details) =>
+                  widget.onDragUpdate(details.delta.dy),
+              onVerticalDragEnd: (_) => widget.onDragEnd(),
+              child: const Icon(
+                Icons.drag_handle,
+                size: 14,
+                color: Colors.white38,
+              ),
             ),
-          ),
-          const SizedBox(width: 6),
-          Expanded(
-            child: _editing
-                ? TextField(
-                    controller: _controller,
-                    autofocus: true,
-                    style: const TextStyle(fontSize: 12),
-                    decoration: const InputDecoration(
-                      isDense: true,
-                      border: InputBorder.none,
-                    ),
-                    onSubmitted: (_) => _commit(),
-                    onTapOutside: (_) => _commit(),
-                  )
-                : InkWell(
-                    onTap: () => setState(() => _editing = true),
-                    child: Text(
-                      widget.item.label.isEmpty
-                          ? ' '
-                          : widget.item.label,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.white,
-                        decoration: widget.item.done
-                            ? TextDecoration.lineThrough
-                            : null,
+            const SizedBox(width: 4),
+            InkWell(
+              onTap: widget.onToggle,
+              child: Icon(
+                widget.item.done
+                    ? Icons.check_box
+                    : Icons.check_box_outline_blank,
+                size: 16,
+                color: Colors.white70,
+              ),
+            ),
+            const SizedBox(width: 6),
+            Expanded(
+              child: _editing
+                  ? TextField(
+                      controller: _controller,
+                      autofocus: true,
+                      style: const TextStyle(fontSize: 12),
+                      decoration: const InputDecoration(
+                        isDense: true,
+                        border: InputBorder.none,
+                      ),
+                      onSubmitted: (_) => _commit(),
+                      onTapOutside: (_) => _commit(),
+                    )
+                  : InkWell(
+                      onTap: () => setState(() => _editing = true),
+                      child: Text(
+                        widget.item.label.isEmpty ? ' ' : widget.item.label,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.white,
+                          decoration: widget.item.done
+                              ? TextDecoration.lineThrough
+                              : null,
+                        ),
                       ),
                     ),
-                  ),
-          ),
-          InkWell(
-            onTap: widget.onRemove,
-            child: const Icon(Icons.close, size: 14, color: Colors.white38),
-          ),
-        ],
+            ),
+            InkWell(
+              onTap: widget.onRemove,
+              child: const Icon(Icons.close, size: 14, color: Colors.white38),
+            ),
+          ],
+        ),
       ),
     );
   }

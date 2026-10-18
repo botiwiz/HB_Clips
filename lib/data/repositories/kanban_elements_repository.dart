@@ -64,6 +64,7 @@ class KanbanElementsRepository {
     required bool screenPinned,
     double? pinnedScreenX,
     double? pinnedScreenY,
+    required double scale,
   }) {
     return _db
         .into(_db.kanbanElements)
@@ -79,6 +80,7 @@ class KanbanElementsRepository {
             screenPinned: Value(screenPinned),
             pinnedScreenX: Value(pinnedScreenX),
             pinnedScreenY: Value(pinnedScreenY),
+            scale: Value(scale),
           ),
         );
   }
@@ -107,6 +109,7 @@ class KanbanElementsRepository {
     double? y,
     double? width,
     double? height,
+    double? scale,
   }) {
     return (_db.update(
       _db.kanbanElements,
@@ -116,6 +119,7 @@ class KanbanElementsRepository {
         y: y != null ? Value(y) : const Value.absent(),
         width: width != null ? Value(width) : const Value.absent(),
         height: height != null ? Value(height) : const Value.absent(),
+        scale: scale != null ? Value(scale) : const Value.absent(),
         updatedAt: Value(DateTime.now()),
       ),
     );
@@ -139,6 +143,7 @@ class KanbanElementsRepository {
     double? y,
     double? pinnedScreenX,
     double? pinnedScreenY,
+    double? scale,
   }) {
     return (_db.update(
       _db.kanbanElements,
@@ -153,6 +158,7 @@ class KanbanElementsRepository {
         pinnedScreenY: pinnedScreenY != null
             ? Value(pinnedScreenY)
             : const Value.absent(),
+        scale: scale != null ? Value(scale) : const Value.absent(),
         updatedAt: Value(DateTime.now()),
       ),
     );

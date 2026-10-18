@@ -55,6 +55,7 @@ import 'frames_panel.dart';
 import 'group_scale_handles.dart';
 import 'kanban_column_color_popover.dart';
 import 'kanban_column_rename_overlay.dart';
+import 'kanban_element_rename_overlay.dart';
 import 'kanban_element_widget.dart';
 import 'kanban_task_field_edit_overlay.dart';
 import 'link_to_task_banner.dart';
@@ -201,6 +202,18 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
   // derived from column count, see KanbanElementGeometry.widthForColumnCount).
   String? _kanbanElementResizeId;
   Rect? _kanbanElementResizeStartRect;
+
+  // Kanban-element free corner-scale drag (bottom-right handle, distinct
+  // from the height-only resize handle above) - adjusts
+  // KanbanElementRow.scale directly, working identically pinned or not.
+  // _kanbanElementScaleStartDistance/_kanbanElementScaleAnchor are the
+  // pointer's starting distance from the element's fixed top-left anchor
+  // and that anchor itself, both in the same coordinate space
+  // _kanbanHitPoint returns for this element.
+  String? _kanbanElementScaleId;
+  double? _kanbanElementScaleStartScale;
+  double? _kanbanElementScaleStartDistance;
+  Offset? _kanbanElementScaleAnchor;
 
   // Kanban-task drag-to-reorder/drag-across-columns - live preview state
   // lives in draggingTaskProvider (consumed by KanbanElementWidget for the
@@ -384,12 +397,27 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
   /// [_kanbanEffectiveElement]'s coordinate space for that same element:
   /// the raw screen point for a pinned element (whose effective x/y are
   /// already literal screen pixels), the usual board-space point
-  /// otherwise.
+  /// otherwise - then un-scaled around the element's own origin by its
+  /// per-element [KanbanElementRow.scale], since every
+  /// `KanbanElementGeometry`/`KanbanColumnGeometry`/`KanbanTaskGeometry`
+  /// function (and every stored drag-start rect compared against this
+  /// point's output) works in raw, unscaled local units - only the
+  /// rendering pipeline (`KanbanElementWidget.local()`,
+  /// `_positionedKanbanElement`'s `effectiveScale`) applies that
+  /// multiplier visually. A no-op (identity) when `element.scale == 1`.
   Offset _kanbanHitPoint(
     KanbanElementRow element,
     Offset boardPoint,
     Offset screenPoint,
-  ) => element.screenPinned ? screenPoint : boardPoint;
+  ) {
+    final raw = element.screenPinned ? screenPoint : boardPoint;
+    if (element.scale == 1.0) return raw;
+    final origin = Offset(
+      element.screenPinned ? (element.pinnedScreenX ?? element.x) : element.x,
+      element.screenPinned ? (element.pinnedScreenY ?? element.y) : element.y,
+    );
+    return origin + (raw - origin) / element.scale;
+  }
 
   BoardClip? _hitTestClip(List<BoardClip> clips, Offset boardPoint) {
     final sorted = [...clips]..sort((a, b) => b.zIndex.compareTo(a.zIndex));
@@ -548,6 +576,36 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
             _kanbanElementResizeStartRect;
         return true;
       }
+      if (selectedElement != null &&
+          KanbanElementGeometry.hitTestScaleHandle(
+            _kanbanEffectiveElement(selectedElement),
+            view,
+            event.localPosition,
+            alreadyScreenSpace: selectedElement.screenPinned,
+          )) {
+        final effective = _kanbanEffectiveElement(selectedElement);
+        // Distance-from-anchor is measured in the *raw* (not
+        // scale-divided) coordinate space - unlike `_kanbanHitPoint`'s
+        // usual job of normalizing a point into the element's raw local
+        // units, the scale-drag ratio below needs the handle's actual
+        // on-screen/board displacement as the element's own scale
+        // changes, so dividing by that same (changing) scale here would
+        // be circular.
+        final raw = selectedElement.screenPinned
+            ? event.localPosition
+            : boardPos;
+        final anchor = Offset(effective.x, effective.y);
+        _kanbanElementScaleId = selectedElement.id;
+        _kanbanElementScaleStartScale = selectedElement.scale;
+        _kanbanElementScaleAnchor = anchor;
+        _kanbanElementScaleStartDistance = (raw - anchor).distance.clamp(
+          1.0,
+          double.infinity,
+        );
+        ref.read(kanbanElementScalePreviewProvider.notifier).state =
+            selectedElement.scale;
+        return true;
+      }
     }
 
     final hit = _hitTestKanbanElement(elements, boardPos, event.localPosition);
@@ -566,10 +624,14 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     ref.read(selectedFrameIdsProvider.notifier).state = {};
     ref.read(selectedConnectorIdProvider.notifier).state = null;
 
-    if (KanbanElementGeometry.pinToggleRect(
-      effectiveHit,
-    ).contains(hitPoint)) {
+    if (KanbanElementGeometry.pinToggleRect(effectiveHit).contains(hitPoint)) {
       _toggleKanbanElementPin(hit);
+      return true;
+    }
+
+    if (KanbanElementGeometry.headerRect(effectiveHit).contains(hitPoint) &&
+        _isDoubleClickOn(hit.id, event.localPosition)) {
+      ref.read(renamingKanbanElementIdProvider.notifier).state = hit.id;
       return true;
     }
 
@@ -637,9 +699,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     // button, or task row) - starts a whole-element drag.
     _kanbanElementDragId = hit.id;
     _kanbanElementDragStartPointer = hitPoint;
-    _kanbanElementDragStartRect = KanbanElementGeometry.outerRect(
-      effectiveHit,
-    );
+    _kanbanElementDragStartRect = KanbanElementGeometry.outerRect(effectiveHit);
     ref.read(kanbanElementDragRectProvider.notifier).state =
         _kanbanElementDragStartRect;
     return true;
@@ -650,9 +710,15 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
   /// current view so it never visibly jumps at the instant of toggling -
   /// `boardToScreen` when pinning on, `screenToBoard` when pinning off
   /// (see `KanbanElementsRepository.setScreenPinned`'s doc comment and
-  /// the table's own doc comment for the full rationale). Not undoable -
-  /// consistent with this app's other pure view-state toggles (snap to
-  /// grid, frames panel) rather than its content-editing undo stack.
+  /// the table's own doc comment for the full rationale). Its own
+  /// per-element `scale` is folded/unfolded by the exact same board-zoom
+  /// factor in lockstep, so `effectiveScale` (`(pinned ? 1.0 :
+  /// view.scale) * element.scale`) comes out identical immediately before
+  /// and after the toggle - the element's apparent on-screen size never
+  /// jumps at the pin/unpin instant, the same guarantee this method
+  /// already gives position. Not undoable - consistent with this app's
+  /// other pure view-state toggles (snap to grid, frames panel) rather
+  /// than its content-editing undo stack.
   void _toggleKanbanElementPin(KanbanElementRow element) {
     final view = ref.read(boardViewProvider);
     final repo = ref.read(kanbanElementsRepositoryProvider);
@@ -669,6 +735,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
         pinned: false,
         x: board.dx,
         y: board.dy,
+        scale: element.scale / view.scale,
       );
     } else {
       final screen = _boardToScreen(Offset(element.x, element.y), view);
@@ -677,6 +744,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
         pinned: true,
         pinnedScreenX: screen.dx,
         pinnedScreenY: screen.dy,
+        scale: element.scale * view.scale,
       );
     }
   }
@@ -801,12 +869,56 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     ref.read(editingKanbanTaskFieldProvider.notifier).state = taskId;
   }
 
+  /// After a plain (non-drag) click opens [taskId]'s detail overlay, also
+  /// pans/zooms to frame any clips/frames linked to it and selects them -
+  /// the "navigate forward" half of the link-badge feature, the reverse of
+  /// `_jumpToTaskById`. A no-op when the task has no links.
+  void _focusLinkedImages(String taskId) {
+    final links = (ref.read(boardKanbanTaskLinksProvider).valueOrNull ?? [])
+        .where((l) => l.taskId == taskId)
+        .toList();
+    if (links.isEmpty) return;
+
+    final clips = ref.read(activeClipsProvider).valueOrNull ?? [];
+    final frames = ref.read(boardFramesProvider).valueOrNull ?? [];
+    final linkedClips = <BoardClip>[];
+    final linkedFrameIds = <String>{};
+    Rect? union;
+    for (final link in links) {
+      if (link.clipId != null) {
+        final clip = ClipGeometry.findById(clips, link.clipId!);
+        if (clip != null) linkedClips.add(clip);
+      } else if (link.frameId != null) {
+        final frame = _findFrameById(frames, link.frameId!);
+        if (frame != null) {
+          linkedFrameIds.add(frame.id);
+          final rect = FrameGeometry.boardRect(frame);
+          union = union == null ? rect : union.expandToInclude(rect);
+        }
+      }
+    }
+    if (linkedClips.isNotEmpty) {
+      final clipsRect = ClipGeometry.boardBoundingBox(linkedClips);
+      union = union == null ? clipsRect : union.expandToInclude(clipsRect);
+    }
+    if (union == null) return;
+
+    ref.read(boardViewProvider.notifier).fitRect(union, _canvasSize);
+    ref.read(selectedClipIdsProvider.notifier).state = {
+      for (final c in linkedClips) c.id,
+    };
+    ref.read(selectedFrameIdsProvider.notifier).state = linkedFrameIds;
+  }
+
   /// A click on a clip/frame's kanban-link badge navigates to the linked
   /// task(s) instead of selecting/dragging the object - a single link
   /// jumps straight there, several offer a picker (reusing
   /// `ContextMenuOverlay`, same as the "pick which kanban element" picker
   /// below).
-  void _navigateToLinkedTask(Offset screenPosition, List<KanbanTaskLinkRow> links) {
+  void _navigateToLinkedTask(
+    Offset screenPosition,
+    List<KanbanTaskLinkRow> links,
+  ) {
     if (links.length == 1) {
       _jumpToTaskById(links.first.taskId);
       return;
@@ -872,8 +984,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       items: [
         ContextMenuItem(
           label: 'Link to task...',
-          onSelected: () =>
-              _startLinkToTask(screenPosition, clipIds, frameIds),
+          onSelected: () => _startLinkToTask(screenPosition, clipIds, frameIds),
         ),
       ],
     );
@@ -886,9 +997,9 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
   ) {
     final elements = ref.read(boardKanbanElementsProvider).valueOrNull ?? [];
     if (elements.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No kanban board here yet')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('No kanban board here yet')));
       return;
     }
     if (elements.length == 1) {
@@ -994,8 +1105,9 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
         .read(undoManagerProvider.notifier)
         .push(
           UndoableAction(
-            undo: () =>
-                Future.wait([for (final l in links) linksRepo.deleteLink(l.id)]),
+            undo: () => Future.wait([
+              for (final l in links) linksRepo.deleteLink(l.id),
+            ]),
             redo: () => linksRepo.addLinks(links),
           ),
         );
@@ -1064,6 +1176,10 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     _kanbanElementDragMoved = false;
     _kanbanElementResizeId = null;
     _kanbanElementResizeStartRect = null;
+    _kanbanElementScaleId = null;
+    _kanbanElementScaleStartScale = null;
+    _kanbanElementScaleStartDistance = null;
+    _kanbanElementScaleAnchor = null;
     _kanbanTaskDragId = null;
     _kanbanTaskDragStartColumnId = null;
     _kanbanTaskDragStartSortOrder = null;
@@ -1083,6 +1199,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     ref.read(connectorDraftProvider.notifier).state = null;
     ref.read(kanbanElementDragRectProvider.notifier).state = null;
     ref.read(kanbanElementResizeRectProvider.notifier).state = null;
+    ref.read(kanbanElementScalePreviewProvider.notifier).state = null;
     ref.read(draggingTaskProvider.notifier).state = null;
   }
 
@@ -1286,6 +1403,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     if (ref.read(editingTextClipIdProvider) != null ||
         ref.read(renamingFrameIdProvider) != null ||
         ref.read(renamingKanbanColumnIdProvider) != null ||
+        ref.read(renamingKanbanElementIdProvider) != null ||
         ref.read(editingKanbanTaskFieldProvider) != null) {
       return KeyEventResult.ignored;
     }
@@ -1451,6 +1569,20 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       final rect = KanbanColumnRenameOverlay.screenRectFor(
         ref,
         renamingKanbanColumnId,
+        ref.read(boardViewProvider),
+      );
+      if (rect != null && rect.contains(event.localPosition)) {
+        return;
+      }
+    }
+
+    // Same click-through guard, for a kanban element's own inline-rename
+    // TextField.
+    final renamingKanbanElementId = ref.read(renamingKanbanElementIdProvider);
+    if (renamingKanbanElementId != null) {
+      final rect = KanbanElementRenameOverlay.screenRectFor(
+        ref,
+        renamingKanbanElementId,
         ref.read(boardViewProvider),
       );
       if (rect != null && rect.contains(event.localPosition)) {
@@ -2352,15 +2484,37 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     final view = ref.read(boardViewProvider);
     final boardPos = _screenToBoard(event.localPosition, view);
 
+    if (_kanbanElementScaleId != null &&
+        _kanbanElementScaleStartScale != null &&
+        _kanbanElementScaleStartDistance != null &&
+        _kanbanElementScaleAnchor != null) {
+      final scalingElement = _findKanbanElementById(
+        ref.read(boardKanbanElementsProvider).valueOrNull ?? [],
+        _kanbanElementScaleId!,
+      );
+      final raw = scalingElement != null && scalingElement.screenPinned
+          ? event.localPosition
+          : boardPos;
+      final distance = (raw - _kanbanElementScaleAnchor!).distance;
+      final factor = distance / _kanbanElementScaleStartDistance!;
+      final newScale = (_kanbanElementScaleStartScale! * factor).clamp(
+        0.25,
+        4.0,
+      );
+      ref.read(kanbanElementScalePreviewProvider.notifier).state = newScale
+          .toDouble();
+      return;
+    }
+
     if (_kanbanElementResizeId != null &&
         _kanbanElementResizeStartRect != null) {
       final resizingElement = _findKanbanElementById(
         ref.read(boardKanbanElementsProvider).valueOrNull ?? [],
         _kanbanElementResizeId!,
       );
-      final pointY = resizingElement != null && resizingElement.screenPinned
-          ? event.localPosition.dy
-          : boardPos.dy;
+      final pointY = resizingElement == null
+          ? boardPos.dy
+          : _kanbanHitPoint(resizingElement, boardPos, event.localPosition).dy;
       final start = _kanbanElementResizeStartRect!;
       final newHeight = (pointY - start.top).clamp(
         kKanbanColumnHeaderHeight + kKanbanTaskRowMinHeight * 2,
@@ -2430,8 +2584,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
                 .toList()
               ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
         final scrollOffset =
-            ref.read(kanbanColumnScrollOffsetProvider)[targetColumn.id] ??
-            0.0;
+            ref.read(kanbanColumnScrollOffsetProvider)[targetColumn.id] ?? 0.0;
         final insertionIndex = KanbanTaskGeometry.insertionIndexForPoint(
           effectiveElement,
           columnIndex,
@@ -2993,8 +3146,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     if (_kanbanElementResizeId != null) {
       final id = _kanbanElementResizeId!;
       final startRect = _kanbanElementResizeStartRect!;
-      final finalRect =
-          ref.read(kanbanElementResizeRectProvider) ?? startRect;
+      final finalRect = ref.read(kanbanElementResizeRectProvider) ?? startRect;
       final elementsRepo = ref.read(kanbanElementsRepositoryProvider);
       if (finalRect.height != startRect.height) {
         await elementsRepo.updateTransform(id, height: finalRect.height);
@@ -3007,6 +3159,28 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
                     elementsRepo.updateTransform(id, height: startRect.height),
                 redo: () =>
                     elementsRepo.updateTransform(id, height: finalRect.height),
+              ),
+            );
+      }
+      _resetGestureState();
+      return;
+    }
+
+    if (_kanbanElementScaleId != null) {
+      final id = _kanbanElementScaleId!;
+      final startScale = _kanbanElementScaleStartScale!;
+      final finalScale =
+          ref.read(kanbanElementScalePreviewProvider) ?? startScale;
+      final elementsRepo = ref.read(kanbanElementsRepositoryProvider);
+      if (finalScale != startScale) {
+        await elementsRepo.updateTransform(id, scale: finalScale);
+        if (!mounted) return;
+        ref
+            .read(undoManagerProvider.notifier)
+            .push(
+              UndoableAction(
+                undo: () => elementsRepo.updateTransform(id, scale: startScale),
+                redo: () => elementsRepo.updateTransform(id, scale: finalScale),
               ),
             );
       }
@@ -3057,14 +3231,17 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       final startSortOrder = _kanbanTaskDragStartSortOrder!;
       if (!_kanbanTaskDragMoved) {
         // A plain click (no drag) opens the task's expanded detail/edit
-        // overlay instead of committing a move.
+        // overlay instead of committing a move, and frames any images
+        // linked to it.
         ref.read(editingKanbanTaskFieldProvider.notifier).state = taskId;
+        _focusLinkedImages(taskId);
         _resetGestureState();
         return;
       }
       final dragging = ref.read(draggingTaskProvider);
       if (dragging != null) {
-        final elements = ref.read(boardKanbanElementsProvider).valueOrNull ?? [];
+        final elements =
+            ref.read(boardKanbanElementsProvider).valueOrNull ?? [];
         final element = _findKanbanElementById(
           elements,
           dragging.kanbanElementId,
@@ -3078,9 +3255,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
           final targetColumn = columns[dragging.columnIndex];
           final siblingOrders =
               (ref.read(boardKanbanTasksProvider).valueOrNull ?? [])
-                  .where(
-                    (t) => t.columnId == targetColumn.id && t.id != taskId,
-                  )
+                  .where((t) => t.columnId == targetColumn.id && t.id != taskId)
                   .map((t) => t.sortOrder)
                   .toList()
                 ..sort();
@@ -4290,12 +4465,17 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     final textToolDragRect = ref.watch(textToolDragRectProvider);
     final shapeToolDragRect = ref.watch(shapeToolDragRectProvider);
     final connectorDraft = ref.watch(connectorDraftProvider);
-    final kanbanElements = ref.watch(boardKanbanElementsProvider).valueOrNull ?? [];
-    final kanbanColumns = ref.watch(boardKanbanColumnsProvider).valueOrNull ?? [];
+    final kanbanElements =
+        ref.watch(boardKanbanElementsProvider).valueOrNull ?? [];
+    final kanbanColumns =
+        ref.watch(boardKanbanColumnsProvider).valueOrNull ?? [];
     final kanbanTasks = ref.watch(boardKanbanTasksProvider).valueOrNull ?? [];
     final selectedKanbanElementId = ref.watch(selectedKanbanElementIdProvider);
     final kanbanElementDragRect = ref.watch(kanbanElementDragRectProvider);
     final kanbanElementResizeRect = ref.watch(kanbanElementResizeRectProvider);
+    final kanbanElementScalePreview = ref.watch(
+      kanbanElementScalePreviewProvider,
+    );
     final draggingTask = ref.watch(draggingTaskProvider);
     final frames = ref.watch(boardFramesProvider).valueOrNull ?? [];
     final selectedFrameIds = ref.watch(selectedFrameIdsProvider);
@@ -4399,6 +4579,9 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
                           element.id == _kanbanElementResizeId
                               ? kanbanElementResizeRect
                               : null,
+                          element.id == _kanbanElementScaleId
+                              ? kanbanElementScalePreview
+                              : null,
                           draggingTask?.kanbanElementId == element.id
                               ? draggingTask
                               : null,
@@ -4412,6 +4595,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
                       const KanbanTaskFieldEditOverlay(),
                       const KanbanColumnColorPopover(),
                       const KanbanColumnRenameOverlay(),
+                      const KanbanElementRenameOverlay(),
                       const ContextMenuOverlay(),
                       const LinkToTaskBanner(),
                       if (panZoomClipId == null &&
@@ -4473,20 +4657,27 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     bool selected,
     Rect? dragRect,
     Rect? resizeRect,
+    double? scalePreview,
     DraggingTask? draggingTask,
     BoardViewState view,
   ) {
     final pinned = element.screenPinned;
     final effectiveElement = _kanbanEffectiveElement(element);
+    final liveScale = scalePreview ?? element.scale;
     final rect =
         dragRect ??
         resizeRect ??
         KanbanElementGeometry.outerRect(effectiveElement);
-    final liveElement = resizeRect != null
-        ? effectiveElement.copyWith(height: resizeRect.height)
+    final liveElement = (resizeRect != null || scalePreview != null)
+        ? effectiveElement.copyWith(
+            height: resizeRect?.height ?? effectiveElement.height,
+            scale: liveScale,
+          )
         : effectiveElement;
-    final screenTopLeft = pinned ? rect.topLeft : _boardToScreen(rect.topLeft, view);
-    final effectiveScale = pinned ? 1.0 : view.scale;
+    final screenTopLeft = pinned
+        ? rect.topLeft
+        : _boardToScreen(rect.topLeft, view);
+    final effectiveScale = (pinned ? 1.0 : view.scale) * liveScale;
     return Positioned(
       key: ValueKey('kanban-element-${element.id}'),
       left: screenTopLeft.dx,

@@ -6002,6 +6002,16 @@ class $KanbanElementsTable extends KanbanElements
     type: DriftSqlType.double,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _scaleMeta = const VerificationMeta('scale');
+  @override
+  late final GeneratedColumn<double> scale = GeneratedColumn<double>(
+    'scale',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(1.0),
+  );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -6038,6 +6048,7 @@ class $KanbanElementsTable extends KanbanElements
     screenPinned,
     pinnedScreenX,
     pinnedScreenY,
+    scale,
     createdAt,
     updatedAt,
   ];
@@ -6117,6 +6128,12 @@ class $KanbanElementsTable extends KanbanElements
         ),
       );
     }
+    if (data.containsKey('scale')) {
+      context.handle(
+        _scaleMeta,
+        scale.isAcceptableOrUnknown(data['scale']!, _scaleMeta),
+      );
+    }
     if (data.containsKey('created_at')) {
       context.handle(
         _createdAtMeta,
@@ -6178,6 +6195,10 @@ class $KanbanElementsTable extends KanbanElements
         DriftSqlType.double,
         data['${effectivePrefix}pinned_screen_y'],
       ),
+      scale: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}scale'],
+      )!,
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
@@ -6229,6 +6250,15 @@ class KanbanElementRow extends DataClass
   final bool screenPinned;
   final double? pinnedScreenX;
   final double? pinnedScreenY;
+
+  /// Per-element zoom multiplier layered on top of whatever the element's
+  /// own pin state already contributes to its on-screen size - unpinned,
+  /// `effectiveScale = view.scale * scale` (board zoom times this); pinned,
+  /// `effectiveScale = scale` alone (position is already frozen screen
+  /// pixels). Folded/unfolded by the pin toggle itself so the element's
+  /// apparent on-screen size never jumps at the pin/unpin instant - see
+  /// `_toggleKanbanElementPin` in `board_canvas.dart`.
+  final double scale;
   final DateTime createdAt;
   final DateTime updatedAt;
   const KanbanElementRow({
@@ -6242,6 +6272,7 @@ class KanbanElementRow extends DataClass
     required this.screenPinned,
     this.pinnedScreenX,
     this.pinnedScreenY,
+    required this.scale,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -6262,6 +6293,7 @@ class KanbanElementRow extends DataClass
     if (!nullToAbsent || pinnedScreenY != null) {
       map['pinned_screen_y'] = Variable<double>(pinnedScreenY);
     }
+    map['scale'] = Variable<double>(scale);
     map['created_at'] = Variable<DateTime>(createdAt);
     map['updated_at'] = Variable<DateTime>(updatedAt);
     return map;
@@ -6283,6 +6315,7 @@ class KanbanElementRow extends DataClass
       pinnedScreenY: pinnedScreenY == null && nullToAbsent
           ? const Value.absent()
           : Value(pinnedScreenY),
+      scale: Value(scale),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
     );
@@ -6304,6 +6337,7 @@ class KanbanElementRow extends DataClass
       screenPinned: serializer.fromJson<bool>(json['screenPinned']),
       pinnedScreenX: serializer.fromJson<double?>(json['pinnedScreenX']),
       pinnedScreenY: serializer.fromJson<double?>(json['pinnedScreenY']),
+      scale: serializer.fromJson<double>(json['scale']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
     );
@@ -6322,6 +6356,7 @@ class KanbanElementRow extends DataClass
       'screenPinned': serializer.toJson<bool>(screenPinned),
       'pinnedScreenX': serializer.toJson<double?>(pinnedScreenX),
       'pinnedScreenY': serializer.toJson<double?>(pinnedScreenY),
+      'scale': serializer.toJson<double>(scale),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
     };
@@ -6338,6 +6373,7 @@ class KanbanElementRow extends DataClass
     bool? screenPinned,
     Value<double?> pinnedScreenX = const Value.absent(),
     Value<double?> pinnedScreenY = const Value.absent(),
+    double? scale,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) => KanbanElementRow(
@@ -6355,6 +6391,7 @@ class KanbanElementRow extends DataClass
     pinnedScreenY: pinnedScreenY.present
         ? pinnedScreenY.value
         : this.pinnedScreenY,
+    scale: scale ?? this.scale,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
   );
@@ -6376,6 +6413,7 @@ class KanbanElementRow extends DataClass
       pinnedScreenY: data.pinnedScreenY.present
           ? data.pinnedScreenY.value
           : this.pinnedScreenY,
+      scale: data.scale.present ? data.scale.value : this.scale,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
@@ -6394,6 +6432,7 @@ class KanbanElementRow extends DataClass
           ..write('screenPinned: $screenPinned, ')
           ..write('pinnedScreenX: $pinnedScreenX, ')
           ..write('pinnedScreenY: $pinnedScreenY, ')
+          ..write('scale: $scale, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
@@ -6412,6 +6451,7 @@ class KanbanElementRow extends DataClass
     screenPinned,
     pinnedScreenX,
     pinnedScreenY,
+    scale,
     createdAt,
     updatedAt,
   );
@@ -6429,6 +6469,7 @@ class KanbanElementRow extends DataClass
           other.screenPinned == this.screenPinned &&
           other.pinnedScreenX == this.pinnedScreenX &&
           other.pinnedScreenY == this.pinnedScreenY &&
+          other.scale == this.scale &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt);
 }
@@ -6444,6 +6485,7 @@ class KanbanElementsCompanion extends UpdateCompanion<KanbanElementRow> {
   final Value<bool> screenPinned;
   final Value<double?> pinnedScreenX;
   final Value<double?> pinnedScreenY;
+  final Value<double> scale;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
   final Value<int> rowid;
@@ -6458,6 +6500,7 @@ class KanbanElementsCompanion extends UpdateCompanion<KanbanElementRow> {
     this.screenPinned = const Value.absent(),
     this.pinnedScreenX = const Value.absent(),
     this.pinnedScreenY = const Value.absent(),
+    this.scale = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -6473,6 +6516,7 @@ class KanbanElementsCompanion extends UpdateCompanion<KanbanElementRow> {
     this.screenPinned = const Value.absent(),
     this.pinnedScreenX = const Value.absent(),
     this.pinnedScreenY = const Value.absent(),
+    this.scale = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -6489,6 +6533,7 @@ class KanbanElementsCompanion extends UpdateCompanion<KanbanElementRow> {
     Expression<bool>? screenPinned,
     Expression<double>? pinnedScreenX,
     Expression<double>? pinnedScreenY,
+    Expression<double>? scale,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
     Expression<int>? rowid,
@@ -6504,6 +6549,7 @@ class KanbanElementsCompanion extends UpdateCompanion<KanbanElementRow> {
       if (screenPinned != null) 'screen_pinned': screenPinned,
       if (pinnedScreenX != null) 'pinned_screen_x': pinnedScreenX,
       if (pinnedScreenY != null) 'pinned_screen_y': pinnedScreenY,
+      if (scale != null) 'scale': scale,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (rowid != null) 'rowid': rowid,
@@ -6521,6 +6567,7 @@ class KanbanElementsCompanion extends UpdateCompanion<KanbanElementRow> {
     Value<bool>? screenPinned,
     Value<double?>? pinnedScreenX,
     Value<double?>? pinnedScreenY,
+    Value<double>? scale,
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
     Value<int>? rowid,
@@ -6536,6 +6583,7 @@ class KanbanElementsCompanion extends UpdateCompanion<KanbanElementRow> {
       screenPinned: screenPinned ?? this.screenPinned,
       pinnedScreenX: pinnedScreenX ?? this.pinnedScreenX,
       pinnedScreenY: pinnedScreenY ?? this.pinnedScreenY,
+      scale: scale ?? this.scale,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       rowid: rowid ?? this.rowid,
@@ -6575,6 +6623,9 @@ class KanbanElementsCompanion extends UpdateCompanion<KanbanElementRow> {
     if (pinnedScreenY.present) {
       map['pinned_screen_y'] = Variable<double>(pinnedScreenY.value);
     }
+    if (scale.present) {
+      map['scale'] = Variable<double>(scale.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
@@ -6600,6 +6651,7 @@ class KanbanElementsCompanion extends UpdateCompanion<KanbanElementRow> {
           ..write('screenPinned: $screenPinned, ')
           ..write('pinnedScreenX: $pinnedScreenX, ')
           ..write('pinnedScreenY: $pinnedScreenY, ')
+          ..write('scale: $scale, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('rowid: $rowid')
@@ -10706,6 +10758,7 @@ typedef $$KanbanElementsTableCreateCompanionBuilder =
       Value<bool> screenPinned,
       Value<double?> pinnedScreenX,
       Value<double?> pinnedScreenY,
+      Value<double> scale,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
       Value<int> rowid,
@@ -10722,6 +10775,7 @@ typedef $$KanbanElementsTableUpdateCompanionBuilder =
       Value<bool> screenPinned,
       Value<double?> pinnedScreenX,
       Value<double?> pinnedScreenY,
+      Value<double> scale,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
       Value<int> rowid,
@@ -10783,6 +10837,11 @@ class $$KanbanElementsTableFilterComposer
 
   ColumnFilters<double> get pinnedScreenY => $composableBuilder(
     column: $table.pinnedScreenY,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get scale => $composableBuilder(
+    column: $table.scale,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -10856,6 +10915,11 @@ class $$KanbanElementsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<double> get scale => $composableBuilder(
+    column: $table.scale,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
@@ -10912,6 +10976,9 @@ class $$KanbanElementsTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<double> get scale =>
+      $composableBuilder(column: $table.scale, builder: (column) => column);
+
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
 
@@ -10966,6 +11033,7 @@ class $$KanbanElementsTableTableManager
                 Value<bool> screenPinned = const Value.absent(),
                 Value<double?> pinnedScreenX = const Value.absent(),
                 Value<double?> pinnedScreenY = const Value.absent(),
+                Value<double> scale = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
@@ -10980,6 +11048,7 @@ class $$KanbanElementsTableTableManager
                 screenPinned: screenPinned,
                 pinnedScreenX: pinnedScreenX,
                 pinnedScreenY: pinnedScreenY,
+                scale: scale,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 rowid: rowid,
@@ -10996,6 +11065,7 @@ class $$KanbanElementsTableTableManager
                 Value<bool> screenPinned = const Value.absent(),
                 Value<double?> pinnedScreenX = const Value.absent(),
                 Value<double?> pinnedScreenY = const Value.absent(),
+                Value<double> scale = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
@@ -11010,6 +11080,7 @@ class $$KanbanElementsTableTableManager
                 screenPinned: screenPinned,
                 pinnedScreenX: pinnedScreenX,
                 pinnedScreenY: pinnedScreenY,
+                scale: scale,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 rowid: rowid,

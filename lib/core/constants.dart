@@ -48,9 +48,11 @@ const double kKanbanElementDefaultHeight = 480;
 /// side.
 const double kKanbanElementPadding = 12;
 
-/// Minimum board-space height of one task row inside a column - a task
-/// with a longer title/checklist grows taller, never shorter than this.
-const double kKanbanTaskRowMinHeight = 44;
+/// Board-space height of one task row inside a column - sized to the
+/// title text's own glyph bounds (ascender top to descender bottom) plus
+/// 2px of clearance top and bottom inside `_TaskRowChrome`'s box, measured
+/// live against the app's actual rendered 12px task-title font.
+const double kKanbanTaskRowMinHeight = 22;
 
 /// Placeholder board id used before auth/multi-board support (Phase 5+)
 /// exists. Every local clip belongs to this single implicit board.

@@ -30,9 +30,32 @@ class KanbanColumnColorPopover extends ConsumerStatefulWidget {
     int columnIndex,
     BoardViewState view,
   ) {
-    final header = KanbanColumnGeometry.headerRect(element, columnIndex);
-    final topRightBoard = Offset(header.right, header.top);
-    final topRightScreen = topRightBoard * view.scale + view.panOffset;
+    // A pinned element's own x/y are already literal screen pixels and
+    // its content renders scaled by `effectiveScale` around that origin -
+    // same rule every other kanban overlay's `screenRectFor` follows
+    // (this popover never accounted for either pinning or per-element
+    // scale before - a pre-existing latent bug, fixed here as a drive-by
+    // since it's the exact code already being touched for the scale
+    // addendum).
+    final effectiveElement = element.screenPinned
+        ? element.copyWith(
+            x: element.pinnedScreenX ?? element.x,
+            y: element.pinnedScreenY ?? element.y,
+          )
+        : element;
+    final effectiveScale =
+        (element.screenPinned ? 1.0 : view.scale) * element.scale;
+    final header = KanbanColumnGeometry.headerRect(
+      effectiveElement,
+      columnIndex,
+    );
+    final topRightLocal = Offset(header.right, header.top);
+    final elementOrigin = Offset(effectiveElement.x, effectiveElement.y);
+    final boxTopLeft = element.screenPinned
+        ? elementOrigin
+        : elementOrigin * view.scale + view.panOffset;
+    final topRightScreen =
+        boxTopLeft + (topRightLocal - elementOrigin) * effectiveScale;
     final left = topRightScreen.dx - _width;
     final top = topRightScreen.dy - _pickerHeight - _gapAboveHeader;
     return Rect.fromLTWH(left, top < 8 ? 8 : top, _width, _pickerHeight);
@@ -125,7 +148,9 @@ class _KanbanColumnColorPopoverState
     final sortedSiblings =
         columns.where((c) => c.kanbanElementId == element!.id).toList()
           ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
-    final columnIndex = sortedSiblings.indexWhere((c) => c.id == boundColumn.id);
+    final columnIndex = sortedSiblings.indexWhere(
+      (c) => c.id == boundColumn.id,
+    );
     if (columnIndex < 0) return const SizedBox.shrink();
 
     final view = ref.watch(boardViewProvider);

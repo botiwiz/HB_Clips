@@ -14,10 +14,17 @@ class ChecklistItem {
   final String label;
   final bool done;
 
-  const ChecklistItem({required this.id, required this.label, this.done = false});
+  const ChecklistItem({
+    required this.id,
+    required this.label,
+    this.done = false,
+  });
 
-  ChecklistItem copyWith({String? label, bool? done}) =>
-      ChecklistItem(id: id, label: label ?? this.label, done: done ?? this.done);
+  ChecklistItem copyWith({String? label, bool? done}) => ChecklistItem(
+    id: id,
+    label: label ?? this.label,
+    done: done ?? this.done,
+  );
 
   factory ChecklistItem.fromJsonMap(Map<String, dynamic> map) => ChecklistItem(
     id: map['id'] as String,

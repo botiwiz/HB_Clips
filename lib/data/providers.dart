@@ -116,9 +116,7 @@ final kanbanColumnsRepositoryProvider = Provider<KanbanColumnsRepository>((
 /// `kanbanElementId` and sorts by `sortOrder` itself (see
 /// `KanbanColumnGeometry`), same "watch everything for the board, filter/
 /// group in-memory" convention `boardFramesProvider` already follows.
-final boardKanbanColumnsProvider = StreamProvider<List<KanbanColumnRow>>((
-  ref,
-) {
+final boardKanbanColumnsProvider = StreamProvider<List<KanbanColumnRow>>((ref) {
   final boardId = ref.watch(currentBoardIdProvider);
   return ref
       .watch(kanbanColumnsRepositoryProvider)

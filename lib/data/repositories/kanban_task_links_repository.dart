@@ -35,8 +35,7 @@ class KanbanTaskLinksRepository {
       ),
     ])..where(_db.kanbanElements.boardId.equals(boardId));
     return query.watch().map(
-      (rows) =>
-          rows.map((row) => row.readTable(_db.kanbanTaskLinks)).toList(),
+      (rows) => rows.map((row) => row.readTable(_db.kanbanTaskLinks)).toList(),
     );
   }
 
@@ -75,8 +74,7 @@ class KanbanTaskLinksRepository {
   /// "Link to task..." flow's bulk-link case (a multi-clip/frame
   /// selection linked to one task in a single gesture).
   Future<void> addLinks(
-    List<({String id, String taskId, String? clipId, String? frameId})>
-    links,
+    List<({String id, String taskId, String? clipId, String? frameId})> links,
   ) {
     return _db.transaction(() async {
       for (final link in links) {

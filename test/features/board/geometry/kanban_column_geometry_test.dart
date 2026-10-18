@@ -15,6 +15,7 @@ KanbanElementRow _element({double width = 300, double height = 480}) {
     width: width,
     height: height,
     screenPinned: false,
+    scale: 1.0,
     createdAt: now,
     updatedAt: now,
   );

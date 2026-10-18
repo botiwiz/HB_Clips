@@ -71,9 +71,7 @@ class KanbanColumnsRepository {
   }
 
   Future<void> renameColumn(String id, String name) {
-    return (_db.update(
-      _db.kanbanColumns,
-    )..where((c) => c.id.equals(id))).write(
+    return (_db.update(_db.kanbanColumns)..where((c) => c.id.equals(id))).write(
       KanbanColumnsCompanion(
         name: Value(name),
         updatedAt: Value(DateTime.now()),
@@ -84,9 +82,7 @@ class KanbanColumnsRepository {
   /// Sets (or clears, with `null`) a column's accent color - same plain
   /// setter shape as `FramesRepository.updateColor`.
   Future<void> updateColor(String id, String? colorHex) {
-    return (_db.update(
-      _db.kanbanColumns,
-    )..where((c) => c.id.equals(id))).write(
+    return (_db.update(_db.kanbanColumns)..where((c) => c.id.equals(id))).write(
       KanbanColumnsCompanion(
         colorHex: Value(colorHex),
         updatedAt: Value(DateTime.now()),
@@ -98,9 +94,7 @@ class KanbanColumnsRepository {
   /// ever touches this single row's value (see the fractional-indexing
   /// section of the Kanban-rebuild plan).
   Future<void> updateSortOrder(String id, double sortOrder) {
-    return (_db.update(
-      _db.kanbanColumns,
-    )..where((c) => c.id.equals(id))).write(
+    return (_db.update(_db.kanbanColumns)..where((c) => c.id.equals(id))).write(
       KanbanColumnsCompanion(
         sortOrder: Value(sortOrder),
         updatedAt: Value(DateTime.now()),
@@ -126,9 +120,7 @@ class KanbanColumnsRepository {
           _db.kanbanTasks,
         )..where((t) => t.id.isIn(taskIds))).go();
       }
-      await (_db.delete(
-        _db.kanbanColumns,
-      )..where((c) => c.id.equals(id))).go();
+      await (_db.delete(_db.kanbanColumns)..where((c) => c.id.equals(id))).go();
     });
   }
 }

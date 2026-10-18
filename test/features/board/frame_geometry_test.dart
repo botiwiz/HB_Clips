@@ -337,5 +337,4 @@ void main() {
       expect(results, isEmpty);
     });
   });
-
 }

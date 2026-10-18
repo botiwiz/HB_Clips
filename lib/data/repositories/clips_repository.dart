@@ -475,23 +475,22 @@ class ClipsRepository {
 
   Future<void> emptyBin(String boardId) {
     return _db.transaction(() async {
-      final binnedIds = await (_db.selectOnly(_db.clips)
-            ..addColumns([_db.clips.id])
-            ..where(
-              _db.clips.boardId.equals(boardId) &
-                  _db.clips.isBinned.equals(true),
-            ))
-          .map((row) => row.read(_db.clips.id)!)
-          .get();
+      final binnedIds =
+          await (_db.selectOnly(_db.clips)
+                ..addColumns([_db.clips.id])
+                ..where(
+                  _db.clips.boardId.equals(boardId) &
+                      _db.clips.isBinned.equals(true),
+                ))
+              .map((row) => row.read(_db.clips.id)!)
+              .get();
       if (binnedIds.isNotEmpty) {
         await (_db.delete(
           _db.kanbanTaskLinks,
         )..where((l) => l.clipId.isIn(binnedIds))).go();
       }
       await (_db.delete(_db.clips)
-            ..where(
-              (c) => c.boardId.equals(boardId) & c.isBinned.equals(true),
-            ))
+            ..where((c) => c.boardId.equals(boardId) & c.isBinned.equals(true)))
           .go();
     });
   }

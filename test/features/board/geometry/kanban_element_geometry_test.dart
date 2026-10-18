@@ -20,6 +20,7 @@ KanbanElementRow _element({
     width: width,
     height: height,
     screenPinned: false,
+    scale: 1.0,
     createdAt: now,
     updatedAt: now,
   );
@@ -108,6 +109,40 @@ void main() {
         alreadyScreenSpace: true,
       );
       expect(raw, const Offset(150, 480));
+    });
+
+    test('scaleHandleRect is centered on the bottom-right corner', () {
+      final element = _element(x: 0, y: 0, width: 300, height: 480);
+      final handle = KanbanElementGeometry.scaleHandleRect(element);
+      expect(handle.center.dx, 300);
+      expect(handle.center.dy, 480);
+    });
+
+    test('scaleHandleScreenPosition scales around the element\'s own '
+        'origin by its per-element scale before the board->screen '
+        'transform, unless alreadyScreenSpace is set', () {
+      final element = _element(
+        x: 0,
+        y: 0,
+        width: 300,
+        height: 480,
+      ).copyWith(scale: 2.0);
+      const view = BoardViewState(panOffset: Offset(50, 20), scale: 1);
+
+      final transformed = KanbanElementGeometry.scaleHandleScreenPosition(
+        element,
+        view,
+      );
+      // bottom-right (300, 480) scaled 2x around origin (0,0) -> (600, 960),
+      // then board->screen at view.scale 1 + panOffset (50, 20).
+      expect(transformed, const Offset(600 + 50, 960 + 20));
+
+      final raw = KanbanElementGeometry.scaleHandleScreenPosition(
+        element,
+        view,
+        alreadyScreenSpace: true,
+      );
+      expect(raw, const Offset(600, 960));
     });
   });
 }

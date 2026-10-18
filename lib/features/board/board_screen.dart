@@ -408,10 +408,9 @@ class BoardScreen extends ConsumerWidget {
     }
     if (element == null) return;
 
-    final columns =
-        (ref.read(boardKanbanColumnsProvider).valueOrNull ?? [])
-            .where((c) => c.kanbanElementId == elementId)
-            .toList();
+    final columns = (ref.read(boardKanbanColumnsProvider).valueOrNull ?? [])
+        .where((c) => c.kanbanElementId == elementId)
+        .toList();
     final columnIds = columns.map((c) => c.id).toSet();
     final tasks = (ref.read(boardKanbanTasksProvider).valueOrNull ?? [])
         .where((t) => columnIds.contains(t.columnId))
@@ -446,6 +445,7 @@ class BoardScreen extends ConsumerWidget {
                 screenPinned: capturedElement.screenPinned,
                 pinnedScreenX: capturedElement.pinnedScreenX,
                 pinnedScreenY: capturedElement.pinnedScreenY,
+                scale: capturedElement.scale,
               );
               for (final column in columns) {
                 await columnsRepo.createColumn(
@@ -469,7 +469,12 @@ class BoardScreen extends ConsumerWidget {
               if (links.isNotEmpty) {
                 await linksRepo.addLinks([
                   for (final l in links)
-                    (id: l.id, taskId: l.taskId, clipId: l.clipId, frameId: l.frameId),
+                    (
+                      id: l.id,
+                      taskId: l.taskId,
+                      clipId: l.clipId,
+                      frameId: l.frameId,
+                    ),
                 ]);
               }
             },
@@ -946,6 +951,7 @@ class BoardScreen extends ConsumerWidget {
     if (ref.read(editingTextClipIdProvider) != null ||
         ref.read(renamingFrameIdProvider) != null ||
         ref.read(renamingKanbanColumnIdProvider) != null ||
+        ref.read(renamingKanbanElementIdProvider) != null ||
         ref.read(editingKanbanTaskFieldProvider) != null) {
       return KeyEventResult.ignored;
     }
@@ -1120,10 +1126,7 @@ class BoardScreen extends ConsumerWidget {
   /// "Done") - the Trello-parity replacement for the old "3 tagged Frames
   /// + 1 KanbanBoard + 1 Swimlane" composite. Centered the same way
   /// [_addFrame] centers a plain frame.
-  Future<void> _insertKanbanElement(
-    BuildContext context,
-    WidgetRef ref,
-  ) async {
+  Future<void> _insertKanbanElement(BuildContext context, WidgetRef ref) async {
     const columnNames = ['To Do', 'In Progress', 'Done'];
     final center = _viewportCenterBoardPoint(ref, MediaQuery.sizeOf(context));
     final boardId = ref.read(currentBoardIdProvider);
@@ -1131,9 +1134,7 @@ class BoardScreen extends ConsumerWidget {
     final elementId = _uuid.v4();
     final columnIds = [for (var _ in columnNames) _uuid.v4()];
 
-    final width = KanbanElementGeometry.widthForColumnCount(
-      columnNames.length,
-    );
+    final width = KanbanElementGeometry.widthForColumnCount(columnNames.length);
     const height = kKanbanElementDefaultHeight;
     final originX = center.dx - width / 2;
     final originY = center.dy - height / 2;
@@ -1588,8 +1589,7 @@ class BoardScreen extends ConsumerWidget {
                           PillIconButton(
                             tooltip: 'Insert kanban board',
                             icon: Icons.dashboard_outlined,
-                            onPressed: () =>
-                                _insertKanbanElement(context, ref),
+                            onPressed: () => _insertKanbanElement(context, ref),
                           ),
                           PillIconButton(
                             tooltip: snapToGrid

@@ -19,6 +19,16 @@ class KanbanElementGeometry {
   static Offset _boardToScreen(Offset boardPoint, BoardViewState view) =>
       boardPoint * view.scale + view.panOffset;
 
+  /// Scales a local (unscaled, board/pinned-screen-unit) point around
+  /// [element]'s own origin by its per-element [KanbanElementRow.scale] -
+  /// the same transform `KanbanElementWidget.local()` applies to every
+  /// piece of content it renders, needed here too since a handle's
+  /// on-screen position is computed independently of that widget.
+  static Offset _scaleAroundOrigin(Offset point, KanbanElementRow element) {
+    final origin = Offset(element.x, element.y);
+    return origin + (point - origin) * element.scale;
+  }
+
   /// [alreadyScreenSpace] (true for a screen-pinned element passed as its
   /// "effective" row, x/y already literal screen pixels) skips the
   /// board->screen transform, since there's nothing left to transform -
@@ -31,7 +41,10 @@ class KanbanElementGeometry {
     bool alreadyScreenSpace = false,
   }) {
     final outer = outerRect(element);
-    final point = Offset(outer.center.dx, outer.bottom);
+    final point = _scaleAroundOrigin(
+      Offset(outer.center.dx, outer.bottom),
+      element,
+    );
     return alreadyScreenSpace ? point : _boardToScreen(point, view);
   }
 
@@ -42,12 +55,40 @@ class KanbanElementGeometry {
     bool alreadyScreenSpace = false,
   }) {
     return (resizeHandleScreenPosition(
-              element,
-              view,
-              alreadyScreenSpace: alreadyScreenSpace,
-            ) -
-            screenPoint)
-        .distance <=
+                  element,
+                  view,
+                  alreadyScreenSpace: alreadyScreenSpace,
+                ) -
+                screenPoint)
+            .distance <=
+        handleHitRadius;
+  }
+
+  /// Screen position of the free corner-scale handle (see
+  /// [scaleHandleRect]) - same `alreadyScreenSpace`/scale-around-origin
+  /// treatment as [resizeHandleScreenPosition].
+  static Offset scaleHandleScreenPosition(
+    KanbanElementRow element,
+    BoardViewState view, {
+    bool alreadyScreenSpace = false,
+  }) {
+    final point = _scaleAroundOrigin(outerRect(element).bottomRight, element);
+    return alreadyScreenSpace ? point : _boardToScreen(point, view);
+  }
+
+  static bool hitTestScaleHandle(
+    KanbanElementRow element,
+    BoardViewState view,
+    Offset screenPoint, {
+    bool alreadyScreenSpace = false,
+  }) {
+    return (scaleHandleScreenPosition(
+                  element,
+                  view,
+                  alreadyScreenSpace: alreadyScreenSpace,
+                ) -
+                screenPoint)
+            .distance <=
         handleHitRadius;
   }
 
@@ -92,6 +133,22 @@ class KanbanElementGeometry {
       outer.bottom - handleHeight / 2,
       handleWidth,
       handleHeight,
+    );
+  }
+
+  /// Board-space rect of the free corner-scale handle, bottom-right -
+  /// distinct from [resizeHandleRect] (height-only, bottom-edge centered):
+  /// dragging this adjusts [KanbanElementRow.scale] directly, working
+  /// identically whether the element is pinned or not (see the table's
+  /// own doc comment on `scale`).
+  static Rect scaleHandleRect(KanbanElementRow element) {
+    final outer = outerRect(element);
+    const size = 12.0;
+    return Rect.fromLTWH(
+      outer.right - size / 2,
+      outer.bottom - size / 2,
+      size,
+      size,
     );
   }
 

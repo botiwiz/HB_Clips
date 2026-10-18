@@ -80,64 +80,76 @@ void main() {
     expect(rows.map((r) => r.id), ['link-2']);
   });
 
-  test('ClipsRepository.deleteForever cascades to that clip\'s links', () async {
-    final clip = await clipsRepo.addTextNote(
-      id: _uuid.v4(),
-      boardId: kLocalBoardId,
-      textContent: 'linked clip',
-      x: 0,
-      y: 0,
-    );
-    await linksRepo.addLink(id: 'link-1', taskId: 'task-1', clipId: clip.id);
+  test(
+    'ClipsRepository.deleteForever cascades to that clip\'s links',
+    () async {
+      final clip = await clipsRepo.addTextNote(
+        id: _uuid.v4(),
+        boardId: kLocalBoardId,
+        textContent: 'linked clip',
+        x: 0,
+        y: 0,
+      );
+      await linksRepo.addLink(id: 'link-1', taskId: 'task-1', clipId: clip.id);
 
-    await clipsRepo.deleteForever(clip.id);
+      await clipsRepo.deleteForever(clip.id);
 
-    expect(await (db.select(db.kanbanTaskLinks)).get(), isEmpty);
-  });
+      expect(await (db.select(db.kanbanTaskLinks)).get(), isEmpty);
+    },
+  );
 
-  test('FramesRepository.deleteFrame cascades to that frame\'s links', () async {
-    await framesRepo.createFrame(
-      id: 'frame-1',
-      boardId: kLocalBoardId,
-      name: 'Section',
-      x: 0,
-      y: 0,
-      width: 400,
-      height: 300,
-    );
-    await linksRepo.addLink(id: 'link-1', taskId: 'task-1', frameId: 'frame-1');
+  test(
+    'FramesRepository.deleteFrame cascades to that frame\'s links',
+    () async {
+      await framesRepo.createFrame(
+        id: 'frame-1',
+        boardId: kLocalBoardId,
+        name: 'Section',
+        x: 0,
+        y: 0,
+        width: 400,
+        height: 300,
+      );
+      await linksRepo.addLink(
+        id: 'link-1',
+        taskId: 'task-1',
+        frameId: 'frame-1',
+      );
 
-    await framesRepo.deleteFrame('frame-1');
+      await framesRepo.deleteFrame('frame-1');
 
-    expect(await (db.select(db.kanbanTaskLinks)).get(), isEmpty);
-  });
+      expect(await (db.select(db.kanbanTaskLinks)).get(), isEmpty);
+    },
+  );
 
-  test('watchLinksForBoard only returns links for that board\'s elements',
-      () async {
-    await elementsRepo.createKanbanElement(
-      id: 'el-other',
-      boardId: 'other-board',
-      name: 'Other',
-      x: 0,
-      y: 0,
-      width: 300,
-      height: 480,
-    );
-    final otherColumn = await columnsRepo.createColumn(
-      id: 'col-other',
-      kanbanElementId: 'el-other',
-      name: 'Elsewhere',
-    );
-    await tasksRepo.addTask(id: 'task-other', columnId: otherColumn.id);
+  test(
+    'watchLinksForBoard only returns links for that board\'s elements',
+    () async {
+      await elementsRepo.createKanbanElement(
+        id: 'el-other',
+        boardId: 'other-board',
+        name: 'Other',
+        x: 0,
+        y: 0,
+        width: 300,
+        height: 480,
+      );
+      final otherColumn = await columnsRepo.createColumn(
+        id: 'col-other',
+        kanbanElementId: 'el-other',
+        name: 'Elsewhere',
+      );
+      await tasksRepo.addTask(id: 'task-other', columnId: otherColumn.id);
 
-    await linksRepo.addLink(id: 'link-1', taskId: 'task-1', clipId: 'clip-1');
-    await linksRepo.addLink(
-      id: 'link-other',
-      taskId: 'task-other',
-      clipId: 'clip-other',
-    );
+      await linksRepo.addLink(id: 'link-1', taskId: 'task-1', clipId: 'clip-1');
+      await linksRepo.addLink(
+        id: 'link-other',
+        taskId: 'task-other',
+        clipId: 'clip-other',
+      );
 
-    final links = await linksRepo.watchLinksForBoard(kLocalBoardId).first;
-    expect(links.map((l) => l.id), ['link-1']);
-  });
+      final links = await linksRepo.watchLinksForBoard(kLocalBoardId).first;
+      expect(links.map((l) => l.id), ['link-1']);
+    },
+  );
 }
