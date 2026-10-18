@@ -3,9 +3,11 @@ import 'dart:math' as math;
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../data/local/database.dart' show FrameRow;
+import '../../../data/local/database.dart'
+    show FrameRow, KanbanColumnRow, KanbanElementRow;
 import '../../../data/models/clip.dart' show BoardClip, ShapeKind;
 import '../../../data/models/connector.dart';
+import '../../../data/models/kanban.dart' show KanbanTask;
 import '../../../data/models/stroke.dart';
 import '../geometry/spacing_snap_geometry.dart';
 
@@ -347,15 +349,18 @@ final connectorDraftProvider = StateProvider<ConnectorDraft?>((ref) => null);
 final selectedConnectorIdProvider = StateProvider<String?>((ref) => null);
 
 /// A frozen, by-value snapshot of whatever was selected at Ctrl+C time -
-/// either a frame (plus its children's clip rows) or a set of clips.
-/// Independent of any live provider state, so a later move/delete/bin of
-/// the originals can't corrupt a pending paste - `board_screen.dart`'s
-/// `_copySelection`/`_pasteSelection` are the only read/write sites.
+/// either a frame (plus its children's clip rows), a set of clips, or a
+/// whole kanban element (plus its columns/tasks). Independent of any live
+/// provider state, so a later move/delete/bin of the originals can't
+/// corrupt a pending paste - `board_screen.dart`'s `_copySelection`/
+/// `_pasteSelection` are the only read/write sites.
 class CopiedSelection {
   final FrameRow? frame;
 
   /// The frame's children if [frame] is non-null, otherwise the copied
-  /// clip selection itself.
+  /// clip selection itself. Always empty for a kanban-element copy - a
+  /// kanban element's own content lives in [kanbanColumns]/[kanbanTasks]
+  /// instead, never in this list.
   final List<BoardClip> clips;
 
   /// Every connector whose *both* endpoints are in [clips] - a connector
@@ -370,11 +375,26 @@ class CopiedSelection {
   /// place.
   final List<Stroke> strokes;
 
+  /// Set only when a whole kanban element was copied (via
+  /// `selectedKanbanElementIdProvider`, mutually exclusive with
+  /// clip/frame selection - see `_binSelected`'s own precedence
+  /// comment). [kanbanColumns]/[kanbanTasks] hold that element's full
+  /// subtree; any `kanban_task_links` rows are intentionally dropped
+  /// (same "outside the copied selection" rule [connectors] follows - a
+  /// linked clip/frame isn't part of this copy, so the link would
+  /// dangle).
+  final KanbanElementRow? kanbanElement;
+  final List<KanbanColumnRow> kanbanColumns;
+  final List<KanbanTask> kanbanTasks;
+
   const CopiedSelection({
     this.frame,
-    required this.clips,
+    this.clips = const [],
     this.connectors = const [],
     this.strokes = const [],
+    this.kanbanElement,
+    this.kanbanColumns = const [],
+    this.kanbanTasks = const [],
   });
 }
 

@@ -607,8 +607,10 @@ class BoardScreen extends ConsumerWidget {
     return _viewportCenterBoardPoint(ref, MediaQuery.sizeOf(context));
   }
 
-  /// Snapshots whichever is currently selected - a frame (+ its
-  /// children) takes priority over a clip selection, since
+  /// Snapshots whichever is currently selected - a kanban element takes
+  /// priority over everything else (same "its own entirely separate
+  /// selection slot" precedence `_binSelected` already documents), then a
+  /// frame (+ its children) takes priority over a clip selection, since
   /// `selectedFrameIdsProvider`/`selectedClipIdsProvider` aren't strictly
   /// enforced mutually-exclusive by every click path - into
   /// [copiedSelectionProvider], ready for [_pasteSelection]. A no-op if
@@ -616,6 +618,32 @@ class BoardScreen extends ConsumerWidget {
   /// renaming/color/preset) - with 2+ frames selected this falls through
   /// to the clip-selection check below, same as 0 selected frames today.
   void _copySelection(WidgetRef ref) {
+    final selectedKanbanElementId = ref.read(selectedKanbanElementIdProvider);
+    if (selectedKanbanElementId != null) {
+      final elements = ref.read(boardKanbanElementsProvider).valueOrNull ?? [];
+      KanbanElementRow? element;
+      for (final e in elements) {
+        if (e.id == selectedKanbanElementId) {
+          element = e;
+          break;
+        }
+      }
+      if (element == null) return;
+      final columns = (ref.read(boardKanbanColumnsProvider).valueOrNull ?? [])
+          .where((c) => c.kanbanElementId == element!.id)
+          .toList();
+      final columnIds = columns.map((c) => c.id).toSet();
+      final tasks = (ref.read(boardKanbanTasksProvider).valueOrNull ?? [])
+          .where((t) => columnIds.contains(t.columnId))
+          .toList();
+      ref.read(copiedSelectionProvider.notifier).state = CopiedSelection(
+        kanbanElement: element,
+        kanbanColumns: columns,
+        kanbanTasks: tasks,
+      );
+      return;
+    }
+
     final selectedFrameIds = ref.read(selectedFrameIdsProvider);
     if (selectedFrameIds.length == 1) {
       final frameId = selectedFrameIds.first;
@@ -750,6 +778,112 @@ class BoardScreen extends ConsumerWidget {
     // switch to board B, Ctrl+V land the paste on B instead of silently
     // reappearing back on A.
     final targetBoardId = ref.read(currentBoardIdProvider);
+
+    final kanbanElement = copied.kanbanElement;
+    if (kanbanElement != null) {
+      final elementsRepo = ref.read(kanbanElementsRepositoryProvider);
+      final columnsRepo = ref.read(kanbanColumnsRepositoryProvider);
+      final tasksRepo = ref.read(kanbanTasksRepositoryProvider);
+
+      final dx = anchor.dx - (kanbanElement.x + kanbanElement.width / 2);
+      final dy = anchor.dy - (kanbanElement.y + kanbanElement.height / 2);
+      final newElementId = _uuid.v4();
+      final newX = kanbanElement.x + dx;
+      final newY = kanbanElement.y + dy;
+      final columnIdMap = {
+        for (final column in copied.kanbanColumns) column.id: _uuid.v4(),
+      };
+      final taskIdMap = {
+        for (final task in copied.kanbanTasks) task.id: _uuid.v4(),
+      };
+
+      // Pasted copy always lands as a normal board-space element at the
+      // paste anchor, never pinned - pinnedScreenX/Y are tied to the
+      // source board's own viewport and would be meaningless on a
+      // different board/viewport (or even just a different pan/zoom on
+      // the same one).
+      await elementsRepo.recreateKanbanElement(
+        id: newElementId,
+        boardId: targetBoardId,
+        name: kanbanElement.name,
+        x: newX,
+        y: newY,
+        width: kanbanElement.width,
+        height: kanbanElement.height,
+        screenPinned: false,
+        scale: kanbanElement.scale,
+      );
+      if (!context.mounted) return;
+      for (final column in copied.kanbanColumns) {
+        await columnsRepo.createColumn(
+          id: columnIdMap[column.id]!,
+          kanbanElementId: newElementId,
+          name: column.name,
+          sortOrder: column.sortOrder,
+          colorHex: column.colorHex,
+        );
+        if (!context.mounted) return;
+      }
+      for (final task in copied.kanbanTasks) {
+        final newColumnId = columnIdMap[task.columnId];
+        if (newColumnId == null) continue;
+        await tasksRepo.recreateTask(
+          id: taskIdMap[task.id]!,
+          columnId: newColumnId,
+          title: task.title,
+          checklist: task.checklist,
+          sortOrder: task.sortOrder,
+          colorHex: task.colorHex,
+        );
+        if (!context.mounted) return;
+      }
+
+      ref.read(selectedKanbanElementIdProvider.notifier).state = newElementId;
+      ref.read(selectedFrameIdsProvider.notifier).state = {};
+      ref.read(selectedClipIdsProvider.notifier).state = {};
+      ref
+          .read(undoManagerProvider.notifier)
+          .push(
+            UndoableAction(
+              undo: () => elementsRepo.deleteKanbanElement(newElementId),
+              redo: () async {
+                await elementsRepo.recreateKanbanElement(
+                  id: newElementId,
+                  boardId: targetBoardId,
+                  name: kanbanElement.name,
+                  x: newX,
+                  y: newY,
+                  width: kanbanElement.width,
+                  height: kanbanElement.height,
+                  screenPinned: false,
+                  scale: kanbanElement.scale,
+                );
+                for (final column in copied.kanbanColumns) {
+                  await columnsRepo.createColumn(
+                    id: columnIdMap[column.id]!,
+                    kanbanElementId: newElementId,
+                    name: column.name,
+                    sortOrder: column.sortOrder,
+                    colorHex: column.colorHex,
+                  );
+                }
+                for (final task in copied.kanbanTasks) {
+                  final newColumnId = columnIdMap[task.columnId];
+                  if (newColumnId == null) continue;
+                  await tasksRepo.recreateTask(
+                    id: taskIdMap[task.id]!,
+                    columnId: newColumnId,
+                    title: task.title,
+                    checklist: task.checklist,
+                    sortOrder: task.sortOrder,
+                    colorHex: task.colorHex,
+                  );
+                }
+              },
+            ),
+          );
+      return;
+    }
 
     final frame = copied.frame;
     if (frame != null) {
