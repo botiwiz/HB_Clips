@@ -94,5 +94,44 @@ void main() {
       );
       expect(result, isNull);
     });
+
+    test('always sends a browser-like User-Agent', () async {
+      http.Request? captured;
+      final client = MockClient((request) async {
+        captured = request;
+        return http.Response.bytes(fakeBytes, 200);
+      });
+      await fetchImageBytes(
+        Uri.parse('https://example.com/pic.png'),
+        client: client,
+      );
+      expect(captured!.headers['User-Agent'], contains('Mozilla'));
+    });
+
+    test('sends a Referer for a gstatic.com host', () async {
+      http.Request? captured;
+      final client = MockClient((request) async {
+        captured = request;
+        return http.Response.bytes(fakeBytes, 200);
+      });
+      await fetchImageBytes(
+        Uri.parse('https://encrypted-tbn0.gstatic.com/images?q=thumb'),
+        client: client,
+      );
+      expect(captured!.headers['Referer'], 'https://www.google.com/');
+    });
+
+    test('does not send a Referer for an unrelated host', () async {
+      http.Request? captured;
+      final client = MockClient((request) async {
+        captured = request;
+        return http.Response.bytes(fakeBytes, 200);
+      });
+      await fetchImageBytes(
+        Uri.parse('https://example.com/pic.png'),
+        client: client,
+      );
+      expect(captured!.headers.containsKey('Referer'), isFalse);
+    });
   });
 }

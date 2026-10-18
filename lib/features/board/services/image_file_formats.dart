@@ -46,10 +46,10 @@ Future<Uint8List?> readImageFileBytes(DataReader reader, FileFormat format) {
 }
 
 /// Tries `Formats.uri` first (an exact URL, when the source app provides
-/// one), then falls back to the first `<img src="...">` found in
+/// one), then falls back to [extractImageUrlFromHtml] against
 /// `Formats.htmlText` - covers a cross-origin web image (Pinterest,
-/// Instagram, any page's hover/preview image) that has no raw image bytes
-/// on the drag at all, only a link to fetch.
+/// Instagram, a Google Images result, any page's hover/preview image) that
+/// has no raw image bytes on the drag at all, only a link to fetch.
 Future<Uri?> matchImageUrl(DataReader reader) async {
   if (reader.canProvide(Formats.uri)) {
     final named = await _readValue(reader, Formats.uri);
@@ -65,16 +65,55 @@ Future<Uri?> matchImageUrl(DataReader reader) async {
   return null;
 }
 
-/// Pulls the first `<img src="...">` (single or double-quoted) out of an
-/// HTML snippet - the shape browsers attach to a dragged/copied `<img>`
-/// element.
+/// Attribute names that can hold an `<img>`'s real image URL, checked in
+/// this priority order - a lazy-loading/search-result page (Google Images
+/// chief among them) very often puts a tiny placeholder or `data:` URI in
+/// plain `src` and the actual full-resolution source URL in one of these
+/// instead.
+const _imageUrlAttributes = ['data-iurl', 'data-src', 'data-original', 'src'];
+
+/// A known thumbnail-only CDN host - a URL found there is kept only as a
+/// last resort (see [extractImageUrlFromHtml]), since it's reachable but
+/// deliberately low-resolution, not the image the user meant to drag.
+bool _isThumbnailHost(String host) =>
+    host.endsWith('gstatic.com') && host.contains('encrypted-tbn');
+
+/// Pulls the best candidate image URL out of an HTML snippet - the shape
+/// browsers attach to a dragged/copied `<img>` element. Scans every
+/// `<img>` tag, and within each one tries [_imageUrlAttributes] in
+/// priority order, skipping `data:` URIs entirely (never fetchable over
+/// HTTP) and anything that doesn't parse as an absolute URL. A candidate
+/// on a known thumbnail CDN ([_isThumbnailHost]) is remembered but not
+/// returned immediately - the first non-thumbnail candidate found (in any
+/// tag) wins instead, falling back to the thumbnail only if nothing better
+/// turned up anywhere in the snippet.
 Uri? extractImageUrlFromHtml(String html) {
-  final match = RegExp(
-    r'''<img[^>]+src=["']([^"']+)["']''',
+  final imgTags = RegExp(
+    r'<img\b[^>]*>',
     caseSensitive: false,
-  ).firstMatch(html);
-  if (match == null) return null;
-  return Uri.tryParse(match.group(1)!);
+  ).allMatches(html);
+
+  Uri? thumbnailFallback;
+  for (final imgTag in imgTags) {
+    final tag = imgTag.group(0)!;
+    for (final attr in _imageUrlAttributes) {
+      final match = RegExp(
+        '$attr=["\']([^"\']+)["\']',
+        caseSensitive: false,
+      ).firstMatch(tag);
+      if (match == null) continue;
+      final raw = match.group(1)!;
+      if (raw.startsWith('data:')) continue;
+      final uri = Uri.tryParse(raw);
+      if (uri == null || !uri.hasScheme) continue;
+      if (_isThumbnailHost(uri.host)) {
+        thumbnailFallback ??= uri;
+        continue;
+      }
+      return uri;
+    }
+  }
+  return thumbnailFallback;
 }
 
 /// `getValue` is callback-based (same shape as `getFile`, see

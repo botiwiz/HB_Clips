@@ -29,5 +29,61 @@ void main() {
       );
       expect(uri, Uri.parse('https://example.com/first.png'));
     });
+
+    test('prefers data-iurl over a plain src on the same tag', () {
+      final uri = extractImageUrlFromHtml(
+        '<img src="https://example.com/thumb.png" '
+        'data-iurl="https://example.com/full-res.png">',
+      );
+      expect(uri, Uri.parse('https://example.com/full-res.png'));
+    });
+
+    test('falls back to data-src when data-iurl is absent', () {
+      final uri = extractImageUrlFromHtml(
+        '<img src="https://example.com/thumb.png" '
+        'data-src="https://example.com/lazy-loaded.png">',
+      );
+      expect(uri, Uri.parse('https://example.com/lazy-loaded.png'));
+    });
+
+    test('skips a data: URI src and uses data-iurl instead', () {
+      final uri = extractImageUrlFromHtml(
+        '<img src="data:image/jpeg;base64,/9j/4AAQSkZJRg==" '
+        'data-iurl="https://example.com/source.jpg">',
+      );
+      expect(uri, Uri.parse('https://example.com/source.jpg'));
+    });
+
+    test('returns null when only a data: URI is present', () {
+      final uri = extractImageUrlFromHtml(
+        '<img src="data:image/jpeg;base64,/9j/4AAQSkZJRg==">',
+      );
+      expect(uri, isNull);
+    });
+
+    test(
+      'prefers a non-thumbnail candidate over a gstatic encrypted-tbn one',
+      () {
+        final uri = extractImageUrlFromHtml(
+          '<img src="https://encrypted-tbn0.gstatic.com/images?q=thumb">'
+          '<img data-iurl="https://realsite.example.com/photo.jpg">',
+        );
+        expect(uri, Uri.parse('https://realsite.example.com/photo.jpg'));
+      },
+    );
+
+    test(
+      'falls back to a gstatic encrypted-tbn thumbnail when nothing better '
+      'is found',
+      () {
+        final uri = extractImageUrlFromHtml(
+          '<img src="https://encrypted-tbn0.gstatic.com/images?q=thumb">',
+        );
+        expect(
+          uri,
+          Uri.parse('https://encrypted-tbn0.gstatic.com/images?q=thumb'),
+        );
+      },
+    );
   });
 }

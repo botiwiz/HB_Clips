@@ -26,6 +26,30 @@ String? extensionForUrl(Uri uri) {
   return null;
 }
 
+const _browserUserAgent =
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+    '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+
+/// Headers for fetching [uri]'s bytes. A browser-like User-Agent is always
+/// sent - image CDNs that only expect to serve embedded page content (not
+/// direct requests) commonly 403 a request with no User-Agent at all, same
+/// reasoning `link_preview_service.dart` already applies to its own
+/// best-effort remote fetch. A `Referer` is added only for Google's own
+/// image-serving hosts (`gstatic.com`/`google.com`, covers both the
+/// `encrypted-tbn*.gstatic.com` thumbnail CDN and a Google Images result's
+/// full-resolution source host) - some of those specifically check for it,
+/// but sending an unrelated Referer to an arbitrary third-party site risks
+/// tripping a hotlink guard that would otherwise allow a referer-less
+/// request through.
+Map<String, String> _headersFor(Uri uri) {
+  final headers = {'User-Agent': _browserUserAgent, 'Accept': 'image/*,*/*;q=0.8'};
+  final host = uri.host.toLowerCase();
+  if (host.endsWith('gstatic.com') || host.endsWith('google.com')) {
+    headers['Referer'] = 'https://www.google.com/';
+  }
+  return headers;
+}
+
 /// Fetches a remote image found on a browser's drag payload as raw bytes,
 /// for the same bytes+extension -> addImageClipFromBytes pipeline local
 /// files and clipboard images already use. Returns null on any failure
@@ -41,7 +65,7 @@ Future<({Uint8List bytes, String extension})?> fetchImageBytes(
 }) async {
   final httpClient = client ?? http.Client();
   try {
-    final response = await httpClient.get(uri);
+    final response = await httpClient.get(uri, headers: _headersFor(uri));
     if (response.statusCode != 200 || response.bodyBytes.isEmpty) {
       return null;
     }
