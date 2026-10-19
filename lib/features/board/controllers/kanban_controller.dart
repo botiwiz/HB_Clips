@@ -97,6 +97,18 @@ final kanbanColumnColorPickerOpenForProvider = StateProvider<String?>(
 /// is non-null.
 final kanbanTaskColorPickerOpenProvider = StateProvider<bool>((ref) => false);
 
+/// Id of the kanban column the pointer is currently hovering over its own
+/// header band - null when none. Purely cosmetic/ephemeral (never
+/// persisted): gates whether `KanbanElementWidget._buildColumn` renders
+/// the reorder-left/reorder-right/delete icon trio alongside the
+/// always-checked-first `colorSwatchRect` - see `board_canvas.dart`'s
+/// `_handlePointerHover`, the one place that writes this. Unlike
+/// [kanbanColumnColorPickerOpenForProvider] (sticky until explicitly
+/// toggled), this tracks live mouse position and is written on nearly
+/// every pointer-hover event, so callers that only read it (never write)
+/// should stay cheap.
+final hoveredKanbanColumnIdProvider = StateProvider<String?>((ref) => null);
+
 /// Id of the kanban column currently being inline-renamed via
 /// `KanbanColumnRenameOverlay` - null when none. Started by double-
 /// clicking a column's header title in `board_canvas.dart`'s kanban

@@ -661,6 +661,29 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
             current == column.id ? null : column.id;
         return true;
       }
+      if (i > 0 &&
+          KanbanColumnGeometry.moveColumnLeftButtonRect(
+            effectiveHit,
+            i,
+          ).contains(hitPoint)) {
+        _swapKanbanColumns(columns, i, i - 1);
+        return true;
+      }
+      if (i < columns.length - 1 &&
+          KanbanColumnGeometry.moveColumnRightButtonRect(
+            effectiveHit,
+            i,
+          ).contains(hitPoint)) {
+        _swapKanbanColumns(columns, i, i + 1);
+        return true;
+      }
+      if (KanbanColumnGeometry.deleteColumnButtonRect(
+        effectiveHit,
+        i,
+      ).contains(hitPoint)) {
+        _deleteKanbanColumn(hit, columns, column);
+        return true;
+      }
       if (KanbanColumnGeometry.headerRect(effectiveHit, i).contains(hitPoint) &&
           _isDoubleClickOn(column.id, event.localPosition)) {
         ref.read(renamingKanbanColumnIdProvider.notifier).state = column.id;
@@ -809,6 +832,117 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
           ),
         );
     ref.read(editingKanbanTaskFieldProvider.notifier).state = newTaskId;
+  }
+
+  /// Swaps `columns[indexA]`/`columns[indexB]`'s `sortOrder` values -
+  /// always valid regardless of fractional-indexing scheme, so no new
+  /// repository method is needed beyond the existing plain
+  /// `updateSortOrder` setter. One undo entry per swap.
+  Future<void> _swapKanbanColumns(
+    List<KanbanColumnRow> columns,
+    int indexA,
+    int indexB,
+  ) async {
+    final columnA = columns[indexA];
+    final columnB = columns[indexB];
+    final columnsRepo = ref.read(kanbanColumnsRepositoryProvider);
+    final orderA = columnA.sortOrder;
+    final orderB = columnB.sortOrder;
+    await Future.wait([
+      columnsRepo.updateSortOrder(columnA.id, orderB),
+      columnsRepo.updateSortOrder(columnB.id, orderA),
+    ]);
+    if (!mounted) return;
+    ref
+        .read(undoManagerProvider.notifier)
+        .push(
+          UndoableAction(
+            undo: () => Future.wait([
+              columnsRepo.updateSortOrder(columnA.id, orderA),
+              columnsRepo.updateSortOrder(columnB.id, orderB),
+            ]),
+            redo: () => Future.wait([
+              columnsRepo.updateSortOrder(columnA.id, orderB),
+              columnsRepo.updateSortOrder(columnB.id, orderA),
+            ]),
+          ),
+        );
+  }
+
+  /// Deletes one column, snapshotting its tasks (and those tasks' links)
+  /// first so undo can recreate the whole subtree exactly - same pattern
+  /// `board_screen.dart`'s `_deleteKanbanElement` uses for a whole
+  /// element, scoped to a single column here. Also shrinks/restores the
+  /// owning element's width by one column's worth, symmetric to
+  /// [_addKanbanColumn]'s own width grow on add.
+  Future<void> _deleteKanbanColumn(
+    KanbanElementRow element,
+    List<KanbanColumnRow> columns,
+    KanbanColumnRow column,
+  ) async {
+    final tasks = (ref.read(boardKanbanTasksProvider).valueOrNull ?? [])
+        .where((t) => t.columnId == column.id)
+        .toList();
+    final taskIds = tasks.map((t) => t.id).toSet();
+    final links = (ref.read(boardKanbanTaskLinksProvider).valueOrNull ?? [])
+        .where((l) => taskIds.contains(l.taskId))
+        .toList();
+
+    final columnsRepo = ref.read(kanbanColumnsRepositoryProvider);
+    final tasksRepo = ref.read(kanbanTasksRepositoryProvider);
+    final linksRepo = ref.read(kanbanTaskLinksRepositoryProvider);
+    final elementsRepo = ref.read(kanbanElementsRepositoryProvider);
+
+    final oldWidth = element.width;
+    final newWidth = KanbanElementGeometry.widthForColumnCount(
+      columns.length - 1,
+    );
+
+    await columnsRepo.deleteColumn(column.id);
+    await elementsRepo.updateTransform(element.id, width: newWidth);
+    if (!mounted) return;
+
+    ref
+        .read(undoManagerProvider.notifier)
+        .push(
+          UndoableAction(
+            undo: () async {
+              await columnsRepo.createColumn(
+                id: column.id,
+                kanbanElementId: column.kanbanElementId,
+                name: column.name,
+                sortOrder: column.sortOrder,
+                colorHex: column.colorHex,
+              );
+              for (final task in tasks) {
+                await tasksRepo.recreateTask(
+                  id: task.id,
+                  columnId: task.columnId,
+                  title: task.title,
+                  checklist: task.checklist,
+                  sortOrder: task.sortOrder,
+                  colorHex: task.colorHex,
+                );
+              }
+              if (links.isNotEmpty) {
+                await linksRepo.addLinks([
+                  for (final l in links)
+                    (
+                      id: l.id,
+                      taskId: l.taskId,
+                      clipId: l.clipId,
+                      frameId: l.frameId,
+                    ),
+                ]);
+              }
+              await elementsRepo.updateTransform(element.id, width: oldWidth);
+            },
+            redo: () => Future.wait([
+              columnsRepo.deleteColumn(column.id),
+              elementsRepo.updateTransform(element.id, width: newWidth),
+            ]),
+          ),
+        );
   }
 
   KanbanTask? _findTaskById(List<KanbanTask> tasks, String id) {
@@ -2470,6 +2604,52 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       boardPos,
       boardPos,
     );
+  }
+
+  /// Tracks which kanban column's header band (if any) the pointer is
+  /// currently over, for the hover-revealed reorder-left/reorder-right/
+  /// delete icon trio - the one place that writes
+  /// [hoveredKanbanColumnIdProvider]. `PointerHoverEvent` only fires with
+  /// no buttons pressed, so unlike [_handlePointerMove] this needs no
+  /// draw-mode/text-tool/pan-zoom guards - none of those gestures can be
+  /// mid-flight while hovering.
+  void _handlePointerHover(PointerHoverEvent event) {
+    final elements = ref.read(boardKanbanElementsProvider).valueOrNull ?? [];
+    if (elements.isEmpty) {
+      _setHoveredKanbanColumn(null);
+      return;
+    }
+    final view = ref.read(boardViewProvider);
+    final boardPos = _screenToBoard(event.localPosition, view);
+    final hit = _hitTestKanbanElement(elements, boardPos, event.localPosition);
+    if (hit == null) {
+      _setHoveredKanbanColumn(null);
+      return;
+    }
+    final effectiveHit = _kanbanEffectiveElement(hit);
+    final hitPoint = _kanbanHitPoint(hit, boardPos, event.localPosition);
+    final columns =
+        (ref.read(boardKanbanColumnsProvider).valueOrNull ?? [])
+            .where((c) => c.kanbanElementId == hit.id)
+            .toList()
+          ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+    for (var i = 0; i < columns.length; i++) {
+      if (KanbanColumnGeometry.headerRect(effectiveHit, i).contains(hitPoint)) {
+        _setHoveredKanbanColumn(columns[i].id);
+        return;
+      }
+    }
+    _setHoveredKanbanColumn(null);
+  }
+
+  /// Read-before-write so a hover event that doesn't change which column
+  /// (if any) is hovered skips a provider write entirely - hover fires on
+  /// nearly every mouse-move pixel, so an unconditional write would rebuild
+  /// every `KanbanElementWidget` on every frame.
+  void _setHoveredKanbanColumn(String? columnId) {
+    if (ref.read(hoveredKanbanColumnIdProvider) != columnId) {
+      ref.read(hoveredKanbanColumnIdProvider.notifier).state = columnId;
+    }
   }
 
   void _handlePointerMove(PointerMoveEvent event) {
@@ -4519,12 +4699,14 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
                   : isDrawMode
                   ? SystemMouseCursors.precise
                   : SystemMouseCursors.basic,
+              onExit: (_) => _setHoveredKanbanColumn(null),
               child: Listener(
                 onPointerDown: _handlePointerDown,
                 onPointerMove: _handlePointerMove,
                 onPointerUp: _handlePointerUp,
                 onPointerCancel: _handlePointerCancel,
                 onPointerSignal: _handlePointerSignal,
+                onPointerHover: _handlePointerHover,
                 child: Container(
                   key: BoardCanvas.canvasBoxKey,
                   color: AppTheme.canvasBackground,
@@ -4702,6 +4884,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
         openColorPickerColumnId: ref.watch(
           kanbanColumnColorPickerOpenForProvider,
         ),
+        hoveredColumnId: ref.watch(hoveredKanbanColumnIdProvider),
       ),
     );
   }

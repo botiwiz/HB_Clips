@@ -51,6 +51,54 @@ class KanbanColumnGeometry {
     );
   }
 
+  /// Shared size/gap for every small per-column header icon (color
+  /// swatch, swap arrows, delete) - same 16px/6px idiom [colorSwatchRect]
+  /// already established.
+  static const double _headerIconSize = 16.0;
+  static const double _headerIconGap = 6.0;
+
+  /// Board-space rect of column [index]'s delete ("bin") button, directly
+  /// left of [colorSwatchRect] in the same header band - part of the
+  /// hover-revealed reorder/delete cluster, not shown unconditionally
+  /// (see `KanbanElementWidget._buildColumn`'s hover gating).
+  static Rect deleteColumnButtonRect(KanbanElementRow element, int index) {
+    final swatch = colorSwatchRect(element, index);
+    return Rect.fromLTWH(
+      swatch.left - _headerIconSize - _headerIconGap,
+      swatch.top,
+      _headerIconSize,
+      _headerIconSize,
+    );
+  }
+
+  /// Board-space rect of column [index]'s "move right" (swap with next
+  /// column) button, directly left of [deleteColumnButtonRect]. Only
+  /// meaningful (and only rendered/hit-tested) when [index] isn't the
+  /// last column - see `KanbanElementWidget._buildColumn`.
+  static Rect moveColumnRightButtonRect(KanbanElementRow element, int index) {
+    final bin = deleteColumnButtonRect(element, index);
+    return Rect.fromLTWH(
+      bin.left - _headerIconSize - _headerIconGap,
+      bin.top,
+      _headerIconSize,
+      _headerIconSize,
+    );
+  }
+
+  /// Board-space rect of column [index]'s "move left" (swap with previous
+  /// column) button, directly left of [moveColumnRightButtonRect]. Only
+  /// meaningful (and only rendered/hit-tested) when [index] isn't the
+  /// first column.
+  static Rect moveColumnLeftButtonRect(KanbanElementRow element, int index) {
+    final right = moveColumnRightButtonRect(element, index);
+    return Rect.fromLTWH(
+      right.left - _headerIconSize - _headerIconGap,
+      right.top,
+      _headerIconSize,
+      _headerIconSize,
+    );
+  }
+
   /// Vertical inset (board-space px) a divider line stops short of the
   /// column's own top/bottom edges - keeps it clear of the header band
   /// above and the add-task row below, purely cosmetic.

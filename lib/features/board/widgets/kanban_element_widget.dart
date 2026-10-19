@@ -41,6 +41,12 @@ class KanbanElementWidget extends StatelessWidget {
   /// here.
   final String? openColorPickerColumnId;
 
+  /// Id of the column the pointer is currently hovering over its own
+  /// header band, if any - gates whether the reorder-left/reorder-right/
+  /// delete icon trio renders alongside the always-visible color swatch.
+  /// Written by `board_canvas.dart`'s `_handlePointerHover`.
+  final String? hoveredColumnId;
+
   const KanbanElementWidget({
     super.key,
     required this.element,
@@ -51,6 +57,7 @@ class KanbanElementWidget extends StatelessWidget {
     required this.viewScale,
     this.draggingTask,
     this.openColorPickerColumnId,
+    this.hoveredColumnId,
   });
 
   @override
@@ -142,6 +149,7 @@ class KanbanElementWidget extends StatelessWidget {
               local,
               sortedColumns[i],
               i,
+              sortedColumns.length,
               tasksByColumn[sortedColumns[i].id] ?? const [],
               ghostTask?.columnId == sortedColumns[i].id ? ghostTask : null,
             ),
@@ -216,6 +224,7 @@ class KanbanElementWidget extends StatelessWidget {
     Rect Function(Rect) local,
     KanbanColumnRow column,
     int index,
+    int columnCount,
     List<KanbanTask> columnTasks,
     KanbanTask? excludeDragging,
   ) {
@@ -243,7 +252,7 @@ class KanbanElementWidget extends StatelessWidget {
           child: Padding(
             padding: EdgeInsets.only(
               left: 6 * viewScale,
-              right: 24 * viewScale,
+              right: 92 * viewScale,
             ),
             child: Text(
               column.name,
@@ -275,6 +284,49 @@ class KanbanElementWidget extends StatelessWidget {
           ),
         ),
       ),
+      if (column.id == hoveredColumnId) ...[
+        if (index > 0)
+          Positioned.fromRect(
+            rect: local(
+              KanbanColumnGeometry.moveColumnLeftButtonRect(element, index),
+            ),
+            child: Tooltip(
+              message: 'Move list left',
+              child: Icon(
+                Icons.chevron_left,
+                size: 16 * viewScale,
+                color: AppTheme.textSecondary,
+              ),
+            ),
+          ),
+        if (index < columnCount - 1)
+          Positioned.fromRect(
+            rect: local(
+              KanbanColumnGeometry.moveColumnRightButtonRect(element, index),
+            ),
+            child: Tooltip(
+              message: 'Move list right',
+              child: Icon(
+                Icons.chevron_right,
+                size: 16 * viewScale,
+                color: AppTheme.textSecondary,
+              ),
+            ),
+          ),
+        Positioned.fromRect(
+          rect: local(
+            KanbanColumnGeometry.deleteColumnButtonRect(element, index),
+          ),
+          child: Tooltip(
+            message: 'Delete list',
+            child: Icon(
+              Icons.delete_outline,
+              size: 16 * viewScale,
+              color: AppTheme.textSecondary,
+            ),
+          ),
+        ),
+      ],
     ];
 
     for (var rowIndex = 0; rowIndex < columnTasks.length; rowIndex++) {

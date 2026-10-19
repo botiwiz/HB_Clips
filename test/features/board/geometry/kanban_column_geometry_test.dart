@@ -170,5 +170,41 @@ void main() {
         0,
       );
     });
+
+    test(
+      'deleteColumnButtonRect/moveColumnRightButtonRect/'
+      'moveColumnLeftButtonRect form a left-to-right chain inside the '
+      'header, all left of the (unchanged) color swatch',
+      () {
+        final element = _element(
+          width: KanbanElementGeometry.widthForColumnCount(3),
+        );
+        for (final index in [0, 1, 2]) {
+          final header = KanbanColumnGeometry.headerRect(element, index);
+          final swatch = KanbanColumnGeometry.colorSwatchRect(element, index);
+          final bin = KanbanColumnGeometry.deleteColumnButtonRect(
+            element,
+            index,
+          );
+          final right = KanbanColumnGeometry.moveColumnRightButtonRect(
+            element,
+            index,
+          );
+          final left = KanbanColumnGeometry.moveColumnLeftButtonRect(
+            element,
+            index,
+          );
+
+          expect(bin.right, lessThanOrEqualTo(swatch.left));
+          expect(right.right, lessThanOrEqualTo(bin.left));
+          expect(left.right, lessThanOrEqualTo(right.left));
+
+          expect(header.contains(left.center), isTrue);
+          expect(header.contains(right.center), isTrue);
+          expect(header.contains(bin.center), isTrue);
+          expect(left.left, greaterThanOrEqualTo(header.left));
+        }
+      },
+    );
   });
 }
