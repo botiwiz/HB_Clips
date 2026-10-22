@@ -32,6 +32,17 @@ class FramesRepository {
     return (maxOrder ?? 0) + 1;
   }
 
+  /// One-shot count of [boardId]'s frames - used by the duplicate-boards
+  /// review dialog to show a per-board size signal, same aggregate-query
+  /// shape as [_nextSortOrder].
+  Future<int> countFrames(String boardId) async {
+    final query = _db.selectOnly(_db.frames)
+      ..addColumns([_db.frames.id.count()])
+      ..where(_db.frames.boardId.equals(boardId));
+    final row = await query.getSingleOrNull();
+    return row?.read(_db.frames.id.count()) ?? 0;
+  }
+
   Future<void> createFrame({
     required String id,
     required String boardId,

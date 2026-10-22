@@ -858,8 +858,7 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
               child: Material(
                 color: AppTheme.surfaceElevated,
                 borderRadius: BorderRadius.circular(kCornerRadius),
-                elevation: 6,
-                shadowColor: Colors.black54,
+                elevation: 0,
                 child: Padding(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 8,
@@ -883,8 +882,7 @@ class _TextClipEditOverlayState extends ConsumerState<TextClipEditOverlay> {
             child: Material(
               color: AppTheme.surfaceElevated,
               borderRadius: BorderRadius.circular(kCornerRadius),
-              elevation: 6,
-              shadowColor: Colors.black54,
+              elevation: 0,
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
                 // A Positioned child that only specifies left/top (no

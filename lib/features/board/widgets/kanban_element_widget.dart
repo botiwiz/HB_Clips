@@ -384,7 +384,7 @@ class KanbanElementWidget extends StatelessWidget {
       rect: local(boardRect),
       child: IgnorePointer(
         child: Material(
-          elevation: 6,
+          elevation: 0,
           color: AppTheme.surfaceElevated,
           child: Padding(
             padding: EdgeInsets.symmetric(horizontal: 8 * viewScale),

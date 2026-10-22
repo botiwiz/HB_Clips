@@ -8,6 +8,7 @@ import '../../annotation/controllers/annotation_controller.dart'
 import '../../annotation/stroke_painter.dart';
 import '../controllers/board_controller.dart' show ImagePanZoomLive;
 import '../geometry/highlight_geometry.dart';
+import '../geometry/image_cache_sizing.dart';
 import '../geometry/text_note_geometry.dart';
 import '../geometry/text_style_ranges.dart';
 import 'gif_playback_view.dart';
@@ -84,15 +85,6 @@ class ClipWidget extends StatelessWidget {
               : (isShape || isText
                     ? null
                     : Border.all(color: AppTheme.border, width: 1)),
-          boxShadow: (isShape || isText)
-              ? null
-              : const [
-                  BoxShadow(
-                    color: Colors.black54,
-                    blurRadius: 10,
-                    offset: Offset(0, 4),
-                  ),
-                ],
           color: isShape
               ? null
               : (isText
@@ -105,14 +97,14 @@ class ClipWidget extends StatelessWidget {
           ClipType.image => ClipRRect(
             borderRadius: BorderRadius.circular(cardRadius),
             clipBehavior: Clip.antiAlias,
-            child: _buildImage(),
+            child: _buildImage(context),
           ),
           ClipType.text => _buildText(),
           ClipType.shape => _buildShape(),
           ClipType.link => ClipRRect(
             borderRadius: BorderRadius.circular(cardRadius),
             clipBehavior: Clip.antiAlias,
-            child: _buildLink(),
+            child: _buildLink(context),
           ),
         },
       ),
@@ -131,7 +123,7 @@ class ClipWidget extends StatelessWidget {
     );
   }
 
-  Widget _buildImage() {
+  Widget _buildImage(BuildContext context) {
     final path = clip.localFilePath;
     if (path == null) {
       return const Center(
@@ -146,6 +138,7 @@ class ClipWidget extends StatelessWidget {
         panZoomLive: panZoomLive,
       );
     }
+    final devicePixelRatio = MediaQuery.devicePixelRatioOf(context);
     return ImagePanZoomFrame(
       clip: clip,
       live: panZoomLive,
@@ -154,6 +147,8 @@ class ClipWidget extends StatelessWidget {
         fit: BoxFit.fill,
         width: width,
         height: height,
+        cacheWidth: ImageCacheSizing.quantize(width, devicePixelRatio),
+        cacheHeight: ImageCacheSizing.quantize(height, devicePixelRatio),
         errorBuilder: (context, error, stackTrace) => const Center(
           child: Icon(
             Icons.broken_image_outlined,
@@ -164,11 +159,12 @@ class ClipWidget extends StatelessWidget {
     );
   }
 
-  Widget _buildLink() {
+  Widget _buildLink(BuildContext context) {
     final thumbPath = clip.localFilePath;
     final url = clip.linkUrl ?? '';
     final host = Uri.tryParse(url)?.host ?? url;
     final title = clip.linkTitle;
+    final devicePixelRatio = MediaQuery.devicePixelRatioOf(context);
     return Padding(
       padding: const EdgeInsets.all(8),
       child: Row(
@@ -185,6 +181,14 @@ class ClipWidget extends StatelessWidget {
                       fit: BoxFit.cover,
                       width: 48,
                       height: 48,
+                      cacheWidth: ImageCacheSizing.quantize(
+                        48,
+                        devicePixelRatio,
+                      ),
+                      cacheHeight: ImageCacheSizing.quantize(
+                        48,
+                        devicePixelRatio,
+                      ),
                       errorBuilder: (context, error, stackTrace) =>
                           const _LinkFallbackIcon(),
                     )

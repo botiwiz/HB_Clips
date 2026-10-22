@@ -118,8 +118,7 @@ class AppTheme {
       ),
       cardTheme: CardThemeData(
         color: surfaceElevated,
-        elevation: 4,
-        shadowColor: Colors.black87,
+        elevation: 0,
         shape: borderedShape,
       ),
       // Material 3's AlertDialog/PopupMenuButton default to a built-in
@@ -128,8 +127,8 @@ class AppTheme {
       // existing/future dialog and popup menu sharp (and, now, thinly
       // bordered), without touching each individual showDialog/
       // PopupMenuButton call site.
-      dialogTheme: DialogThemeData(shape: borderedShape),
-      popupMenuTheme: PopupMenuThemeData(shape: borderedShape),
+      dialogTheme: DialogThemeData(shape: borderedShape, elevation: 0),
+      popupMenuTheme: PopupMenuThemeData(shape: borderedShape, elevation: 0),
       sliderTheme: base.sliderTheme.copyWith(
         activeTrackColor: accent,
         inactiveTrackColor: border,

@@ -96,9 +96,6 @@ class GradientBar extends StatelessWidget {
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(kCornerRadius),
-                      boxShadow: const [
-                        BoxShadow(color: Colors.black45, blurRadius: 2),
-                      ],
                     ),
                   ),
                 ),

@@ -9,6 +9,7 @@ import '../../../core/constants.dart' show kBoardBackupExtension;
 import '../../../core/theme/app_theme.dart';
 import '../../../data/backup/board_backup_manifest.dart';
 import '../../../data/providers.dart';
+import '../widgets/duplicate_boards_dialog.dart';
 import 'backup_folder_listing_service.dart';
 import 'board_backup_service.dart';
 import 'save_file_service.dart';
@@ -291,6 +292,7 @@ Future<void> loadBackupFolder(BuildContext context, WidgetRef ref) async {
   var created = 0;
   var updated = 0;
   final errors = <String>[];
+  final createdBoardIds = <String>[];
   BoardBackupSummary? onlySummary;
   var processedCount = 0;
 
@@ -320,6 +322,7 @@ Future<void> loadBackupFolder(BuildContext context, WidgetRef ref) async {
       } else {
         summary = await importBoardBackup(ref, bytes);
         existingBoardIds.add(summary.boardId);
+        createdBoardIds.add(summary.boardId);
         created++;
       }
       processedCount++;
@@ -362,6 +365,25 @@ Future<void> loadBackupFolder(BuildContext context, WidgetRef ref) async {
       ],
     ),
   );
+  if (!context.mounted || createdBoardIds.isEmpty) return;
+
+  // Catches the legacy-import duplicate-board mechanism (a pre-boardId
+  // .hbbackup export always creates new rather than updating) at the
+  // moment it actually happens, rather than relying on the user to think
+  // to check later via File > Find duplicates.
+  final allBoards = ref.read(boardsProvider).valueOrNull ?? [];
+  final namesById = {for (final b in allBoards) b.id: b.name.trim().toLowerCase()};
+  final nameCounts = <String, int>{};
+  for (final name in namesById.values) {
+    nameCounts[name] = (nameCounts[name] ?? 0) + 1;
+  }
+  final hasCollision = createdBoardIds.any((id) {
+    final name = namesById[id];
+    return name != null && (nameCounts[name] ?? 0) > 1;
+  });
+  if (hasCollision && context.mounted) {
+    await showDuplicateBoardsDialog(context, ref);
+  }
 }
 
 /// Opens [path] in the OS file manager, falling back to a SnackBar with

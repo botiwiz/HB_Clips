@@ -105,8 +105,7 @@ class ArrangeSelectionButton extends ConsumerWidget {
           child: Material(
             color: AppTheme.surfaceElevated,
             shape: const CircleBorder(),
-            elevation: 6,
-            shadowColor: Colors.black54,
+            elevation: 0,
             child: SizedBox(
               width: size,
               height: size,

@@ -34,6 +34,7 @@ import '../geometry/selection_geometry.dart';
 import '../geometry/snap_geometry.dart';
 import '../geometry/spacing_snap_geometry.dart';
 import '../geometry/view_focus_geometry.dart';
+import '../geometry/viewport_culling.dart';
 import '../services/add_image_service.dart';
 import '../services/eyedropper_service.dart';
 import '../services/image_file_formats.dart';
@@ -4689,6 +4690,32 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       child: LayoutBuilder(
         builder: (context, constraints) {
           _canvasSize = constraints.biggest;
+
+          // Culls anything well outside the current pan/zoom viewport from
+          // the rendered tree entirely (not just painted, like the Stack's
+          // own clipBehavior does after layout/image-decode already
+          // happened) - the single highest-leverage fix for stutter on
+          // boards with many images, since hit-testing here is fully
+          // custom/geometry-based and completely decoupled from the
+          // widget tree, so an unbuilt off-screen clip has zero effect on
+          // click/drag/selection correctness. See `ViewportCulling`'s own
+          // doc comment for the padding margin.
+          final viewportRect = ViewportCulling.boardRectFor(view, _canvasSize);
+          final visibleFrames = frames
+              .where((f) => FrameGeometry.marqueeIntersects(viewportRect, f))
+              .toList();
+          final visibleClips = sorted
+              .where((c) => ClipGeometry.marqueeIntersects(viewportRect, c))
+              .toList();
+          final visibleKanbanElements = kanbanElements
+              .where(
+                (e) => ViewportCulling.isKanbanElementVisible(
+                  viewportRect,
+                  e,
+                ),
+              )
+              .toList();
+
           return Focus(
             focusNode: _focusNode,
             autofocus: true,
@@ -4718,7 +4745,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
                       Positioned.fill(
                         child: CustomPaint(painter: DotGridPainter(view)),
                       ),
-                      for (final frame in frames)
+                      for (final frame in visibleFrames)
                         _positionedFrame(
                           frame,
                           frame.id == _frameResizeId
@@ -4730,7 +4757,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
                               selectedFrameIds.contains(frame.id),
                           view,
                         ),
-                      for (final clip in sorted)
+                      for (final clip in visibleClips)
                         _positionedClip(
                           clip,
                           dragging,
@@ -4746,7 +4773,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
                       if (textToolDragRect != null) const TextToolDragOverlay(),
                       if (shapeToolDragRect != null)
                         const ShapeToolDragOverlay(),
-                      for (final element in kanbanElements)
+                      for (final element in visibleKanbanElements)
                         _positionedKanbanElement(
                           element,
                           kanbanColumns
@@ -4873,18 +4900,20 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       top: screenTopLeft.dy,
       width: rect.width * effectiveScale,
       height: rect.height * effectiveScale,
-      child: KanbanElementWidget(
-        element: liveElement,
-        columns: columns,
-        tasks: tasks,
-        selected: selected,
-        columnScrollOffsets: ref.watch(kanbanColumnScrollOffsetProvider),
-        draggingTask: draggingTask,
-        viewScale: effectiveScale,
-        openColorPickerColumnId: ref.watch(
-          kanbanColumnColorPickerOpenForProvider,
+      child: RepaintBoundary(
+        child: KanbanElementWidget(
+          element: liveElement,
+          columns: columns,
+          tasks: tasks,
+          selected: selected,
+          columnScrollOffsets: ref.watch(kanbanColumnScrollOffsetProvider),
+          draggingTask: draggingTask,
+          viewScale: effectiveScale,
+          openColorPickerColumnId: ref.watch(
+            kanbanColumnColorPickerOpenForProvider,
+          ),
+          hoveredColumnId: ref.watch(hoveredKanbanColumnIdProvider),
         ),
-        hoveredColumnId: ref.watch(hoveredKanbanColumnIdProvider),
       ),
     );
   }
@@ -4903,10 +4932,12 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       top: topLeft.dy,
       width: rect.width * view.scale,
       height: rect.height * view.scale,
-      child: FrameWidget(
-        frame: frame,
-        selected: selected,
-        showResizeHandles: showResizeHandles,
+      child: RepaintBoundary(
+        child: FrameWidget(
+          frame: frame,
+          selected: selected,
+          showResizeHandles: showResizeHandles,
+        ),
       ),
     );
   }
@@ -4994,7 +5025,7 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       top: topLeft.dy,
       width: boxWidth,
       height: boxHeight,
-      child: child,
+      child: RepaintBoundary(child: child),
     );
   }
 }

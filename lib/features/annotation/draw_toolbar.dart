@@ -66,8 +66,7 @@ class DrawToolbar extends ConsumerWidget {
         Material(
           color: AppTheme.surfaceElevated,
           borderRadius: BorderRadius.circular(kCornerRadius),
-          elevation: 6,
-          shadowColor: Colors.black54,
+          elevation: 0,
           child: Container(
             height: pillHeight,
             width: pillWidth,
@@ -158,8 +157,7 @@ class DrawToolbar extends ConsumerWidget {
           Material(
             color: AppTheme.surfaceElevated,
             borderRadius: BorderRadius.circular(kCornerRadius),
-            elevation: 6,
-            shadowColor: Colors.black54,
+            elevation: 0,
             child: SizedBox(
               height: pickerHeight,
               width: pillWidth,

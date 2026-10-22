@@ -8,6 +8,8 @@ class LocalImage extends StatelessWidget {
   final BoxFit? fit;
   final double? width;
   final double? height;
+  final int? cacheWidth;
+  final int? cacheHeight;
   final Widget Function(BuildContext, Object, StackTrace?)? errorBuilder;
 
   const LocalImage({
@@ -16,6 +18,8 @@ class LocalImage extends StatelessWidget {
     this.fit,
     this.width,
     this.height,
+    this.cacheWidth,
+    this.cacheHeight,
     this.errorBuilder,
   });
 

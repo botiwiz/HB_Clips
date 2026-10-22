@@ -483,7 +483,7 @@ class _KanbanTaskFieldEditOverlayState
       child: CallbackShortcuts(
         bindings: {const SingleActivator(LogicalKeyboardKey.escape): _close},
         child: Material(
-          elevation: 8,
+          elevation: 0,
           color: const Color(0xFF1E1E22),
           child: Padding(
             padding: const EdgeInsets.all(8),

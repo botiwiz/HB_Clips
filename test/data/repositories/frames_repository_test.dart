@@ -256,4 +256,38 @@ void main() {
       expect(boardBFrames.map((f) => f.id).toList(), ['b1']);
     },
   );
+
+  test('countFrames counts only that board\'s frames', () async {
+    await repo.createFrame(
+      id: 'a1',
+      boardId: kLocalBoardId,
+      name: 'A1',
+      x: 0,
+      y: 0,
+      width: 100,
+      height: 100,
+    );
+    await repo.createFrame(
+      id: 'a2',
+      boardId: kLocalBoardId,
+      name: 'A2',
+      x: 0,
+      y: 0,
+      width: 100,
+      height: 100,
+    );
+    await repo.createFrame(
+      id: 'b1',
+      boardId: 'other-board',
+      name: 'B1',
+      x: 0,
+      y: 0,
+      width: 100,
+      height: 100,
+    );
+
+    expect(await repo.countFrames(kLocalBoardId), 2);
+    expect(await repo.countFrames('other-board'), 1);
+    expect(await repo.countFrames('nonexistent'), 0);
+  });
 }

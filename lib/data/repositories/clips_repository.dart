@@ -33,6 +33,17 @@ class ClipsRepository {
     return (maxZ ?? 0) + 1;
   }
 
+  /// One-shot count of [boardId]'s active (non-binned) clips - used by the
+  /// duplicate-boards review dialog to show a per-board size signal, same
+  /// aggregate-query shape as [_nextZIndex].
+  Future<int> countActiveClips(String boardId) async {
+    final query = _db.selectOnly(_db.clips)
+      ..addColumns([_db.clips.id.count()])
+      ..where(_db.clips.boardId.equals(boardId) & _db.clips.isBinned.equals(false));
+    final row = await query.getSingleOrNull();
+    return row?.read(_db.clips.id.count()) ?? 0;
+  }
+
   /// Adds an image clip pointing at an already-imported local file.
   Future<BoardClip> addImageClip({
     required String id,

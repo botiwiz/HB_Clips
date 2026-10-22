@@ -16,8 +16,7 @@ class PillGroup extends StatelessWidget {
     return Material(
       color: AppTheme.surfaceElevated,
       borderRadius: BorderRadius.circular(kCornerRadius),
-      elevation: 6,
-      shadowColor: Colors.black54,
+      elevation: 0,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 2),
         // The number of icons here grows with app state (selection,

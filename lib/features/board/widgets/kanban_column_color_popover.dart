@@ -167,8 +167,7 @@ class _KanbanColumnColorPopoverState
       child: Material(
         color: AppTheme.surfaceElevated,
         borderRadius: BorderRadius.circular(kCornerRadius),
-        elevation: 6,
-        shadowColor: Colors.black54,
+        elevation: 0,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
           child: SizedBox(

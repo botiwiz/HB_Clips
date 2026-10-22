@@ -4,6 +4,10 @@ import 'package:hb_clips/core/constants.dart';
 import 'package:hb_clips/data/local/database.dart';
 import 'package:hb_clips/data/repositories/boards_repository.dart';
 import 'package:hb_clips/data/repositories/clips_repository.dart';
+import 'package:hb_clips/data/repositories/kanban_columns_repository.dart';
+import 'package:hb_clips/data/repositories/kanban_elements_repository.dart';
+import 'package:hb_clips/data/repositories/kanban_task_links_repository.dart';
+import 'package:hb_clips/data/repositories/kanban_tasks_repository.dart';
 import 'package:hb_clips/data/repositories/strokes_repository.dart';
 import 'package:uuid/uuid.dart';
 
@@ -14,12 +18,20 @@ void main() {
   late BoardsRepository boards;
   late ClipsRepository clips;
   late StrokesRepository strokes;
+  late KanbanElementsRepository kanbanElements;
+  late KanbanColumnsRepository kanbanColumns;
+  late KanbanTasksRepository kanbanTasks;
+  late KanbanTaskLinksRepository kanbanTaskLinks;
 
   setUp(() {
     db = AppDatabase.forTesting(NativeDatabase.memory());
     boards = BoardsRepository(db);
     clips = ClipsRepository(db);
     strokes = StrokesRepository(db);
+    kanbanElements = KanbanElementsRepository(db);
+    kanbanColumns = KanbanColumnsRepository(db);
+    kanbanTasks = KanbanTasksRepository(db);
+    kanbanTaskLinks = KanbanTaskLinksRepository(db);
   });
 
   tearDown(() => db.close());
@@ -166,6 +178,54 @@ void main() {
       final found = await boards.getBoard('board-2');
       expect(found?.name, 'Second board');
       expect(await boards.getBoard('nonexistent'), isNull);
+    },
+  );
+
+  test(
+    'deleteBoard cascades to a kanban element and its columns/tasks/links',
+    () async {
+      await boards.createBoard('board-2', 'Second board');
+      final element = await kanbanElements.createKanbanElement(
+        id: _uuid.v4(),
+        boardId: 'board-2',
+        name: 'Kanban',
+        x: 0,
+        y: 0,
+        width: 300,
+        height: 480,
+      );
+      final column = await kanbanColumns.createColumn(
+        id: _uuid.v4(),
+        kanbanElementId: element.id,
+        name: 'To do',
+      );
+      final task = await kanbanTasks.addTask(
+        id: _uuid.v4(),
+        columnId: column.id,
+        title: 'Task',
+      );
+      final clip = await clips.addTextNote(
+        id: _uuid.v4(),
+        boardId: 'board-2',
+        textContent: 'hello',
+        x: 0,
+        y: 0,
+      );
+      await kanbanTaskLinks.addLink(
+        id: _uuid.v4(),
+        taskId: task.id,
+        clipId: clip.id,
+      );
+
+      await boards.deleteBoard('board-2');
+
+      expect(await kanbanElements.watchKanbanElements('board-2').first, isEmpty);
+      expect(await kanbanColumns.watchColumnsForBoard('board-2').first, isEmpty);
+      expect(await kanbanTasks.watchTasksForBoard('board-2').first, isEmpty);
+      expect(
+        await kanbanTaskLinks.watchLinksForBoard('board-2').first,
+        isEmpty,
+      );
     },
   );
 

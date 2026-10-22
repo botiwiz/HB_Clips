@@ -121,14 +121,51 @@ class BoardsRepository {
     );
   }
 
-  /// Deletes every frame/clip/connector/stroke belonging to [boardId],
-  /// WITHOUT deleting the board row itself or checking
+  /// Deletes every frame/clip/connector/stroke/kanban element belonging
+  /// to [boardId], WITHOUT deleting the board row itself or checking
   /// [LastBoardException] - shared by [deleteBoard] (which deletes the
   /// row right after) and Load's update-in-place path
   /// (`board_backup_service.dart`'s `updateBoardFromBackup`, which wipes
   /// an existing board clean before repopulating it from a newer
   /// `.hbbackup` export of the same board).
   Future<void> _wipeContents(String boardId) async {
+    final elementIds =
+        await (_db.selectOnly(_db.kanbanElements)
+              ..addColumns([_db.kanbanElements.id])
+              ..where(_db.kanbanElements.boardId.equals(boardId)))
+            .map((row) => row.read(_db.kanbanElements.id)!)
+            .get();
+    if (elementIds.isNotEmpty) {
+      final columnIds =
+          await (_db.selectOnly(_db.kanbanColumns)
+                ..addColumns([_db.kanbanColumns.id])
+                ..where(_db.kanbanColumns.kanbanElementId.isIn(elementIds)))
+              .map((row) => row.read(_db.kanbanColumns.id)!)
+              .get();
+      if (columnIds.isNotEmpty) {
+        final taskIds =
+            await (_db.selectOnly(_db.kanbanTasks)
+                  ..addColumns([_db.kanbanTasks.id])
+                  ..where(_db.kanbanTasks.columnId.isIn(columnIds)))
+                .map((row) => row.read(_db.kanbanTasks.id)!)
+                .get();
+        if (taskIds.isNotEmpty) {
+          await (_db.delete(
+            _db.kanbanTaskLinks,
+          )..where((l) => l.taskId.isIn(taskIds))).go();
+          await (_db.delete(
+            _db.kanbanTasks,
+          )..where((t) => t.id.isIn(taskIds))).go();
+        }
+        await (_db.delete(
+          _db.kanbanColumns,
+        )..where((c) => c.id.isIn(columnIds))).go();
+      }
+      await (_db.delete(
+        _db.kanbanElements,
+      )..where((e) => e.boardId.equals(boardId))).go();
+    }
+
     final clipIds = await (_db.select(
       _db.clips,
     )..where((c) => c.boardId.equals(boardId))).map((row) => row.id).get();

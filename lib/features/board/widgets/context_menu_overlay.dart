@@ -37,7 +37,7 @@ class ContextMenuOverlay extends ConsumerWidget {
       top: request.screenPosition.dy,
       width: _kMenuWidth,
       child: Material(
-        elevation: 8,
+        elevation: 0,
         color: AppTheme.surfaceElevated,
         child: Column(
           mainAxisSize: MainAxisSize.min,

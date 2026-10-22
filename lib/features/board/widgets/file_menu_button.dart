@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/constants.dart' show kCornerRadius;
 import '../../../core/theme/app_theme.dart';
 import '../services/backup_folder_service.dart';
+import 'duplicate_boards_dialog.dart';
 
 /// A labeled "File" menu, separate from the main icon toolbar, for the
 /// `.hbbackup` Load/Save actions - mirrors `BoardSwitcher`'s exact
@@ -32,8 +33,7 @@ class FileMenuButton extends ConsumerWidget {
     return Material(
       color: AppTheme.surfaceElevated,
       borderRadius: BorderRadius.circular(kCornerRadius),
-      elevation: 6,
-      shadowColor: Colors.black54,
+      elevation: 0,
       child: PopupMenuButton<String>(
         tooltip: 'File',
         onSelected: (value) => _handleSelection(context, ref, value),
@@ -55,6 +55,16 @@ class FileMenuButton extends ConsumerWidget {
                 Icon(Icons.save_outlined, size: 20),
                 SizedBox(width: 8),
                 Text('SAVE'),
+              ],
+            ),
+          ),
+          PopupMenuItem<String>(
+            value: 'find_duplicates',
+            child: Row(
+              children: [
+                Icon(Icons.content_copy_outlined, size: 20),
+                SizedBox(width: 8),
+                Text('FIND DUPLICATES...'),
               ],
             ),
           ),
@@ -97,6 +107,8 @@ Future<void> _handleSelection(
         await loadBackupFolder(context, ref);
       case 'save':
         await saveAllBoards(context, ref);
+      case 'find_duplicates':
+        await showDuplicateBoardsDialog(context, ref);
     }
   } catch (e, st) {
     debugPrint('[file-menu] "$value" failed: $e\n$st');

@@ -156,4 +156,38 @@ void main() {
     expect(duplicate.linkUrl, 'https://example.com');
     expect(duplicate.linkTitle, 'Example Site');
   });
+
+  test(
+    'countActiveClips counts only active (non-binned) clips on that board',
+    () async {
+      final activeId = _uuid.v4();
+      final binnedId = _uuid.v4();
+      await repo.addTextNote(
+        id: activeId,
+        boardId: kLocalBoardId,
+        textContent: 'active',
+        x: 0,
+        y: 0,
+      );
+      await repo.addTextNote(
+        id: binnedId,
+        boardId: kLocalBoardId,
+        textContent: 'binned',
+        x: 0,
+        y: 0,
+      );
+      await repo.binClip(binnedId);
+      await repo.addTextNote(
+        id: _uuid.v4(),
+        boardId: 'other-board',
+        textContent: 'elsewhere',
+        x: 0,
+        y: 0,
+      );
+
+      expect(await repo.countActiveClips(kLocalBoardId), 1);
+      expect(await repo.countActiveClips('other-board'), 1);
+      expect(await repo.countActiveClips('nonexistent'), 0);
+    },
+  );
 }

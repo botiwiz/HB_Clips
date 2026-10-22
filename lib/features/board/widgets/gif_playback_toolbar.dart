@@ -65,8 +65,7 @@ class GifPlaybackToolbar extends ConsumerWidget {
     return Material(
       color: AppTheme.surfaceElevated,
       borderRadius: BorderRadius.circular(kCornerRadius),
-      elevation: 6,
-      shadowColor: Colors.black54,
+      elevation: 0,
       child: Container(
         height: 48,
         width: 440,

@@ -269,8 +269,7 @@ class _ShapeStylePopoverState extends ConsumerState<ShapeStylePopover> {
               child: Material(
                 color: AppTheme.surfaceElevated,
                 borderRadius: BorderRadius.circular(kCornerRadius),
-                elevation: 6,
-                shadowColor: Colors.black54,
+                elevation: 0,
                 child: Padding(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 8,
@@ -318,8 +317,7 @@ class _ShapeStylePopoverState extends ConsumerState<ShapeStylePopover> {
             child: Material(
               color: AppTheme.surfaceElevated,
               borderRadius: BorderRadius.circular(kCornerRadius),
-              elevation: 6,
-              shadowColor: Colors.black54,
+              elevation: 0,
               child: SizedBox(
                 height: rect.height,
                 width: rect.width,

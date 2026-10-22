@@ -27,7 +27,7 @@ class LinkToTaskBanner extends ConsumerWidget {
       right: 0,
       child: Center(
         child: Material(
-          elevation: 4,
+          elevation: 0,
           color: AppTheme.accent,
           child: const Padding(
             padding: EdgeInsets.symmetric(horizontal: 14, vertical: 8),
