@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -81,10 +83,12 @@ const _uuid = Uuid();
 /// its resize/rotate handles) ourselves keeps every one of those gestures
 /// deterministic instead of arena-dependent.
 ///
-/// Gesture priority per pointer-down, most specific first: (0) MMB or
-/// Space+drag always pans, regardless of what's underneath the cursor, and
-/// a plain right-click is a no-op (reserved for a future context menu) -
-/// both checked before any hit-testing; then, for an ordinary left-click,
+/// Gesture priority per pointer-down, most specific first: (-1) Alt+Space+
+/// LMB drag zooms (horizontal movement only, pivoting around the drag's
+/// start point); (0) MMB or Space+drag always pans, regardless of what's
+/// underneath the cursor, and a plain right-click is a no-op (reserved for
+/// a future context menu) - all checked before any hit-testing; then, for
+/// an ordinary left-click,
 /// (1) a handle on the sole selected clip, (1.5) a handle on a multi-clip
 /// selection's bounding box (group scale - only when every selected clip
 /// is unrotated), (2) a clip body (rotation-aware), (3) empty canvas
@@ -149,6 +153,22 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
   // Canvas pan.
   Offset? _panPointerStart;
   Offset? _panOffsetStart;
+
+  // Alt+Space+LMB horizontal-drag-to-zoom ("scrubby zoom") - takes priority
+  // over plain Space+drag panning (checked first in the pointer-down
+  // gesture-priority chain). The zoom pivots around the screen point the
+  // gesture started at (fixed for the whole drag, not the live cursor
+  // position) so the board point under that point stays put while scale
+  // changes - same anchor-preserving math `zoomAt` uses for wheel-zoom,
+  // just driven by horizontal mouse movement instead of scroll ticks.
+  Offset? _altZoomPointerStart;
+  double? _altZoomScaleStart;
+  Offset? _altZoomPanStart;
+
+  // Horizontal screen pixels of Alt+Space+LMB drag to double (or halve,
+  // dragging left) the zoom scale - tuned to feel comparable in speed to a
+  // few wheel-zoom ticks over a similar drag distance, not a 1:1 pixel map.
+  static const double _altZoomDragPixelsPerDoubling = 300;
 
   // Debounces wheel-zoom steps: an isolated tick (gap since the last one
   // exceeds the threshold) gets an eased transition; a rapid stream of
@@ -1284,6 +1304,9 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     _marqueeMoved = false;
     _panPointerStart = null;
     _panOffsetStart = null;
+    _altZoomPointerStart = null;
+    _altZoomScaleStart = null;
+    _altZoomPanStart = null;
     _frameResizeId = null;
     _frameResizing = false;
     _frameResizeStartRect = null;
@@ -1936,6 +1959,24 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     // pointer-up (dropped event, cancelled pointer) can't leak into this
     // new one no matter which button/key started it.
     _resetGestureState();
+
+    // Alt+Space+LMB drag zooms (horizontally) instead of panning - checked
+    // before the plain Space+drag pan check below so it wins whenever Alt
+    // is also held, the same "more specific modifier combo wins" priority
+    // this method's own doc comment already establishes for every other
+    // gesture here.
+    final isAltSpaceZoomGesture =
+        (event.buttons & kPrimaryMouseButton != 0) &&
+        HardwareKeyboard.instance.isLogicalKeyPressed(
+          LogicalKeyboardKey.space,
+        ) &&
+        HardwareKeyboard.instance.isAltPressed;
+    if (isAltSpaceZoomGesture) {
+      _altZoomPointerStart = event.localPosition;
+      _altZoomScaleStart = view.scale;
+      _altZoomPanStart = view.panOffset;
+      return;
+    }
 
     // Middle-mouse-button or Space+drag always pans, regardless of what's
     // under the cursor - checked before any hit-testing so it takes
@@ -3273,6 +3314,25 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       return;
     }
 
+    if (_altZoomPointerStart != null) {
+      final dx = event.localPosition.dx - _altZoomPointerStart!.dx;
+      final double newScale =
+          (_altZoomScaleStart! *
+                  math.pow(2, dx / _altZoomDragPixelsPerDoubling))
+              .clamp(BoardViewNotifier.minScale, BoardViewNotifier.maxScale)
+              .toDouble();
+      // Anchored at the fixed gesture-start screen point (not the live
+      // cursor position) so the board point that was under the cursor when
+      // the drag began stays put throughout - dragging further right/left
+      // only changes scale, never re-centers the zoom.
+      final anchor = _altZoomPointerStart!;
+      final boardPointUnderAnchor =
+          (anchor - _altZoomPanStart!) / _altZoomScaleStart!;
+      final newPan = anchor - boardPointUnderAnchor * newScale;
+      ref.read(boardViewProvider.notifier).setView(newPan, newScale);
+      return;
+    }
+
     if (_panPointerStart != null) {
       final delta = event.localPosition - _panPointerStart!;
       ref.read(boardViewProvider.notifier).setPan(_panOffsetStart! + delta);
@@ -4080,10 +4140,26 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
       // lives instead.
       _panPointerStart = null;
     }
+
+    if (_altZoomPointerStart != null) {
+      _altZoomPointerStart = null;
+      _altZoomScaleStart = null;
+      _altZoomPanStart = null;
+    }
   }
 
   void _handlePointerSignal(PointerSignalEvent event) {
     if (event is PointerScrollEvent) {
+      // A middle-mouse-button pan drag in progress takes priority over any
+      // concurrent scroll/zoom input - some clickable scroll wheels report
+      // a spurious tiny scroll tick from the mechanical act of pressing the
+      // button down for a middle-click-drag, which would otherwise start
+      // `_animateZoomStep`/`zoomAt` rewriting `boardViewProvider`'s pan
+      // offset from a focal point snapshotted *before* the drag's own live
+      // `setPan` calls - the two fight over the same frame and the view
+      // visibly "snaps" toward the zoom step's stale anchor mid-pan.
+      if (_panPointerStart != null) return;
+
       final factor = event.scrollDelta.dy > 0 ? 0.9 : 1.1;
 
       final panZoomClipId = ref.read(panZoomClipIdProvider);
