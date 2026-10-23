@@ -1,0 +1,130 @@
+name: Release build
+
+# Builds the Linux AppImage and the Windows portable zip, then publishes
+# both to the "clips" GitHub Release (https://github.com/botiwiz/HB_Clips/
+# releases/tag/clips) so there's always one stable page with the latest
+# downloadable build of each platform - no CI-artifact login/expiry, no
+# hunting through workflow runs. Fires on every push to this branch (same
+# trigger windows-build.yml already uses) plus workflow_dispatch for a
+# manual re-run.
+on:
+  push:
+    branches: [claude/hb-clips-cross-platform-jt48h7]
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - run: flutter pub get
+
+      - run: flutter test
+
+      # --no-tree-shake-icons: without it, release builds subset the
+      # Material Icons font down to only statically-provable codepoints,
+      # silently dropping some toolbar icons to empty glyphs - same flag
+      # build_portable.bat/windows-build.yml already carry for the same
+      # reason.
+      - run: flutter build windows --release --no-tree-shake-icons
+
+      - name: Package portable build
+        shell: pwsh
+        run: |
+          Compress-Archive -Path build\windows\x64\runner\Release\* -DestinationPath HB_Clips-windows.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-windows
+          path: HB_Clips-windows.zip
+
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - run: sudo apt-get update && sudo apt-get install -y ninja-build libgtk-3-dev
+
+      - run: flutter pub get
+
+      - run: flutter test
+
+      - run: flutter build linux --release
+
+      - name: Package AppImage
+        run: |
+          set -eux
+          curl -L -o appimagetool.AppImage \
+            https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x appimagetool.AppImage
+
+          APPDIR=HB_Clips.AppDir
+          mkdir -p "$APPDIR/usr/bin"
+          cp -r build/linux/x64/release/bundle/* "$APPDIR/usr/bin/"
+          cp web/icons/Icon-512.png "$APPDIR/hb_clips.png"
+          ln -s hb_clips.png "$APPDIR/.DirIcon"
+
+          printf '%s\n' \
+            '#!/bin/sh' \
+            'HERE="$(dirname "$(readlink -f "${0}")")"' \
+            'export LD_LIBRARY_PATH="${HERE}/usr/bin/lib:${LD_LIBRARY_PATH}"' \
+            'exec "${HERE}/usr/bin/hb_clips" "$@"' \
+            > "$APPDIR/AppRun"
+          chmod +x "$APPDIR/AppRun"
+
+          printf '%s\n' \
+            '[Desktop Entry]' \
+            'Name=HB_Clips' \
+            'Exec=hb_clips' \
+            'Icon=hb_clips' \
+            'Type=Application' \
+            'Categories=Graphics;' \
+            > "$APPDIR/hb_clips.desktop"
+
+          ./appimagetool.AppImage --appimage-extract-and-run "$APPDIR" HB_Clips-x86_64.AppImage
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-linux
+          path: HB_Clips-x86_64.AppImage
+
+  release:
+    needs: [build-windows, build-linux]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-windows
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-linux
+
+      - uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: clips
+          name: HB_Clips_1.0
+          body: |
+            Latest portable builds, rebuilt automatically from commit ${{ github.sha }}.
+
+            - **Linux**: `HB_Clips-x86_64.AppImage` - `chmod +x` and run directly.
+            - **Windows**: `HB_Clips-windows.zip` - unzip anywhere and run `hb_clips.exe`.
+
+            No installer for either platform - both are fully portable.
+          files: |
+            HB_Clips-windows.zip
+            HB_Clips-x86_64.AppImage
