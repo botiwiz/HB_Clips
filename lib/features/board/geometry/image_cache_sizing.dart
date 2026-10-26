@@ -5,7 +5,17 @@
 class ImageCacheSizing {
   ImageCacheSizing._();
 
-  static const int bucket = 64;
+  // Coarser than an initial 64px pass - every bucket boundary crossed
+  // during a zoom is a full redecode of a (possibly large) source image,
+  // multiplied across however many clips are on screen at once. 160px
+  // trades a little resolution granularity (imperceptible given the
+  // ceiling below is already a cap, not a target) for roughly 2.5x fewer
+  // distinct decode variants per image over the same zoom range, which
+  // matters directly for "renders slower as the board fills up with
+  // images" - fewer decodes means less competition for the image cache
+  // raised in main.dart, and fewer redundant decodes when zooming back
+  // and forth across the same range.
+  static const int bucket = 160;
 
   /// A sane decode-resolution cap used when the image's own native pixel
   /// size isn't cheaply known at the call site - never requested unless

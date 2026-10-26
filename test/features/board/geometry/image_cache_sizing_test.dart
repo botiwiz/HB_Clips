@@ -3,23 +3,37 @@ import 'package:hb_clips/features/board/geometry/image_cache_sizing.dart';
 
 void main() {
   group('ImageCacheSizing.quantize', () {
-    test('rounds up to the nearest 64px bucket', () {
-      // 100 logical px * 1.0 dpr = 100 -> rounds up to 128.
-      expect(ImageCacheSizing.quantize(100, 1.0), 128);
+    final bucket = ImageCacheSizing.bucket;
+
+    test('rounds up to the nearest bucket', () {
+      // Just over one bucket rounds up to two buckets.
+      expect(
+        ImageCacheSizing.quantize((bucket + 1).toDouble(), 1.0),
+        bucket * 2,
+      );
       // Exactly on a bucket boundary stays put.
-      expect(ImageCacheSizing.quantize(128, 1.0), 128);
+      expect(
+        ImageCacheSizing.quantize((bucket * 2).toDouble(), 1.0),
+        bucket * 2,
+      );
       // Just over a boundary rounds up to the next one.
-      expect(ImageCacheSizing.quantize(129, 1.0), 192);
+      expect(
+        ImageCacheSizing.quantize((bucket * 2 + 1).toDouble(), 1.0),
+        bucket * 3,
+      );
     });
 
     test('small/continuous changes within the same bucket are stable', () {
-      final a = ImageCacheSizing.quantize(100, 1.0);
-      final b = ImageCacheSizing.quantize(105, 1.0);
+      final a = ImageCacheSizing.quantize(bucket * 0.5, 1.0);
+      final b = ImageCacheSizing.quantize(bucket * 0.5 + 5, 1.0);
       expect(a, b);
     });
 
     test('scales with devicePixelRatio', () {
-      expect(ImageCacheSizing.quantize(100, 2.0), 256);
+      expect(
+        ImageCacheSizing.quantize(bucket.toDouble(), 2.0),
+        bucket * 2,
+      );
     });
 
     test('clamps to defaultCeiling when no native size is given', () {
@@ -39,8 +53,8 @@ void main() {
 
     test('nativeSize larger than the bucketed target has no effect', () {
       expect(
-        ImageCacheSizing.quantize(100, 1.0, nativeSize: 5000),
-        128,
+        ImageCacheSizing.quantize(bucket * 0.5, 1.0, nativeSize: 5000),
+        bucket,
       );
     });
 

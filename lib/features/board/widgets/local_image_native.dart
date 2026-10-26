@@ -38,6 +38,17 @@ class LocalImage extends StatelessWidget {
       height: height,
       cacheWidth: cacheWidth,
       cacheHeight: cacheHeight,
+      // Every cacheWidth/cacheHeight bucket crossing during a zoom (see
+      // ImageCacheSizing.quantize) is a genuinely new decode as far as
+      // Flutter's ImageProvider is concerned, even though it's the same
+      // source file - without this, the frame goes blank for the instant
+      // between the old decode being dropped and the new one finishing,
+      // which reads as the image "reloading"/breaking on every zoom step.
+      // Keeping the last good frame visible until the new one is ready
+      // makes repeated zooming look seamless instead. Matches
+      // local_image_web.dart's own Image.memory calls, which already set
+      // this.
+      gaplessPlayback: true,
       errorBuilder: errorBuilder,
     );
   }
