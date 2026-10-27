@@ -1995,9 +1995,11 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
     final selection = ref.read(selectedClipIdsProvider);
     final clips = ref.read(activeClipsProvider).valueOrNull ?? [];
 
-    // "C" held + left-drag draws a brand-new rectangle that becomes the
-    // sole selected image clip's on-board frame (replacing the old crop
-    // tool's "click a button, then resize the pre-seeded full rect" flow).
+    // "C" held + left-drag over the sole selected image clip crops it in
+    // place, PureRef-style: the clip's box shrinks to the drawn marquee
+    // (clamped to the clip's own current bounds) while its pan/zoom are
+    // recomputed so the image content under the marquee stays visually
+    // unchanged - see ImagePanZoomGeometry.crop, applied on pointer-up.
     // Same "wins over whatever's under the cursor" priority as Space+drag.
     final isDefineFrameGesture =
         HardwareKeyboard.instance.isLogicalKeyPressed(
@@ -3642,51 +3644,86 @@ class _BoardCanvasState extends ConsumerState<BoardCanvas>
 
     if (_defineFrameClip != null) {
       final rect = ref.read(defineFrameRectProvider);
-      if (rect != null &&
-          rect.width >= ClipGeometry.minClipSize &&
-          rect.height >= ClipGeometry.minClipSize) {
+      if (rect != null) {
         final beforeClip = _defineFrameClip!;
-        // Awaited before clearing the live rect - see the comment on the
-        // arrange branch below for why: otherwise activeClipsProvider's
-        // stream can still be showing the pre-gesture value for a frame or
-        // two after the preview disappears, flashing the stale state.
-        await repo.updateTransform(
-          beforeClip.id,
-          x: rect.left,
-          y: rect.top,
-          width: rect.width,
-          height: rect.height,
-          panX: 0.0,
-          panY: 0.0,
-          zoom: 1.0,
+        // The drawn marquee is in raw board space (matching what the user
+        // actually sees on screen, same as DefineFrameOverlay renders) -
+        // un-rotate its two corners around the clip's own center before
+        // handing off to the crop math, which works in the clip's local
+        // (unrotated) frame. Same two-points-not-a-whole-rect
+        // approximation ClipGeometry.resize already uses for a rotated
+        // clip's own resize-handle drag - exact for axis-aligned/90°-
+        // multiple rotations, an accepted approximation otherwise.
+        final center = ClipGeometry.clipCenter(beforeClip);
+        final localTopLeft = ClipGeometry.rotatePoint(
+          rect.topLeft,
+          center,
+          -beforeClip.rotation,
         );
-        if (!mounted) return;
-        ref
-            .read(undoManagerProvider.notifier)
-            .push(
-              UndoableAction(
-                undo: () => repo.updateTransform(
-                  beforeClip.id,
-                  x: beforeClip.x,
-                  y: beforeClip.y,
-                  width: beforeClip.width,
-                  height: beforeClip.height,
-                  panX: beforeClip.imagePanX,
-                  panY: beforeClip.imagePanY,
-                  zoom: beforeClip.imageZoom,
+        final localBottomRight = ClipGeometry.rotatePoint(
+          rect.bottomRight,
+          center,
+          -beforeClip.rotation,
+        );
+        final result = ImagePanZoomGeometry.crop(
+          frame: Rect.fromLTWH(
+            beforeClip.x,
+            beforeClip.y,
+            beforeClip.width,
+            beforeClip.height,
+          ),
+          subRect: Rect.fromPoints(localTopLeft, localBottomRight),
+          aspectRatio:
+              beforeClip.imageAspectRatio ??
+              (beforeClip.width / beforeClip.height),
+          panX: beforeClip.imagePanX,
+          panY: beforeClip.imagePanY,
+          zoom: beforeClip.imageZoom,
+          minSize: ClipGeometry.minClipSize,
+        );
+        if (result != null) {
+          // Awaited before clearing the live rect - see the comment on the
+          // arrange branch below for why: otherwise activeClipsProvider's
+          // stream can still be showing the pre-gesture value for a frame
+          // or two after the preview disappears, flashing the stale state.
+          await repo.updateTransform(
+            beforeClip.id,
+            x: result.rect.left,
+            y: result.rect.top,
+            width: result.rect.width,
+            height: result.rect.height,
+            panX: result.panX,
+            panY: result.panY,
+            zoom: result.zoom,
+          );
+          if (!mounted) return;
+          ref
+              .read(undoManagerProvider.notifier)
+              .push(
+                UndoableAction(
+                  undo: () => repo.updateTransform(
+                    beforeClip.id,
+                    x: beforeClip.x,
+                    y: beforeClip.y,
+                    width: beforeClip.width,
+                    height: beforeClip.height,
+                    panX: beforeClip.imagePanX,
+                    panY: beforeClip.imagePanY,
+                    zoom: beforeClip.imageZoom,
+                  ),
+                  redo: () => repo.updateTransform(
+                    beforeClip.id,
+                    x: result.rect.left,
+                    y: result.rect.top,
+                    width: result.rect.width,
+                    height: result.rect.height,
+                    panX: result.panX,
+                    panY: result.panY,
+                    zoom: result.zoom,
+                  ),
                 ),
-                redo: () => repo.updateTransform(
-                  beforeClip.id,
-                  x: rect.left,
-                  y: rect.top,
-                  width: rect.width,
-                  height: rect.height,
-                  panX: 0.0,
-                  panY: 0.0,
-                  zoom: 1.0,
-                ),
-              ),
-            );
+              );
+        }
       }
       if (!mounted) return;
       ref.read(defineFrameRectProvider.notifier).state = null;

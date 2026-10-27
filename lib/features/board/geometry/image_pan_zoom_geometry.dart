@@ -65,4 +65,81 @@ class ImagePanZoomGeometry {
     }
     return Offset(panX, panY);
   }
+
+  /// Top-left of the rendered (scaled) content, relative to [frame]'s own
+  /// top-left - the inverse of the `Alignment(panX, panY)` math
+  /// `ImagePanZoomFrame`'s `OverflowBox` applies: alignment -1 puts the
+  /// content's edge flush with the frame's edge (offset 0); alignment 1
+  /// pulls it fully the other way (offset -overflow).
+  static Offset _contentTopLeft(
+    double panX,
+    double panY,
+    Offset overflow,
+  ) {
+    return Offset(
+      -overflow.dx * (panX + 1) / 2,
+      -overflow.dy * (panY + 1) / 2,
+    );
+  }
+
+  /// PureRef-style in-place crop: [subRect] is a candidate new frame - in
+  /// the same coordinate space as [frame] (board-space, already un-
+  /// rotated into the clip's own local frame if it's rotated - see
+  /// `board_canvas.dart`'s only caller) - clamped to [frame]'s own bounds
+  /// first, since a crop can never extend past the image's current
+  /// bounds any more than PureRef's own crop handles can. Returns null if
+  /// the clamped result is smaller than [minSize] on either axis (nothing
+  /// meaningful to crop to).
+  ///
+  /// The returned pan/zoom keep the image content that was visible under
+  /// [subRect] visually unchanged - same on-board scale, same crop of the
+  /// source picture - the frame just shrinks around it, rather than
+  /// resetting to a fresh cover-fit view the way a plain resize would.
+  /// [panX]/[panY]/[zoom] are the frame's pan/zoom *before* the crop.
+  static ({Rect rect, double panX, double panY, double zoom})? crop({
+    required Rect frame,
+    required Rect subRect,
+    required double aspectRatio,
+    required double panX,
+    required double panY,
+    required double zoom,
+    required double minSize,
+  }) {
+    final clamped = subRect.intersect(frame);
+    if (clamped.width < minSize || clamped.height < minSize) return null;
+
+    final zoom0 = clampZoom(zoom);
+    final cover0 = coverSize(frame.width, frame.height, aspectRatio);
+    final scaled0 = scaledSize(cover0, zoom0);
+    final overflow0 = overflow(frame.width, frame.height, scaled0);
+    final contentTL0 = _contentTopLeft(panX, panY, overflow0);
+
+    // Desired content top-left, relative to the NEW frame's own origin
+    // (the clamped sub-rect's top-left) - unchanged in absolute board
+    // terms, just re-expressed against the smaller frame.
+    final subLocal = clamped.topLeft - frame.topLeft;
+    final newContentTL = contentTL0 - subLocal;
+
+    final cover1 = coverSize(clamped.width, clamped.height, aspectRatio);
+    // Solve for the zoom that keeps the content's absolute (board-space)
+    // size unchanged - cropping shrinks the viewing window, it doesn't
+    // re-zoom the picture. cover0/cover1 both have exactly [aspectRatio]
+    // by construction, so either axis gives the same ratio; width is
+    // used arbitrarily.
+    final zoom1 = clampZoom(scaled0.width / cover1.width);
+    final scaled1 = scaledSize(cover1, zoom1);
+    final overflow1 = overflow(clamped.width, clamped.height, scaled1);
+
+    double axisPan(double contentTL, double axisOverflow) {
+      if (axisOverflow <= 0) return 0.0;
+      return (-2 * contentTL / axisOverflow - 1).clamp(-1.0, 1.0);
+    }
+
+    return (
+      rect: clamped,
+      panX: axisPan(newContentTL.dx, overflow1.dx),
+      panY: axisPan(newContentTL.dy, overflow1.dy),
+      zoom: zoom1,
+    );
+  }
 }
